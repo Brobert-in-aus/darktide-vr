@@ -162,8 +162,10 @@ else. A grip pressed just before your hand arrives, or just after it has
 passed through, still counts, and your hand counts as soon as your fingertips
 reach a holster. With "Controller vibration" on, the hand ticks
 as it reaches an armed holster; "Holster labels" shows what a holster holds
-while your hand rests on it. Holsters are off in the hub. The body zones are
-first estimates.
+while your hand rests on it. The hip and chest holsters always show a small
+model of what they hold (not the item already in your hand), which grows while
+your hand is in the holster; the shoulder holster is out of sight and extra
+large. Holsters are off in the hub. The body zones are first estimates.
 
 ### Weapon hand holsters (experimental)
 
@@ -188,9 +190,10 @@ its sights, and in the hub.
 ### Two-hand support (experimental)
 
 Mod Options, Darktide VR, Experimental features, "Two-hand support". With a
-two-handed gun out, bring your off hand to where the weapon's animation holds the
-foregrip: the glove slides onto the foregrip to show you are in place. Press
-grip there and the gun follows both hands, however far apart you move them,
+two-handed gun out, put your off hand on the gun anywhere from just ahead of
+your gun hand to the muzzle; near the foregrip (where the weapon's animation
+holds it) the glove slides onto it to show you are in place. Press grip and
+the gun follows the line between your hands, however far apart you move them,
 until you let go (or, with "Two-hand grip" set to Toggle, until you press grip
 again). Bringing your hands together or crossing them also lets go. The grip
 holds through reloads and bashes. The grip point comes from the game's own animation of
@@ -235,7 +238,7 @@ Mod Options, Darktide VR, Experimental features, "Controller vibration":
   damage, knockdown and block pulses. It leaves out the low ammo, low health,
   stamina, recharge and 75 % heat or peril notices.
 
-Informative also ticks lightly as the menu pointer moves onto a control and on
+Both modes also tick lightly as the menu pointer moves onto a control and on
 a click. "Controller vibration strength" scales every vibration (25-200 %).
 
 ### Ammo count at the hand (experimental)

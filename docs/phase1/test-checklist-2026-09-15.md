@@ -325,3 +325,14 @@ the part of the hands refactor that runs for everyone.
       the gun hand to the muzzle, not only at the foregrip. The glove still
       slides onto the foregrip only when near it. The log line
       `DARKTIDEVR_GUN_AIM muzzle_length` records each gun's length.
+
+29. **Body holster models, extra-large shoulder holster** (Virtual holsters
+    on; restart).
+    - The hip and chest holsters always show a small model of their item,
+      facing you, and it grows while your hand is in the holster. The item
+      already in your hand has no model. With Holster labels on, the name
+      shows above the hovered model and the count label sits above it.
+    - No model at the shoulder or the belt.
+    - The shoulder holster is much larger (25 cm radius, centred a little
+      further back and out); a hand up by your face or aiming down sights must
+      not enter it.

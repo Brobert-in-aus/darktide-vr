@@ -34,12 +34,14 @@ New option:
 Experimental features (Mod Options, Darktide VR, Experimental features; all
 off by default):
 
-- Two-hand support: grip where the weapon's own animation holds the foregrip
-  to steady a gun with both hands, available as soon as the gun is drawn. The
-  glove slides onto the foregrip when your hand is close enough, grip can be a
-  hold or a toggle, and it holds through reloads and bashes. "While gripping"
-  in the controller bindings gives actions their own controls while you hold
-  the foregrip. "Two-hand steadying" offers an experimental Hands line mode.
+- Two-hand support: press grip with your off hand anywhere on a gun, from just
+  ahead of your gun hand to the muzzle, to steady it with both hands; available
+  as soon as the gun is drawn. The glove slides onto the foregrip when your
+  hand is close to it, grip can be a hold or a toggle, and it holds through
+  reloads and bashes. The gun follows the line between your hands, so turning
+  your gun wrist does not swing the barrel off your front hand. "While
+  gripping" in the controller bindings gives actions their own controls while
+  you hold the gun.
 - Virtual stock: bring a two-handed rifle's butt to your shoulder and it rests
   there.
 - Aim down sights by raising the gun: bring the sights to your eye to aim down
@@ -52,7 +54,9 @@ off by default):
   passed through, still counts. Pressing grip on the holster of the item you
   are already holding gives a double tap and does nothing else. "Holster
   labels" shows what a holster holds while your hand rests on it. A holster
-  counts your hand as soon as your fingertips reach it.
+  counts your hand as soon as your fingertips reach it. The hip and chest
+  holsters show a small model of what they hold, so you can see where to reach;
+  the shoulder holster, out of sight, is extra large.
 - Weapon hand holsters: small models of your other weapon, stim, carried item
   and device above your gun hand's forearm; reach in with the other hand and
   press grip to equip. The one your hand is in grows and ticks (and shows its

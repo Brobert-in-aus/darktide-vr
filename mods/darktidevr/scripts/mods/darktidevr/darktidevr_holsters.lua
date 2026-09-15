@@ -30,7 +30,10 @@ Holsters.TEST_FLAG = "./../mods/darktidevr/darktidevr_holsters_test.flag"
 -- eyes: x to the right, y forward, z up. Radii scale with the eye height too.
 -- selector names the stock wield input the press delivers.
 Holsters.ZONES = {
-    {id = "shoulder_right", selector = "ranged", slot = "slot_secondary", centre = {0.16, -0.14, -0.10}, radius = 0.15},
+    -- Very large: behind the head, out of sight (user, 15 September evening).
+    -- Centred further back and out so the head (the frame origin) stays 5 cm
+    -- outside it.
+    {id = "shoulder_right", selector = "ranged", slot = "slot_secondary", centre = {0.20, -0.20, -0.10}, radius = 0.25},
     {id = "hip_left", selector = "melee", slot = "slot_primary", centre = {-0.20, 0.00, -0.72}, radius = 0.14},
     {id = "hip_right", selector = "device", slot = "slot_device", centre = {0.20, 0.00, -0.72}, radius = 0.14},
     {id = "chest_left", selector = "stim", slot = "slot_pocketable_small", centre = {-0.13, 0.16, -0.38}, radius = 0.10},

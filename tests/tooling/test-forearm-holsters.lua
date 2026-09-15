@@ -60,6 +60,13 @@ near(Forearm.grab_radius({.13,.10,.04}),(.13+.10)*.25,'medkit')
 near(Forearm.grab_radius({.13,.02,.02}),Forearm.ZONE_RADIUS,'thin gun keeps the zone radius')
 near(Forearm.grab_radius({.5,.5,.5}),Forearm.MAX_GRAB_RADIUS,'capped')
 near(Forearm.grab_radius(nil),Forearm.ZONE_RADIUS)
+-- Body miniatures: the visible holsters only, with Virtual holsters on and a frame.
+assert(Forearm.BODY_MODELS.chest_left and Forearm.BODY_MODELS.hip_left and not Forearm.BODY_MODELS.shoulder_right and
+    not Forearm.BODY_MODELS.belt, 'body models')
+local on_mod={get=function(_,id) return id=='vr_holsters' end}
+assert(Forearm.body_models_enabled(on_mod,{mode=1},{}) and not Forearm.body_models_enabled(on_mod,{mode=1},nil) and
+    not Forearm.body_models_enabled({get=function() return false end},{mode=1},{}) and
+    not Forearm.body_models_enabled(on_mod,{mode=2},{}),'body models enabled')
 -- Hidden while two-handing or aiming down sights.
 assert(Forearm.hidden_for_aim(true,false) and Forearm.hidden_for_aim(false,true) and Forearm.hidden_for_aim(true,true))
 assert(not Forearm.hidden_for_aim(false,false) and not Forearm.hidden_for_aim(nil,nil))

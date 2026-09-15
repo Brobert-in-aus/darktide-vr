@@ -8,6 +8,9 @@ local Counts = {}
 
 Counts.FONT_SIZE = 18
 Counts.PIXEL_METRES = 0.0009
+-- Above the body holster's miniature (darktidevr_forearm_holsters), not
+-- through it.
+Counts.RISE = 0.09
 
 -- The label for a zone, or nil. data: blitz = {charges, max}; names by slot
 -- (false for an empty slot); ammo = {clip, reserve}. Pure.
@@ -103,7 +106,8 @@ function Counts.install(mod, presentation)
         local frame = holsters.frame
         local s, c = frame.scale, zone.centre
         local anchor = Vector3(frame.origin[1] + (frame.right[1] * c[1] + frame.forward[1] * c[2]) * s,
-            frame.origin[2] + (frame.right[2] * c[1] + frame.forward[2] * c[2]) * s, frame.origin[3] + c[3] * s)
+            frame.origin[2] + (frame.right[2] * c[1] + frame.forward[2] * c[2]) * s, frame.origin[3] + c[3] * s) +
+            Vector3.up() * Counts.RISE
         -- In front of the scene: 2D UI on the hand overlay's panel at the zone
         -- (darktidevr_hand_overlay); it was hidden behind the glove.
         world = game_world
