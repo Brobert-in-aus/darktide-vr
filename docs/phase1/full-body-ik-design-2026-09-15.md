@@ -459,6 +459,69 @@ in its folder.
   - consider a local-only swap to a hood-free variant of the same torso
     set, if worn tests reject the offset. That changes the player's own
     cosmetics in first person only, so it is a user decision.
+- **User decision (15 September, after overlay14).** "Make sure the camera
+  is located in the proper place even if the cowl is in the way - it's more
+  immersive and players can switch equipment if it's an issue."
+  - The 15 cm neck offset is removed. The neck sits at the body frame neck.
+  - A hood surrounds the view; players who dislike it change cosmetics.
+
+### Hands refactor: body-drawn hands (`9286319`)
+
+User, 15 September: the weapons followed the rigid gloves, while the 3P
+body followed the weapons. The gloves stay as the fallback "until the 3p
+model is done properly", and the refactor should be handedness-agnostic
+for the future handedness toggle.
+
+- **One final wrist pose per physical side.**
+  - Every hand placement goes through `place_rigid_hand` and records
+    `pose_position` and `pose_rotation`: the tracked grip, the gun
+    alignment (`align_gun_hand`), the two-hand support grip
+    (`place_support_hand`) and the stock melee follow.
+  - `BodyProxy.hand_pose(side)` reads the pose.
+  - This fixes a gap: gun alignment and the support grip only ever moved the
+    glove units. A body that followed the avatar's hand joints missed them,
+    so its support hand stayed at the raw tracked hand instead of the
+    foregrip.
+- **Hand rig.**
+  - `BodyProxy.set_hand_rig(unit)` lets a full-profile body take over from
+    the glove units. The wrist basis is measured once from the body's spawn
+    pose, before any animated copy.
+  - With a rig set, no glove units are spawned. The same placements only
+    record the pose.
+  - Equipment hand sync (`sync_equipment_hand_to_proxy` with no glove unit)
+    follows the recorded pose. The body solves its arms to it.
+  - The gloves return when the rig is cleared or its unit dies.
+- **Hand stays on the gun.** Out of reach, the body's arm straightens and
+  the hand is still placed on the pose, so the wrist stretches the
+  remainder.
+- **Handedness.**
+  - Every recorded pose, basis and arm solve is keyed by physical side.
+  - Which side is dominant or support is resolved only through
+    `weapon_hand_roles`, as gun alignment and the support grip already are.
+  - A test aligns the gun onto either physical hand.
+- **Evidence.**
+  - Tests: 259 pass, including `test-body-hand-rig.lua`. It runs the real
+    module and covers:
+    - no glove spawns;
+    - pose recording and the anatomical rotation;
+    - the support blend;
+    - left and right gun alignment;
+    - equipment joints following the pose;
+    - the glove fallback when the rig dies.
+  - Game, gloves fallback (`gloves1`, flag off): wrist error 0, gun grip
+    error 0, and 9 two-hand releases at 9.0° maximum steer. That is
+    identical to overlay2 before the refactor.
+  - Game, body hand rig (`rig1`): `hand_rig=body`, then
+    `rigid_hands=pose_only`, no script errors, back to `gloves` on exit.
+    Both arms have 0.0000 m hand error.
+- **Limits seen in rig1.**
+  - With the support hand on the foregrip, the left arm is out of reach on
+    867 of 4,500 frames, stretching up to 0.31 m, because the shoulders
+    are stock.
+  - The neck follow reached its 0.5 m cap once.
+  - With the camera in its proper place, the Skitarius cowl fills much of
+    the downward view.
+  - Next: milestone 3 shoulders and body yaw from the body frame.
 
 ## Changes from the 14 September design
 

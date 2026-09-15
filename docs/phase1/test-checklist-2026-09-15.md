@@ -17,7 +17,8 @@ from the mod's own `darktidevr_crosshair_scale.flag`.
   - 6, crosshair on the iron sights (hold the rifle as in the 14 September
     screenshot);
   - 2, two-handing survives reload and bash;
-  - 3, ammo layout.
+  - 3, ammo layout;
+  - 15, gloves and weapons unchanged after the hands refactor.
 - **Two-handing A/B (Experimental options):**
   - 4, Two-hand steadying set to Hands line;
   - 7, Virtual stock on top of it.
@@ -42,8 +43,9 @@ Seen working in unattended game runs:
 Unit tested only: 13.
 
 Also deployed, nothing to test: the full-body development work (body mirror
-and overlay, `3d3d788` to `a2b3cfa`) runs only with a dev flag file that
-players never have. The installed mod folder has no such flag.
+and overlay, `3d3d788` to `9286319`) runs only with a dev flag file that
+players never have. The installed mod folder has no such flag. Item 15 covers
+the part of the hands refactor that runs for everyone.
 
 1. **Settings backup at launch** (`cd132ea`). Nothing to do in game.
    - After launching, `%LOCALAPPDATA%\DarktideVR\settings-backups` should
@@ -161,3 +163,16 @@ players never have. The installed mod folder has no such flag.
     charges as `n/max`, blue while the special is active. The Skitarius arc
     maul shows its eight charges (`629c696`): 0/8 right after wielding,
     rising over time and on hits.
+15. **Gloves unchanged after the hands refactor** (`9286319`, no option).
+    Hand placement now records one final pose per hand, which the weapons'
+    hand joints read. With the default gloves, nothing should look or feel
+    different:
+    - the gun sits in the right glove and aims as before;
+    - two-handing puts the left glove on the foregrip;
+    - stock melee swings and blocks move the gloves;
+    - with a controller switched off (keyboard and mouse), the hands follow
+      the stock animation.
+
+    Unattended evidence: wrist and gun grip error 0, and two-hand stats
+    identical to before the change. Say if anything about the gloves or
+    weapons changed.

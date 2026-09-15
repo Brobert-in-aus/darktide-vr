@@ -442,6 +442,23 @@ are recorded in the
     place its neck 22 cm behind the eye. Both arms, gloves and the gun are
     then in view, with the cowl edge at the bottom (`overlay14/sheet.png`).
   - Full table in the full-body design.
+- **Hands refactor (`9286319`, user request).**
+  - Every hand placement records one final wrist pose per physical side:
+    tracked, gun-aligned, support grip or melee follow.
+  - A full-profile body can become the hand rig. No glove units then exist,
+    and the weapons' hand joints and the body's arms both follow that pose.
+  - The rigid gloves remain the default and the fallback.
+  - The new code is handedness-agnostic: keyed by physical side, with roles
+    resolved via `weapon_hand_roles`.
+  - Camera: the neck is back at the body frame neck, cowl or not (user).
+  - Evidence:
+    - 259 tests pass (new `body_hand_rig`);
+    - glove fallback unchanged in game (`gloves1`: 0 m wrist and gun error,
+      two-hand stats identical to before);
+    - body hand rig working in game (`rig1`: pose-only hands, 0 m hand
+      error, no errors).
+  - Limits: the left arm stretches up to 0.31 m on the foregrip until the
+    shoulders are solved.
 - **Windows crashed again at 13:22** during a Psykhanium level load (overlay10's first attempt, before the mirror had spawned).
   - Same bugcheck as 14 September: 0x154 UNEXPECTED_STORE_EXCEPTION (event 41, BugcheckCode 340), no dump.
   - The settings file survived intact. Leftover request flags were deleted after the reboot, and the run was repeated.
