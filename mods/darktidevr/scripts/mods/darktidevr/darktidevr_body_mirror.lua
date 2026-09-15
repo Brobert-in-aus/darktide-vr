@@ -9,12 +9,18 @@
 -- pose. Nothing else changes: the avatar, gloves, proxy and visibility code
 -- are untouched. Players never have the flag.
 --
--- Flag "overlay" (milestone 2 proper, no IK): the same copy stands exactly on
--- the avatar, facing its way, with the head, face and headgear slots hidden
+-- Flag "overlaycopy" (milestone 2 proper, no IK): the same copy stands exactly
+-- on the avatar, facing its way, with the head, face and headgear slots hidden
 -- so the eye cameras are not inside them. In the default hands mode the
--- avatar already hides every body slot, so an eye render looking down shows
--- whether the full profile reads as the player's own body with no double
--- body, and how the untouched joint copy meets the tracked gloves.
+-- avatar already hides every body slot, so this shows whether the full
+-- profile reads as the player's own body with no double body. The plain copy
+-- stretches the sleeves to the gloves (overlay2: 0.6-0.8 m from forearm to
+-- hand against a 0.275 m bone).
+--
+-- Flag "overlay": the same, then each arm is re-solved as two bones of their
+-- spawned lengths so the hand reaches the avatar's hand (which carries the
+-- weapon and sits on the glove), bending toward the stock animated elbow.
+-- Swing only: the forearm roll joints are not twisted yet.
 local Mirror = {}
 
 Mirror.FLAG = "./../mods/darktidevr/darktidevr_body_mirror.flag"
@@ -22,8 +28,45 @@ Mirror.MIRROR_DISTANCE = 2.5
 Mirror.KEPT_SLOT_TYPES = {body = true, gear = true, material = true}
 Mirror.MODES = {
     mirror = {distance = Mirror.MIRROR_DISTANCE, facing = true, hide_head = false},
-    overlay = {distance = 0, facing = false, hide_head = true},
+    overlaycopy = {distance = 0, facing = false, hide_head = true, solve_arms = false},
+    overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true},
 }
+Mirror.ARM_SIDES = {"left", "right"}
+-- Added to the stock elbow as the bend hint, so a straight stock arm still
+-- bends downward.
+Mirror.ELBOW_HINT_DOWN = 0.10
+
+local function sub(a, b) return {a[1] - b[1], a[2] - b[2], a[3] - b[3]} end
+local function add(a, b) return {a[1] + b[1], a[2] + b[2], a[3] + b[3]} end
+local function scale(a, k) return {a[1] * k, a[2] * k, a[3] * k} end
+local function dot(a, b) return a[1] * b[1] + a[2] * b[2] + a[3] * b[3] end
+local function length(a) return math.sqrt(dot(a, a)) end
+
+-- Two-bone arm: where the elbow goes so the upper and lower bones keep their
+-- lengths and the hand reaches the target, bending toward the hint. Out of
+-- reach the arm points at the target and the hand stops at full reach.
+-- Returns elbow, hand, reachable (arrays), or nil for degenerate input. Pure.
+function Mirror.elbow(shoulder, hint, target, upper, lower)
+    if not (upper > 0 and lower > 0) then return nil end
+    local to_target = sub(target, shoulder)
+    local distance = length(to_target)
+    if distance < 1e-6 then return nil end
+    local direction = scale(to_target, 1 / distance)
+    local near, far = math.abs(upper - lower) + 1e-4, (upper + lower) * 0.999
+    local reachable = distance >= near and distance <= far
+    local d = math.max(near, math.min(far, distance))
+    local cosine = math.max(-1, math.min(1, (upper * upper + d * d - lower * lower) / (2 * upper * d)))
+    local sine = math.sqrt(1 - cosine * cosine)
+    local offset = sub(hint, shoulder)
+    local bend = sub(offset, scale(direction, dot(offset, direction)))
+    if length(bend) < 1e-6 then
+        bend = sub({0, 0, -1}, scale(direction, -direction[3]))
+        if length(bend) < 1e-6 then bend = {1, 0, 0} end
+    end
+    bend = scale(bend, 1 / length(bend))
+    local elbow = add(shoulder, add(scale(direction, upper * cosine), scale(bend, upper * sine)))
+    return elbow, add(shoulder, scale(direction, d)), reachable
+end
 
 -- The flag's mode, or nil. Pure.
 function Mirror.parse_mode(value)
@@ -89,6 +132,64 @@ function Mirror.install(mod, presentation)
         logged[key] = true
         mod:info("DARKTIDEVR_BODY_MIRROR " .. format, ...)
     end
+    local function inverse(rotation)
+        local x, y, z, w = Quaternion.to_elements(rotation)
+        return Quaternion.from_elements(-x, -y, -z, w)
+    end
+    local function array(v) return {Vector3.x(v), Vector3.y(v), Vector3.z(v)} end
+    local function vector(a) return Vector3(a[1], a[2], a[3]) end
+    local function set_world_rotation(unit, index, rotation)
+        local parent = Unit.scene_graph_parent(unit, index)
+        local parent_rotation = parent and Unit.world_rotation(unit, parent) or Quaternion.identity()
+        Unit.set_local_rotation(unit, index, Quaternion.multiply(inverse(parent_rotation), rotation))
+    end
+    -- Swing joint so the child joint points at the target position.
+    local function aim_joint(world, unit, joint, child, target)
+        local origin = Unit.world_position(unit, joint)
+        local from, to = Unit.world_position(unit, child) - origin, target - origin
+        local from_length, to_length = Vector3.length(from), Vector3.length(to)
+        if from_length < 1e-6 or to_length < 1e-6 then return end
+        from, to = from / from_length, to / to_length
+        local axis = Vector3.cross(from, to)
+        local sine = Vector3.length(axis)
+        if sine < 1e-7 then return end
+        local swing = Quaternion(axis / sine, math.atan2(sine, Vector3.dot(from, to)))
+        set_world_rotation(unit, joint, Quaternion.multiply(swing, Unit.world_rotation(unit, joint)))
+        World.update_unit(world, unit)
+    end
+    local function capture_arms(unit)
+        state.arms = {}
+        for _, side in ipairs(Mirror.ARM_SIDES) do
+            local names = {"j_" .. side .. "arm", "j_" .. side .. "forearm", "j_" .. side .. "hand"}
+            if Unit.has_node(unit, names[1]) and Unit.has_node(unit, names[2]) and Unit.has_node(unit, names[3]) then
+                local arm = {side = side, arm = Unit.node(unit, names[1]), forearm = Unit.node(unit, names[2]),
+                    hand = Unit.node(unit, names[3]), unreachable = 0}
+                arm.rest_forearm = Vector3Box(Unit.local_position(unit, arm.forearm))
+                arm.rest_hand = Vector3Box(Unit.local_position(unit, arm.hand))
+                arm.upper = Vector3.length(arm.rest_forearm:unbox())
+                arm.lower = Vector3.length(arm.rest_hand:unbox())
+                state.arms[#state.arms + 1] = arm
+            end
+        end
+    end
+    local function solve_arm(world, avatar, unit, arm)
+        local target = Unit.world_position(avatar, arm.hand)
+        local target_rotation = Unit.world_rotation(avatar, arm.hand)
+        Unit.set_local_position(unit, arm.forearm, arm.rest_forearm:unbox())
+        Unit.set_local_position(unit, arm.hand, arm.rest_hand:unbox())
+        World.update_unit(world, unit)
+        local hint = Unit.world_position(unit, arm.forearm) - Vector3(0, 0, Mirror.ELBOW_HINT_DOWN)
+        local shoulder = Unit.world_position(unit, arm.arm)
+        local elbow, hand, reachable = Mirror.elbow(array(shoulder), array(hint), array(target), arm.upper, arm.lower)
+        if not elbow then return end
+        aim_joint(world, unit, arm.arm, arm.forearm, vector(elbow))
+        aim_joint(world, unit, arm.forearm, arm.hand, vector(hand))
+        set_world_rotation(unit, arm.hand, target_rotation)
+        World.update_unit(world, unit)
+        arm.distance = Vector3.length(target - shoulder)
+        if not reachable then arm.unreachable = arm.unreachable + 1 end
+        arm.error = Vector3.length(Unit.world_position(unit, arm.hand) - target)
+    end
     local function place(avatar, unit)
         local mode = Mirror.MODES[mode_name] or Mirror.MODES.mirror
         local rotation = Unit.world_rotation(avatar, 1)
@@ -134,6 +235,7 @@ function Mirror.install(mod, presentation)
                 function(name) return Unit.has_node(avatar, name) and Unit.node(avatar, name) end,
                 function(name) return Unit.has_node(unit, name) and Unit.node(unit, name) end, probes)
             state.count = Unit.num_scene_graph_items(unit)
+            capture_arms(unit)
             local slots, hidden = 0, {}
             for slot_name, slot in pairs(data.slots or {}) do
                 slots = slots + 1
@@ -166,6 +268,9 @@ function Mirror.install(mod, presentation)
         end
         place(avatar, unit)
         World.update_unit(world, unit)
+        if Mirror.MODES[mode_name].solve_arms then
+            for _, arm in ipairs(state.arms) do solve_arm(world, avatar, unit, arm) end
+        end
         state.frames = state.frames + 1
         if state.frames == 1 or state.frames % 900 == 0 then
             local unit_hand, avatar_hand = Unit.node(unit, "j_righthand"), Unit.node(avatar, "j_righthand")
@@ -179,6 +284,12 @@ function Mirror.install(mod, presentation)
                 Unit.world_position(unit, Unit.node(unit, "j_rightforearm"))) or -1
             mod:info("DARKTIDEVR_BODY_MIRROR copying mode=%s frames=%d right_hand_local_error_m=%.6f right_hand_world_error_m=%.4f right_forearm_to_hand_m=%.4f",
                 tostring(mode_name), state.frames, hand, world_hand, stretch)
+            if Mirror.MODES[mode_name].solve_arms then
+                for _, arm in ipairs(state.arms) do
+                    mod:info("DARKTIDEVR_BODY_MIRROR arm side=%s upper_m=%.4f lower_m=%.4f shoulder_to_target_m=%.4f hand_error_m=%.4f unreachable_frames=%d",
+                        arm.side, arm.upper, arm.lower, arm.distance or -1, arm.error or -1, arm.unreachable)
+                end
+            end
         end
     end
     function api.update(world, avatar, dt, t)
