@@ -73,6 +73,11 @@ Mirror.MODES = {
     overlayspine = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true, body_yaw = true,
         spine_bend = true},
+    -- "overlay" with a 45 degree clavicle cap: with tracked input the 30 degree
+    -- cap bound on both sides (follow3: 13 cm gaps), for A/B.
+    overlayreach = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
+        hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true, body_yaw = true,
+        clavicle_max = math.rad(45)},
     -- "overlay" with clavicles but the avatar's root yaw, for A/B of the body yaw.
     overlayrootyaw = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true},
@@ -535,7 +540,8 @@ function Mirror.install(mod, presentation)
                     local clavicle, arm = Unit.node(unit, clavicle_name), Unit.node(unit, arm_name)
                     local before = Vector3.length(Unit.world_position(unit, arm) - vector(target))
                     local axis, angle = Mirror.clavicle_swing(array(Unit.world_position(unit, clavicle)),
-                        array(Unit.world_position(unit, arm)), target, Mirror.CLAVICLE_MAX)
+                        array(Unit.world_position(unit, arm)), target,
+                        Mirror.MODES[mode_name].clavicle_max or Mirror.CLAVICLE_MAX)
                     if axis then
                         set_world_rotation(unit, clavicle, Quaternion.multiply(Quaternion(vector(axis), angle),
                             Unit.world_rotation(unit, clavicle)))
