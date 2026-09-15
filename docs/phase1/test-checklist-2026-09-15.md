@@ -252,3 +252,13 @@ the part of the hands refactor that runs for everyone.
       (%)", 50-200, updates live.
 23. **Forearm holsters off in the hub**: no weapon miniature or ammo count
     in the hub; they return in the Psykhanium and SoloPlay.
+24. **Holster ammo, refused grabs, medkit grab zone** (Haptics mode on for
+    the taps).
+    - The gun's ammo count on the forearm holster sits just under the gun
+      model.
+    - Press grip on a holster whose item you are already holding (the gun at
+      the shoulder, the stim while holding the stim): a double tap, and
+      nothing else. The special ability must not fire.
+    - The medkit's forearm grab zone fits the model (about 11-12 cm across,
+      was 8 cm), and the model grows when your hand is in it. Thin items (the
+      gun, the stim) keep 8 cm zones or close to it.

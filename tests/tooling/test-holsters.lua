@@ -85,9 +85,19 @@ local stim = Holsters.zone_at(chest)
 local request = assert(api.request("left", stim, inventory))
 assert(request.control == "left_grip" and request.action == "stim" and request.acquire == true and request.retain == true)
 assert(api.request("left", stim, inventory).owner == request.owner, "offer identity changes every frame")
--- Empty slot and the slot already in the hand: no request, the grip keeps its binding.
+-- Empty slot: no request, the grip keeps its binding.
 assert(api.request("right", Holsters.zone_at({0.13, 0.16, -0.38}), inventory) == nil, "empty pocketable slot claimed")
-assert(api.request("right", Holsters.zone_at({0.16, -0.14, -0.10}), inventory) == nil, "wielded ranged slot claimed")
+-- The slot already in the hand: the press is taken and holds no input.
+do
+    local refuse_api = Holsters.new()
+    local refused = assert(refuse_api.request("right", Holsters.zone_at({0.16, -0.14, -0.10}), inventory))
+    assert(refused.action == "unbound" and refused.owner.refused == true and refused.acquire == true, "wielded slot not refused")
+    local near = assert(refuse_api.approach("right", Holsters.zone_at({0.16, -0.14, -0.10}), inventory))
+    assert(near.action == "unbound" and near.approach == true, "wielded approach not refused")
+    local switched = {wielded_slot = "slot_primary", slot_primary = "sword", slot_secondary = "lasgun"}
+    local offered = refuse_api.request("right", Holsters.zone_at({0.16, -0.14, -0.10}), switched)
+    assert(offered.action == "ranged" and not offered.owner.refused, "refusal outlived the switch")
+end
 assert(api.request("right", nil, inventory) == nil)
 -- Pressed: the claim holds while the hand draws the item out of the zone.
 api.finish("left", {pressed = true, held = true})

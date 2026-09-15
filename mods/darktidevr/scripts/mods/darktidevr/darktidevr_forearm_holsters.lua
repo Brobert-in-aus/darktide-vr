@@ -56,6 +56,25 @@ function Forearm.solid_box(hx, hy, hz)
     return math.min(hx, hy, hz) >= Forearm.MIN_BOX_HALF
 end
 
+-- A zone's grab radius for a fitted miniature's shown size (metres along
+-- its three axes): half the mean of its two largest dimensions, at least
+-- ZONE_RADIUS and at most MAX_GRAB_RADIUS. The medkit, 13 by 10 cm shown,
+-- felt far bigger than its 8 cm zone and never grew under the hand (worn, 15
+-- September evening). Pure.
+Forearm.MAX_GRAB_RADIUS = 0.065
+function Forearm.grab_radius(size)
+    if type(size) ~= "table" then return Forearm.ZONE_RADIUS end
+    local dims = {}
+    for i = 1, 3 do
+        local d = size[i]
+        if type(d) ~= "number" or d ~= d or d < 0 then return Forearm.ZONE_RADIUS end
+        dims[i] = d
+    end
+    table.sort(dims)
+    local radius = (dims[2] + dims[3]) * 0.25
+    return math.max(Forearm.ZONE_RADIUS, math.min(Forearm.MAX_GRAB_RADIUS, radius))
+end
+
 -- A preview's scale this frame. Pure.
 function Forearm.shown_scale(base, hovered)
     return hovered and base * Forearm.HOVER_SCALE or base
@@ -195,7 +214,7 @@ function Forearm.install(mod, presentation)
             zone.world = world
             zone.slot, zone.selector = Forearm.assignment(index, inventory and inventory.wielded_slot)
             zone.centre = Holsters.local_point(frame, world)
-            zone.radius = Forearm.ZONE_RADIUS / frame.scale
+            zone.radius = (zone.grab_radius or Forearm.ZONE_RADIUS) / frame.scale
             local_zones[index] = zone
         end
         api.grip, api.forward, api.up = grip, forward, up
@@ -215,6 +234,7 @@ function Forearm.install(mod, presentation)
     end
     function api.destroy()
         for index, preview in pairs(previews) do destroy_preview(preview); previews[index] = nil end
+        for _, zone in ipairs(zones) do zone.grab_radius = nil end
         preview_world, hovered_id = nil, nil
     end
     local function item_in(unit, slot)
@@ -271,7 +291,8 @@ function Forearm.install(mod, presentation)
         end
         if boxes == 0 then return nil end
         return math.max(high[1] - low[1], high[2] - low[2], high[3] - low[3]), boxes,
-            {(low[1] + high[1]) * 0.5, (low[2] + high[2]) * 0.5, (low[3] + high[3]) * 0.5}
+            {(low[1] + high[1]) * 0.5, (low[2] + high[2]) * 0.5, (low[3] + high[3]) * 0.5},
+            {high[1] - low[1], high[2] - low[2], high[3] - low[3]}
     end
     local Ammo
     local function ammo_text(unit)
@@ -332,6 +353,7 @@ function Forearm.install(mod, presentation)
             local item = zone.slot and item_in(unit, zone.slot)
             local preview = previews[index]
             if preview and preview.item ~= item then destroy_preview(preview); previews[index] = nil; preview = nil end
+            if not preview then zone.grab_radius = nil end
             local centre = Vector3(zone.world[1], zone.world[2], zone.world[3])
             if item and not preview then
                 local unit_spawner = UIUnitSpawner:new(world)
@@ -348,7 +370,7 @@ function Forearm.install(mod, presentation)
                 if data and data.link_unit and Unit.alive(data.link_unit) and
                         data.item_unit_3p and Unit.alive(data.item_unit_3p) then
                     if not preview.base_scale then
-                        local extent, boxes, middle = model_extent(data)
+                        local extent, boxes, middle, size = model_extent(data)
                         if extent and not logged_boxes[item.name] then
                             logged_boxes[item.name] = true
                             model_extent(data, item.name)
@@ -362,6 +384,9 @@ function Forearm.install(mod, presentation)
                             preview.base_scale = fitted or Forearm.FALLBACK_SCALE
                             preview.extent = fitted and extent or nil
                             preview.middle = fitted and middle or nil
+                            preview.size = fitted and size or nil
+                            zone.grab_radius = fitted and size and
+                                Forearm.grab_radius({size[1] * fitted, size[2] * fitted, size[3] * fitted}) or nil
                             mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_fitted zone=%s item=%s extent_m=%s boxes=%s scale=%.3f",
                                 zone.id, tostring(item.name), tostring(extent), tostring(boxes), preview.base_scale)
                         end
@@ -394,7 +419,12 @@ function Forearm.install(mod, presentation)
                     -- moving hand (worn, 15 September evening).
                     World.update_unit_and_children(world, data.link_unit)
                     if shown and zone.id == "forearm_weapon" then
-                        local half = (preview.extent and preview.extent * scale or Forearm.PREVIEW_SIZE) * 0.5
+                        -- Half the shown height: melee weapons stand along their
+                        -- local y (turned above), guns along z. Using the longest
+                        -- dimension put the ammo far below the gun (worn, 15
+                        -- September evening).
+                        local up_axis = zone.slot == "slot_primary" and 2 or 3
+                        local half = (preview.size and preview.size[up_axis] * scale or Forearm.PREVIEW_SIZE) * 0.5
                         if names_on and hover_id == zone.id then
                             local name = weapon_name(item)
                             if name then

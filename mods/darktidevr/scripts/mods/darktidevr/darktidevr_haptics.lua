@@ -18,6 +18,9 @@ Haptics.KINDS = {
     -- A hand reaches a place where a grip press does something (a gun's
     -- foregrip, an armed holster).
     zone = {modes = BOTH, notice = true, amplitude = 0.3, duration_ms = 15},
+    -- A grip press on a holster whose item is already in the hand: nothing
+    -- happens (played twice, a double tap, darktidevr_holsters).
+    refused = {modes = BOTH, notice = true, amplitude = 0.5, duration_ms = 25},
     -- A grip takes hold (two-hand support).
     grip = {modes = BOTH, notice = true, amplitude = 0.55, duration_ms = 30},
     -- The last round in the clip was fired.

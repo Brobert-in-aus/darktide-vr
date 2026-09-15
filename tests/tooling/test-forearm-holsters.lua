@@ -55,6 +55,11 @@ assert(u[1]==1,'vertical forearm uses the fallback')
 local side=Forearm.billboard_side({0,1,1},{0,0,1.6})
 near(side[3],0,'horizontal'); near(side[1]*0+side[2]*-1,0,'perpendicular to the eye direction'); near(math.abs(side[1]),1)
 assert(Forearm.billboard_side({0,0,0},{0,0,2})==nil,'eye straight above')
+-- Grab radius from the shown size: at least the zone radius, at most the cap.
+near(Forearm.grab_radius({.13,.10,.04}),(.13+.10)*.25,'medkit')
+near(Forearm.grab_radius({.13,.02,.02}),Forearm.ZONE_RADIUS,'thin gun keeps the zone radius')
+near(Forearm.grab_radius({.5,.5,.5}),Forearm.MAX_GRAB_RADIUS,'capped')
+near(Forearm.grab_radius(nil),Forearm.ZONE_RADIUS)
 -- Hidden while two-handing or aiming down sights.
 assert(Forearm.hidden_for_aim(true,false) and Forearm.hidden_for_aim(false,true) and Forearm.hidden_for_aim(true,true))
 assert(not Forearm.hidden_for_aim(false,false) and not Forearm.hidden_for_aim(nil,nil))

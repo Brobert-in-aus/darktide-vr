@@ -16,6 +16,10 @@ Holsters.GRACE_SECONDS = 0.35
 -- Within this multiple of a zone's radius a hand is approaching it: a grip
 -- press there waits for the hand (reverse grace, darktidevr_controller_bindings).
 Holsters.APPROACH_SCALE = 1.5
+-- A grip press on the holster of the item already in the hand does nothing
+-- and plays a double tap (user, 15 September evening: it fired the grip's
+-- own binding, the special ability). The second tap follows this long after.
+Holsters.REFUSED_TAP_GAP = 0.12
 Holsters.TEST_FLAG = "./../mods/darktidevr/darktidevr_holsters_test.flag"
 
 -- Zone centres in the body frame at the reference eye height, metres from the
@@ -145,10 +149,21 @@ function Holsters.new(zones)
         return nil
     end
 
+    -- The offer for a zone: its selector, or for the slot already in the hand
+    -- a refusal whose press holds no input ("unbound").
+    local function offer_for(state, zone, inventory)
+        local refused = zone.slot ~= nil and inventory.wielded_slot == zone.slot
+        if not (state.offer and state.offer.zone == zone and state.offer.refused == refused) then
+            state.offer = {zone = zone, selector = refused and "unbound" or zone.selector, slot = zone.slot,
+                refused = refused}
+        end
+        return state.offer
+    end
+
     -- The grip request for one hand. A claim keeps its owner until the grip
     -- is released (drawing the item moves the hand out of the zone). Nothing
-    -- is requested for an empty slot or for the slot already in the hand, so
-    -- the grip keeps its own binding there.
+    -- is requested for an empty slot, so the grip keeps its own binding there;
+    -- the slot already in the hand takes the press and does nothing.
     function api.request(hand, ready_zone, inventory)
         local state = api.hands[hand]
         if not state then return nil end
@@ -156,28 +171,19 @@ function Holsters.new(zones)
             return {control = hand .. "_grip", owner = state.claim, action = state.claim.selector,
                 acquire = false, retain = true}
         end
-        if not ready_zone or not equipped(inventory, ready_zone.slot) or
-                (ready_zone.slot and inventory.wielded_slot == ready_zone.slot) then
-            return nil
-        end
-        state.offer = state.offer and state.offer.zone == ready_zone and state.offer or
-            {zone = ready_zone, selector = ready_zone.selector, slot = ready_zone.slot}
-        return {control = hand .. "_grip", owner = state.offer, action = ready_zone.selector,
-            acquire = true, retain = true}
+        if not ready_zone or not equipped(inventory, ready_zone.slot) then return nil end
+        local offer = offer_for(state, ready_zone, inventory)
+        return {control = hand .. "_grip", owner = offer, action = offer.selector, acquire = true, retain = true}
     end
 
     -- A request that only marks the hand as approaching a zone: a grip press
-    -- waits for it to arrive. Nothing for an empty or wielded slot, or while
-    -- the hand already holds a claim.
+    -- waits for it to arrive. Nothing for an empty slot, or while the hand
+    -- already holds a claim.
     function api.approach(hand, zone, inventory)
         local state = api.hands[hand]
-        if not state or state.claim or not zone or not equipped(inventory, zone.slot) or
-                (zone.slot and inventory.wielded_slot == zone.slot) then
-            return nil
-        end
-        state.offer = state.offer and state.offer.zone == zone and state.offer or
-            {zone = zone, selector = zone.selector, slot = zone.slot}
-        return {control = hand .. "_grip", owner = state.offer, action = zone.selector,
+        if not state or state.claim or not zone or not equipped(inventory, zone.slot) then return nil end
+        local offer = offer_for(state, zone, inventory)
+        return {control = hand .. "_grip", owner = offer, action = offer.selector,
             acquire = false, approach = true, retain = true}
     end
 
@@ -265,7 +271,14 @@ function Holsters.install(mod, presentation, observation)
         return test_enabled
     end
     local hand_zones, no_zones = {}, {}
+    local pending_tap, last_t
     local function sample(unit, active, t)
+        last_t = t
+        -- The second tap of a refused press.
+        if pending_tap and type(t) == "number" and t >= pending_tap.at then
+            if presentation.haptics then presentation.haptics.pulse(pending_tap.hand, "refused", t) end
+            pending_tap = nil
+        end
         local body = mod:get("vr_holsters") or test_flag()
         local forearm = presentation.forearm_holsters
         local forearm_on = forearm and forearm.enabled()
@@ -354,9 +367,17 @@ function Holsters.install(mod, presentation, observation)
     end
     function api.finish_grip(grip, ours)
         if ours and owner_hand then
-            if grip.pressed then
+            local offer = api.hands[owner_hand].offer
+            if grip.pressed and offer and offer.refused then
+                mod:info("DARKTIDEVR_HOLSTER refused hand=%s zone=%s (already wielded)", owner_hand,
+                    tostring(offer.zone and offer.zone.id))
+                if presentation.haptics and type(last_t) == "number" then
+                    presentation.haptics.pulse(owner_hand, "refused", last_t)
+                    pending_tap = {hand = owner_hand, at = last_t + Holsters.REFUSED_TAP_GAP}
+                end
+            elseif grip.pressed then
                 mod:info("DARKTIDEVR_HOLSTER wield hand=%s selector=%s", owner_hand,
-                    tostring(api.hands[owner_hand].offer and api.hands[owner_hand].offer.selector))
+                    tostring(offer and offer.selector))
             end
             api.finish(owner_hand, grip)
             if not api.hands[owner_hand].claim then owner_hand = nil end
