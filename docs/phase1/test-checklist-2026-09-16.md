@@ -52,3 +52,14 @@ tracked eye).
    holster models, wrist display and ammo or charge count should stay with
    your hands and not jump by a step while moving: the body anchor is now
    refreshed on that path too. Unit test only (`melee_simulation_visual`).
+
+4. **Gun-hand glove held on the grip** (restart; always on). Draw each gun
+   and stand still with no action for about half a second (30 frames): the
+   log gains `DARKTIDEVR_IK gun_hand_grip template=<gun> samples=30`. From
+   then on the right glove stays put on the grip while strafing, running and
+   idling, instead of following the character's animation.
+   - Look for the glove at the wrong place on the grip. If the first capture
+     happened at an odd moment, restarting the game recaptures.
+   - Known trade-off: the gun hand no longer moves during reloads or
+     inspects; it stays on the grip.
+   - Unit test only (`gun_aim` grip capture).

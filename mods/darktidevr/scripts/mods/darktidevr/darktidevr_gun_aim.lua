@@ -132,8 +132,19 @@ function Alignment.install(mod,presentation)
         end
         instance.pose_t=Managers and Managers.time and Managers.time:time('main')
         if presentation.body_proxy and presentation.body_proxy.align_gun_hand then
+            -- Steady for the per-weapon grip capture: no action running and
+            -- the player not moving (animation audit item E).
+            local steady=settings==nil
+            if steady then
+                local ok,still=pcall(function()
+                    local unit_data=ScriptUnit.has_extension(unit,'unit_data_system')
+                    local locomotion=unit_data and unit_data:read_component('locomotion')
+                    return locomotion~=nil and Vector3.length(locomotion.velocity_current)<.1
+                end)
+                steady=ok and still==true
+            end
             local aligned=presentation.body_proxy.align_gun_hand(world,unit,old_attach_position,old_attach_rotation,
-                Unit.world_position(unit,attach),Unit.world_rotation(unit,attach),dominant)
+                Unit.world_position(unit,attach),Unit.world_rotation(unit,attach),dominant,template.name,steady)
             if dominant=='left' and not aligned then restore(world); return end
         end
         if presentation.two_hand then presentation.two_hand.place_hand(world,unit,grip,aim) end

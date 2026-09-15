@@ -194,4 +194,24 @@ expected_hand=opposite_hand
 expected_rotation=mul(mul(mul(newr,wrist_basis),Quaternion.inverse(hands.right.anatomy_inverse:unbox())),hands.left.anatomy_inverse:unbox())
 assert(proxy.align_gun_hand(world,source,oldp,oldr,newp,newr,'left') and placed)
 assert(not proxy.align_gun_hand(world,source,oldp,oldr,newp,newr,'unknown'))
+-- Per-weapon grip: steady samples average into a held offset; unsteady frames
+-- and other weapons use the live offset.
+do
+    Vector3.x=function(v) return v[1] end; Vector3.y=function(v) return v[2] end; Vector3.z=function(v) return v[3] end
+    Vector3Box=function(x,y,z) local v=vec({x,y,z}); return {unbox=function() return v end} end
+    Quaternion.from_elements=function(...) return {...} end
+    proxy.GUN_HAND_SAMPLES=3
+    local live_p,live_q=vec({.1,.2,.3}),{0,0,0,1}
+    local p1,q1=proxy.gun_hand_offset('rifle',false,live_p,live_q)
+    assert(p1==live_p and q1==live_q and not proxy.gun_hand_offsets.rifle,'unsteady frame captured')
+    proxy.gun_hand_offset('rifle',true,vec({.1,.2,.3}),{0,0,0,1})
+    proxy.gun_hand_offset('rifle',true,vec({.3,.2,.1}),{0,0,0,1})
+    local p3=proxy.gun_hand_offset('rifle',true,vec({.2,.2,.2}),{0,0,0,-1})
+    near_position(p3,{.2,.2,.2})
+    local held_p,held_q=proxy.gun_hand_offset('rifle',false,vec({9,9,9}),{0,0,1,0})
+    near_position(held_p,{.2,.2,.2}); near(held_q,{0,0,0,1})
+    local other=proxy.gun_hand_offset('pistol',false,live_p,live_q)
+    assert(other==live_p,'another weapon used the rifle grip')
+    assert(proxy.gun_hand_offset(nil,true,live_p,live_q)==live_p,'no key: live offset')
+end
 print('PASS controller gun pitch/hand: 120 poses, pitch sign/live setting/shared pitch for every item and hand, draw/reload ownership, actual simulation reader and rigid-hand relative grip preservation')

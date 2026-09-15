@@ -715,15 +715,55 @@ function BodyProxy.convert_hand_rotation(source,authored_side,destination_side,r
         inverse_quaternion(authored.anatomy_inverse:unbox())),destination.anatomy_inverse:unbox())
 end
 
-function BodyProxy.align_gun_hand(world,source,old_position,old_rotation,new_position,new_rotation,destination)
+-- The gun hand's grip on each weapon (animation audit, 16 September, item E):
+-- the animated right hand in the weapon attach node's frame, averaged over
+-- GUN_HAND_SAMPLES steady frames (no action running, not moving) and then
+-- held. Live, the offset carried the character's strafe turns, idle sway and
+-- per-frame animation into the glove. key: the weapon template; without a key
+-- the live offset is used. Returns the offset to place the hand with.
+BodyProxy.GUN_HAND_SAMPLES=30
+BodyProxy.gun_hand_offsets={}
+function BodyProxy.gun_hand_offset(key,steady,relative_position,relative_rotation)
+    if not key then return relative_position,relative_rotation end
+    local entry=BodyProxy.gun_hand_offsets[key]
+    if entry and entry.position then return entry.position:unbox(),entry.rotation:unbox() end
+    if not steady then return relative_position,relative_rotation end
+    if not entry then
+        entry={samples=0,x=0,y=0,z=0,q={0,0,0,0}}
+        BodyProxy.gun_hand_offsets[key]=entry
+    end
+    local qx,qy,qz,qw=Quaternion.to_elements(relative_rotation)
+    local q=entry.q
+    if entry.samples>0 and qx*q[1]+qy*q[2]+qz*q[3]+qw*q[4]<0 then qx,qy,qz,qw=-qx,-qy,-qz,-qw end
+    q[1],q[2],q[3],q[4]=q[1]+qx,q[2]+qy,q[3]+qz,q[4]+qw
+    entry.x=entry.x+Vector3.x(relative_position)
+    entry.y=entry.y+Vector3.y(relative_position)
+    entry.z=entry.z+Vector3.z(relative_position)
+    entry.samples=entry.samples+1
+    if entry.samples>=BodyProxy.GUN_HAND_SAMPLES then
+        local n=entry.samples
+        local length=math.sqrt(q[1]*q[1]+q[2]*q[2]+q[3]*q[3]+q[4]*q[4])
+        entry.position=Vector3Box(entry.x/n,entry.y/n,entry.z/n)
+        entry.rotation=QuaternionBox(Quaternion.from_elements(q[1]/length,q[2]/length,q[3]/length,q[4]/length))
+        print(string.format('DARKTIDEVR_IK gun_hand_grip template=%s samples=%d offset=%.3f,%.3f,%.3f',
+            tostring(key),n,entry.x/n,entry.y/n,entry.z/n))
+        return entry.position:unbox(),entry.rotation:unbox()
+    end
+    return relative_position,relative_rotation
+end
+
+function BodyProxy.align_gun_hand(world,source,old_position,old_rotation,new_position,new_rotation,destination,key,steady)
     destination=destination or 'right'
     if not BodyProxy.rigid_hands_active() or source~=state.source_unit or
             not Unit.alive(source) or not Unit.has_node(source,'j_righthand') or
             (destination~='left' and destination~='right') then return false end
     local node=Unit.node(source,'j_righthand')
-    local delta=Quaternion.multiply(new_rotation,inverse_quaternion(old_rotation))
-    local position=new_position+Quaternion.rotate(delta,Unit.world_position(source,node)-old_position)
-    local rotation=Quaternion.multiply(delta,Unit.world_rotation(source,node))
+    local inverse_old=inverse_quaternion(old_rotation)
+    local relative_position=Quaternion.rotate(inverse_old,Unit.world_position(source,node)-old_position)
+    local relative_rotation=Quaternion.multiply(inverse_old,Unit.world_rotation(source,node))
+    relative_position,relative_rotation=BodyProxy.gun_hand_offset(key,steady,relative_position,relative_rotation)
+    local position=new_position+Quaternion.rotate(new_rotation,relative_position)
+    local rotation=Quaternion.multiply(new_rotation,relative_rotation)
     if destination~='right' then
         rotation=BodyProxy.convert_hand_rotation(source,'right',destination,rotation)
         if not rotation then return false end
