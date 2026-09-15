@@ -45,6 +45,8 @@ return {
     vr_reach_interact = {en = "Reach to interact (experimental)"},
     vr_weapon_inspect = {en = "Inspect by bringing the weapon up (experimental)"},
     vr_comms_gesture = {en = "Push to talk with a hand at your mouth (experimental)"},
+    vr_tag_gesture = {en = "Tag what your off hand points at (experimental)"},
+    vr_tag_gesture_description = {en = "Hold your off hand out ahead of you and press tag: the tag leaves that hand instead of your weapon, so you can point at something while shooting elsewhere. With the hand down, or on the gun, tagging follows the weapon as usual."},
     vr_comms_gesture_description = {en = "Bring your off hand up in front of your mouth and hold it there for half a second to open your microphone, as if speaking into a vox bead; drop the hand to close it. Works alongside the push to talk binding, not instead of it, and never while that hand is on the gun."},
     vr_weapon_inspect_description = {en = "Hold your weapon up to your face and turn it side on to look at it: the game's inspect runs for as long as you keep it there. Pointing it where you look is aiming, not inspecting, so this never fires while you aim down the sights."},
     vr_reach_interact_description = {en = "Put a hand on a door control, a pickup or a downed team mate and press grip to interact with it, without looking at it. The game still chooses what can be reached and how far away it may be; your hand only says which direction to look in. While nothing is in reach, and whenever a holster or the gun's second grip wants that hand, the grip keeps its own binding."},

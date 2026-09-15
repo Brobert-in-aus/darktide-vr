@@ -831,7 +831,9 @@ function controller_aim.install(mod, presentation, state)
         "scripts/extension_systems/smart_targeting/player_unit_smart_targeting_extension")
     mod:hook(PlayerUnitSmartTargetingExtension, "force_update_smart_tag_targets",
         function(func, self, ...)
-            local position, rotation = controller_aim.target("dominant")
+            -- The off hand while it points (the tag gesture), else the weapon.
+            local position, rotation = controller_aim.target(
+                presentation.tag_role and presentation.tag_role() or "dominant")
             if not is_local_unit(self._unit) or not position or not rotation then
                 return func(self, ...)
             end

@@ -6477,6 +6477,11 @@ function presentation.inject_gameplay_input(self, main_t, input)
         presentation.comms_gesture.apply(player_unit,
             controller_observation.gameplay_input_active, main_t)
     end
+    if presentation.tag_gesture then
+        -- After the talk gesture, which has first claim on that hand.
+        presentation.tag_gesture.apply(player_unit,
+            controller_observation.gameplay_input_active and game_mode_name~="hub", main_t)
+    end
     local exclusive_stick=presentation.communication_input.sample(self,player_unit,input,
         controller_observation.gameplay_input_active,
         tonumber(controller_observation.gameplay_held[0]),game_mode_name,active_world)
@@ -13784,10 +13789,18 @@ mod:hook(
     end
 )
 
+-- The hand the tag ray leaves: the off hand while it points (the tag gesture),
+-- otherwise the weapon hand, as VR tagging has always done.
+function presentation.tag_role()
+    if not presentation.tag_gesture then return "dominant" end
+    local ok, role = pcall(presentation.tag_gesture.role)
+    return ok and role or "dominant"
+end
+
 mod:hook("HudElementSmartTagging", "_find_raycast_targets",
     function(func, self, force_update_targets)
         local aim = presentation.controller_aim
-        local position, rotation = aim.target("dominant")
+        local position, rotation = aim.target(presentation.tag_role())
         if not position or not rotation then return func(self, force_update_targets) end
         local point, unit = aim.cached_reticle_target()
         local player_unit = self._parent:player_unit()
@@ -13798,7 +13811,7 @@ mod:hook("HudElementSmartTagging", "_find_raycast_targets",
 
 mod:hook("HudElementSmartTagging", "_find_world_marker_target",
     function(func, self, ui_renderer, render_settings)
-        local aim_position, aim_rotation = presentation.controller_aim.target("dominant")
+        local aim_position, aim_rotation = presentation.controller_aim.target(presentation.tag_role())
         local simulation_aim = presentation.online_rules.simulation_aim_active(self._parent:player_unit())
         if not simulation_aim and (not aim_position or not aim_rotation) then
             return func(self, ui_renderer, render_settings)
@@ -15494,6 +15507,9 @@ presentation.weapon_inspect = mod:io_dofile(
 ).install(mod, presentation)
 presentation.comms_gesture = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_comms_gesture"
+).install(mod, presentation)
+presentation.tag_gesture = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_tag_gesture"
 ).install(mod, presentation)
 presentation.ammo_readout = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_ammo_readout"

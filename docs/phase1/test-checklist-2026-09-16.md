@@ -160,3 +160,16 @@ tracked eye).
     - The zone is a 20 cm ball 16 cm forward and 12 cm below the eye: say if
       you have to hold your hand somewhere unnatural, or if it opens when you
       did not mean it to.
+
+13. **Tag what your off hand points at** (restart; Experimental features,
+    "Tag what your off hand points at", default off, new 16 September). Hold
+    the off hand out ahead and press tag: the tag should land where that hand
+    points, not where the weapon aims.
+    - Point at an enemy, a pickup and a door while aiming the gun somewhere
+      else; the tag prompt and the marker should follow the hand.
+    - With the hand down, or on the gun, or up at your mouth to talk, tagging
+      must follow the weapon exactly as it does now.
+    - `DARKTIDEVR_TAG pointing` in the log each time the hand comes up.
+    - Say whether "arm out ahead" is the right threshold: it takes the hand
+      25 cm forward of and 35 cm from your eye to start, and keeps pointing
+      until it comes back inside 15 cm forward or 25 cm away.

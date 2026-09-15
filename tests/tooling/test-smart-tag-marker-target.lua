@@ -14,8 +14,13 @@ Unit={alive=function(unit) return unit=='local' or unit=='aim_enemy' end}
 ScriptUnit={has_extension=function() return {can_tag=function() return true end} end}
 callback=function() return function() end end
 local state={authoring_enabled=true}
-presentation={mode=1,gameplay_context=dofile(arg[3]),controller_aim={
-    target=function() if live_hand then return 20,30 end end,
+-- The hand the tag ray leaves: the off hand while the tag gesture says it is
+-- pointing, else the weapon hand.
+local tag_role='dominant'
+local roles_asked={}
+presentation={mode=1,gameplay_context=dofile(arg[3]),tag_role=function() return tag_role end,
+    controller_aim={
+    target=function(role) roles_asked[#roles_asked+1]=role; if live_hand then return 20,30 end end,
     cached_reticle_target=function() return 'reticle_point','aim_enemy' end}}
 presentation.online_rules=dofile(arg[2]).install(mod,presentation,state,function() return mode end)
 assert(loadstring(source:sub(first,last-1)))()
@@ -36,6 +41,11 @@ hud._find_raycast_targets=function(self,force) return hooks._find_raycast_target
 local function stock_marker() return head_marker,2 end
 local function marker() return hooks._find_world_marker_target(stock_marker,hud,{}, {}) end
 assert(hud:_find_raycast_targets(true)==raycast and forced==1,'Online tag bypassed stock forced targeting')
+assert(roles_asked[1]=='dominant','the weapon hand by default')
+tag_role='support'
+hud:_find_raycast_targets(true)
+assert(roles_asked[#roles_asked]=='support','the pointing hand while the tag gesture is on')
+tag_role='dominant'
 local selected,distance=marker()
 assert(selected==aim_marker and distance==7,'Head-centred marker overrode simulation aim')
 valid=false; selected,distance=marker(); assert(selected==nil and distance==math.huge)
