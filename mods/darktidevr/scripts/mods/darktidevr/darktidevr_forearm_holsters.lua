@@ -33,8 +33,8 @@ Forearm.SPAWN_SCALE = 0.2
 Forearm.FALLBACK_SCALE = 0.12
 Forearm.FIT_TIMEOUT = 3
 Forearm.TEST_FLAG = "./../mods/darktidevr/darktidevr_forearm_holsters_test.flag"
--- Labels: the weapon's name above a hovered weapon miniature (with holster
--- labels on), the gun's ammo always below it; metres per overlay pixel.
+-- Labels: the item's name above a hovered miniature (with holster labels on),
+-- the gun's ammo always below it; metres per overlay pixel.
 Forearm.LABEL_GAP = 0.012
 Forearm.LABEL_FONT = 54
 Forearm.LABEL_PIXEL_METRES = 0.0003
@@ -418,20 +418,22 @@ function Forearm.install(mod, presentation)
                     -- miniature draws at last frame's pose and jitters behind a
                     -- moving hand (worn, 15 September evening).
                     World.update_unit_and_children(world, data.link_unit)
-                    if shown and zone.id == "forearm_weapon" then
+                    if shown then
                         -- Half the shown height: melee weapons stand along their
                         -- local y (turned above), guns along z. Using the longest
                         -- dimension put the ammo far below the gun (worn, 15
                         -- September evening).
                         local up_axis = zone.slot == "slot_primary" and 2 or 3
                         local half = (preview.size and preview.size[up_axis] * scale or Forearm.PREVIEW_SIZE) * 0.5
+                        -- Every item's name above it on hover, as the weapon's was
+                        -- (user, 15 September evening).
                         if names_on and hover_id == zone.id then
                             local name = weapon_name(item)
                             if name then
-                                label(world, "forearm_name", centre + Vector3.up() * (half + Forearm.LABEL_GAP), name)
+                                label(world, "forearm_name_" .. index, centre + Vector3.up() * (half + Forearm.LABEL_GAP), name)
                             end
                         end
-                        if zone.slot == "slot_secondary" then
+                        if zone.id == "forearm_weapon" and zone.slot == "slot_secondary" then
                             local text = ammo_text(unit)
                             if text then
                                 label(world, "forearm_ammo", centre - Vector3.up() * (half + Forearm.LABEL_GAP), text)

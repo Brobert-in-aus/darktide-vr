@@ -78,6 +78,19 @@ do
     assert(chosen == request and ours, "approach alone is the holster's")
 end
 
+-- Reach: the hand segment's point nearest a zone, so fingers inside it count.
+do
+    local zones = {{id = "z", centre = {0, 0.2, 0}, radius = 0.05}}
+    local p = Holsters.reach_point({0, 0, 0}, {0, 0.1, 0}, zones)
+    assert(math.abs(p[2] - 0.1) < 1e-9 and Holsters.zone_at(p, zones) == nil, "tip nearest, still outside")
+    p = Holsters.reach_point({0, 0.08, 0}, {0, 0.18, 0}, zones)
+    assert(Holsters.zone_at(p, zones) == zones[1], "fingertips in the zone count")
+    assert(Holsters.zone_at({0, 0.08, 0}, zones) == nil, "the palm alone was outside")
+    p = Holsters.reach_point({0, 0.3, 0}, {0, 0.4, 0}, zones)
+    assert(math.abs(p[2] - 0.3) < 1e-9, "palm nearest when the tip points away")
+    assert(Holsters.reach_point({1, 2, 3}, nil, zones)[1] == 1, "no tip: the palm")
+end
+
 -- Requests.
 local inventory = {wielded_slot = "slot_secondary", slot_primary = "sword", slot_secondary = "lasgun",
     slot_pocketable_small = "syringe", slot_pocketable = "not_equipped", slot_device = "auspex"}

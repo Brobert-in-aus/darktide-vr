@@ -20,6 +20,10 @@ Holsters.APPROACH_SCALE = 1.5
 -- and plays a double tap (user, 15 September evening: it fired the grip's
 -- own binding, the special ability). The second tap follows this long after.
 Holsters.REFUSED_TAP_GAP = 0.12
+-- The hand reaches from the controller grip (the palm) this far along the
+-- controller's aim toward the fingertips: fingers inside an item did not
+-- count while the palm was outside its zone (worn, 15 September evening).
+Holsters.HAND_REACH = 0.10
 Holsters.TEST_FLAG = "./../mods/darktidevr/darktidevr_holsters_test.flag"
 
 -- Zone centres in the body frame at the reference eye height, metres from the
@@ -105,6 +109,26 @@ function Holsters.zone_near(point, zones, scale)
     for _, zone in ipairs(zones or Holsters.ZONES) do
         local ratio = distance(point, zone.centre) / (zone.radius * scale)
         if ratio <= 1 and (not best_ratio or ratio < best_ratio) then best, best_ratio = zone, ratio end
+    end
+    return best
+end
+
+-- The point of the hand segment from palm to tip (local 3-arrays) that comes
+-- nearest to any zone relative to its radius, for zone tests; the palm when
+-- there is no zone. Pure.
+function Holsters.reach_point(palm, tip, zones)
+    if not palm or not tip then return palm end
+    local d = {tip[1] - palm[1], tip[2] - palm[2], tip[3] - palm[3]}
+    local length2 = d[1] * d[1] + d[2] * d[2] + d[3] * d[3]
+    if length2 < 1e-10 then return palm end
+    local best, best_ratio = palm, nil
+    for _, zone in ipairs(zones or Holsters.ZONES) do
+        local c = zone.centre
+        local s = ((c[1] - palm[1]) * d[1] + (c[2] - palm[2]) * d[2] + (c[3] - palm[3]) * d[3]) / length2
+        s = math.max(0, math.min(1, s))
+        local p = {palm[1] + d[1] * s, palm[2] + d[2] * s, palm[3] + d[3] * s}
+        local ratio = distance(p, c) / zone.radius
+        if not best_ratio or ratio < best_ratio then best, best_ratio = p, ratio end
     end
     return best
 end
@@ -308,6 +332,16 @@ function Holsters.install(mod, presentation, observation)
             else role_position = presentation.left_controller_grip_target() end
             local live = observation[hand .. "_grip_tracking_live"] == true
             local point = live and frame and Holsters.local_point(frame, vector(role_position))
+            if point then
+                local _, aim_rotation
+                if hand == "right" then _, aim_rotation = presentation.controller_aim_target()
+                elseif presentation.left_controller_aim_target then _, aim_rotation = presentation.left_controller_aim_target() end
+                if aim_rotation then
+                    local tip = Holsters.local_point(frame,
+                        vector(role_position + Quaternion.forward(aim_rotation) * Holsters.HAND_REACH))
+                    point = Holsters.reach_point(point, tip, zones)
+                end
+            end
             local ready = api.update(hand, point, t, zones)
             local request = api.request(hand, ready, inventory) or
                 (point and api.approach(hand, Holsters.zone_near(point, zones, Holsters.APPROACH_SCALE), inventory))

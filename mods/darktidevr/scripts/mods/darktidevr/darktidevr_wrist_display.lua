@@ -10,8 +10,12 @@
 -- close (worn, 15 September evening); staying visible is a rendering matter.
 local Wrist = {}
 
-Wrist.WRIST_BACK = 0.10
-Wrist.OUT = 0.07
+-- Inside the glove's cuff, just past the wrist: it draws in front of
+-- everything, so it no longer needs to clear the hand (user, 15 September
+-- evening; it sat 7 cm above the wrist). The wrist is about 8 cm behind the
+-- controller grip.
+Wrist.WRIST_BACK = 0.11
+Wrist.OUT = 0.0
 -- ui_toughness_default in the game's colour table (the HUD toughness bar).
 Wrist.HEALTH_COLOR = {255, 255, 255}
 Wrist.TOUGHNESS_COLOR = {108, 187, 196}

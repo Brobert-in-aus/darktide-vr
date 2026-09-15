@@ -268,3 +268,10 @@ the part of the hands refactor that runs for everyone.
     and the shots should stay where the gun points, moving only with your
     hand. Try 50 for half the stock sway. Recoil and spread are unchanged.
     The log line `DARKTIDEVR_ONLINE_RULES sway_cancel=` shows it engaged.
+26. **Fingertip grabs, wrist display in the cuff, item names** (restart).
+    - Reach into a forearm or body holster fingers first: the item should
+      activate (grow, tick) as soon as your fingertips are in it, up to 10 cm
+      ahead of the palm.
+    - The wrist display sits inside the glove's cuff, just past the wrist.
+    - With Holster labels on, every forearm item shows its name above it
+      while your hand is in it, not just the weapon.
