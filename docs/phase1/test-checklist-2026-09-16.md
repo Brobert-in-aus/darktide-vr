@@ -68,3 +68,11 @@ tracked eye).
    count at the hand"). With a charge melee weapon (arc maul) out, the charge
    count sits beside the gun hand as before, now placed from the controller
    grip rather than the drawn wrist; it should not move while strafing.
+
+6. **Viewer survives a zero field of view** (`a5a5ed5`; viewer
+   `bin\darktidevr-xr-harness.exe` rebuilt, the alpha.1 package's copy kept as
+   `artifacts/unattended/body-mirror-20260916/darktidevr-xr-harness.before-fov-guard.exe`).
+   Nothing to do in normal play: launch as usual and confirm the headset view
+   starts. Taking the headset off at the title screen and putting it back on
+   should no longer leave the viewer stopped. Unit test (`core_math`) only;
+   the unattended runs that hit it are recorded in the handover.
