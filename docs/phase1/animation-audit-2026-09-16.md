@@ -31,7 +31,7 @@ animation, except what the server drives. Static audit of the branch at
 | # | Read | Feeds | Status |
 |---|---|---|---|
 | A-C | stale `eye_pose` in post-update | forearm miniature yaw, ammo counter offset, sight zeroing weight | fixed with the eye anchor |
-| D | anchor not refreshed on some post-update paths (stock melee animation, keyboard and mouse, IK disabled, errors: `:10354-10370`) | displays and gun placement use last frame's anchor there | open: refresh once at the top of the locomotion post-update hook |
+| D | anchor not refreshed on some post-update paths (stock melee animation, keyboard and mouse, IK disabled, errors: `:10354-10370`) | displays and gun placement use last frame's anchor there | fixed: the stock melee animation and keyboard-and-mouse branch refreshes it (16 September) |
 | E | `BodyProxy.align_gun_hand` (`darktidevr_body_proxy.lua:718-731`): glove = attach pose x animated hand-in-attach offset | gun-hand glove, `hand_pose` | open: capture the offset once per weapon, or place from the controller wrist |
 | F | `visible_grip_target` (`darktidevr.lua:8571-8584`) built on E | ammo counter melee branch, body mirror | open: use `weapon_grip_target` |
 | G | `follow_gameplay_hands` (`darktidevr_body_proxy.lua:772-810`): animated 1p wrists for stock melee animation and keyboard and mouse hands | both gloves during melee swings; keyboard and mouse hands | needs a user decision: melee with controller hands, or keep the animation |
@@ -56,7 +56,7 @@ time with last frame's anchor and eye, consistently.
 ## Order
 
 1. Eye from the current anchor (done, 16 September).
-2. Refresh the anchor at the top of the locomotion post-update hook (D).
+2. Refresh the anchor on the stock melee and keyboard-and-mouse path (D; done, 16 September).
 3. Holster frame at draw time, yaw from the tracked eye (J), before body
    holsters return.
 4. Gun-hand glove without the animated offset (E), then `visible_grip_target`

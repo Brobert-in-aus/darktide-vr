@@ -18,6 +18,7 @@ local presentation={online_rules={simulation_aim_active=function(owner) return o
     controller_aim_target=function() return {},hand end,
     keyboard_mouse_hands=function() return false end,
     update_body_ik_presentation_gate=function() end,is_first_person_body_mode=function() return true end,
+    refresh_body_anchor_from_avatar=function(owner) assert(owner==unit); anchor_refreshes=(anchor_refreshes or 0)+1 end,
     body_proxy={rigid_hands_active=function() return true end,
         follow_gameplay_hands=function(_,rotation,offset,pivot) observed=rotation; observed_offset=offset; observed_pivot=pivot; return true,{},{} end},
     sync_equipment_hand_to_proxy=function(owner) assert(owner==unit); syncs=syncs+1 end}
@@ -36,6 +37,7 @@ presentation.apply_body_ik(proxy,1,world,unit)
 assert(observed==simulated,'Stock-input animated hands did not use simulated melee aim')
 assert(observed_offset==nil and observed_pivot==nil,'controller melee hands were moved by the keyboard and mouse placement')
 assert(syncs==2,'Stock-input animated equipment did not follow the resolved hands')
+assert(anchor_refreshes==1,'Stock melee animation path did not refresh the body anchor')
 online=false; observed=nil
 presentation.apply_body_ik(proxy,2,world,unit)
 assert(observed==hand and syncs==4,'Local hand-aim animation changed')

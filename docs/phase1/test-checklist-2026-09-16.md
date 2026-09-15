@@ -46,3 +46,9 @@ tracked eye).
    ADS by raising the gun, and the crosshair on the iron sights.
    - Evidence so far: static audit (`docs/phase1/animation-audit-2026-09-16.md`)
      and the `tracked_eye_anchor` unit test; no worn or eye-render check.
+
+3. **Displays during melee swings** (restart; always on). With a melee
+   weapon's stock swing animation playing (button melee), the forearm
+   holster models, wrist display and ammo or charge count should stay with
+   your hands and not jump by a step while moving: the body anchor is now
+   refreshed on that path too. Unit test only (`melee_simulation_visual`).

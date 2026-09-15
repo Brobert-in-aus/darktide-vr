@@ -10394,6 +10394,11 @@ function presentation.apply_body_ik(unit, sequence, world, anchor_unit)
     -- reload, attack and switch animations instead of freezing.
     local keyboard_mouse_hands = presentation.keyboard_mouse_hands()
     if controller_observation.stock_melee_animation_active or keyboard_mouse_hands then
+        -- This frame's anchor: the tracked arms and full-body paths refresh it,
+        -- this one did not, so displays placed after it used last frame's
+        -- (animation audit, 16 September, item D).
+        local anchor_owner = anchor_unit or unit
+        presentation.refresh_body_anchor_from_avatar(anchor_owner)
         controller_observation.body_ik_presentation_block_reason =
             keyboard_mouse_hands and "keyboard_mouse" or "stock_melee_animation"
         if presentation.body_proxy and presentation.body_proxy.rigid_hands_active() then
