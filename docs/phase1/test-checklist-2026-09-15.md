@@ -176,3 +176,21 @@ the part of the hands refactor that runs for everyone.
     Unattended evidence: wrist and gun grip error 0, and two-hand stats
     identical to before the change. Say if anything about the gloves or
     weapons changed.
+16. **Evening fixes** (`76daf2d`; restart the game to load them).
+    - **Sight ADS** (option on): raise the rifle's rear sight to your right
+      eye. It should zoom with a tick in the gun hand, and lowering the gun
+      releases it.
+    - **Raising the gun:** no swing on the way up. The sights line up with
+      the reticle only once they reach your eye. Say if the reticle is still
+      up and left, and look with the eye you sight with.
+    - **Virtual stock:** shoulder the rifle and hold still. There should be
+      no wiggle, it engages a little deeper, and it releases gently.
+    - **Forearm holsters:**
+      - 8 cm zones in a line above the forearm, the weapon over the wrist;
+      - models all the same size, always visible, staying put as you roll
+        the wrist;
+      - the one your off hand is in grows and ticks.
+    - **Wrist display:** always shown above the off-hand wrist, clear of the
+      glove. Health is white, toughness the HUD blue.
+    - **Ammo counter:** 5 cm further toward the end of the hand and not
+      hidden by the hand or gun.

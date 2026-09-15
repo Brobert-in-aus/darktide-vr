@@ -483,3 +483,55 @@ are recorded in the
 Note: `run2` died because I piped the capture script through
 `Select-Object -First 1`, which stopped the script and so the runner's job
 (the runner force-stopped the game). The game did not fault.
+
+## Evening worn test (user at home, 15 September)
+
+Screenshots, console log and a video are in `artifacts/worn/2026-09-15-evening`
+(not in Git). The 16:33 screenshot is the left eye while sighting with the
+right, so it cannot show the reticle alignment.
+
+- **User reports.**
+  - Sight ADS never triggered from the headset.
+  - The reticle is still slightly up and left of the iron sights, though
+    better.
+  - The gun swings as it comes up to aim.
+  - The virtual stock wiggles.
+  - Ammo and charge counters look good.
+  - Wrist display works, but health should be white and toughness the HUD
+    blue; it should always show and not be covered by the glove.
+  - Forearm holsters sit below the wrist, overlap, differ in size, and
+    their grab zones are far too small.
+  - Stray cartridge case (not the tip) and another part inside the galvanic
+    rifle (red circles).
+- **Causes found.**
+  - Sight ADS used the first-person unit as the eye. It misses head
+    translation, so it never met the sights. Each logged "enter" was the
+    frame the user's own ADS button started it (`AIM ads=active` on the
+    same frame).
+  - The body frame (virtual stock shoulder) used the same eye.
+  - The stock weight was a per-frame proximity blend.
+  - Zeroing corrected toward a reticle point that sweeps from floor to
+    distance as the gun rises.
+  - The forearm line came from the controller grip axes.
+- **Fixed in `76daf2d`** (tests pass except `mode_switch`, which refuses to
+  run while Darktide is open).
+  - `presentation.eye_pose`: the stereo camera after head tracking, used by
+    sight ADS (which also ticks on entry), the body frame, the wrist display
+    and the ammo counter.
+  - Zeroing blends in only within 6-18 cm of the dominant eye.
+  - The virtual stock engages at 70% of its radius, releases past it, and
+    eases over 0.12 s.
+  - Forearm holsters, user spec:
+    - 8 cm zones, 4 cm apart, in a line 8 cm above the forearm with the
+      weapon over the wrist;
+    - roll-stable, like the ammo counter;
+    - always shown, fitted to 6.4 cm, growing to 8 cm and ticking on hover.
+  - Wrist display: always shown, health white, toughness
+    `ui_toughness_default` (108, 187, 196), above the wrist and drawn 6 cm
+    toward the eye.
+  - Ammo counter: 5 cm further along the aim, drawn 6 cm toward the eye.
+- **Not yet done.**
+  - The stray cartridge case and inner part need a mesh hunt in an
+    unattended run while the game is free.
+  - The reticle up-left residual needs a fresh right-eye check after the
+    zeroing change.
