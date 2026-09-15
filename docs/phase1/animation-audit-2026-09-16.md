@@ -34,7 +34,7 @@ animation, except what the server drives. Static audit of the branch at
 | D | anchor not refreshed on some post-update paths (stock melee animation, keyboard and mouse, IK disabled, errors: `:10354-10370`) | displays and gun placement use last frame's anchor there | fixed: the stock melee animation and keyboard-and-mouse branch refreshes it (16 September) |
 | E | `BodyProxy.align_gun_hand` (`darktidevr_body_proxy.lua:718-731`): glove = attach pose x animated hand-in-attach offset | gun-hand glove, `hand_pose` | fixed: per-weapon grip averaged over 30 steady frames (no action, not moving), then held (16 September); until captured the live offset is used |
 | F | `visible_grip_target` (`darktidevr.lua:8571-8584`) built on E | ammo counter melee branch, body mirror | fixed: the melee counter uses `weapon_grip_target`; `visible_grip_target` removed (16 September) |
-| G | `follow_gameplay_hands` (`darktidevr_body_proxy.lua:772-810`): animated 1p wrists for stock melee animation and keyboard and mouse hands | both gloves during melee swings; keyboard and mouse hands | needs a user decision: melee with controller hands, or keep the animation |
+| G | `follow_gameplay_hands` (`darktidevr_body_proxy.lua:772-810`): animated 1p wrists for stock melee animation and keyboard and mouse hands | both gloves during melee swings; keyboard and mouse hands | decided (user, 16 September): during melee swings the gloves follow the animation, as now; an exception to the requirement. Keyboard and mouse hands keep the animation too (no controller pose to use) |
 | H | `copy_gameplay_fingers` (`darktidevr_body_proxy.lua:245-272`) | finger curl only | later: fixed per-item grip poses |
 | I | `sync_equipment_hand_to_proxy` (`darktidevr.lua:9267-9313`) | held item placement, via E in body-drawn-hand mode | clean once E is fixed |
 | J | holsters `body_frame` (`darktidevr_holsters.lua:283-311`): built at input time, drawn in post-update; yaw from the first-person unit rotation when `body_visual_yaw` is nil (includes stock recoil offsets) | body holster zones, models, counts (withheld) | fixed: rebuilt at draw time for the body models and counts, yaw from the tracked eye (16 September) |
@@ -61,6 +61,6 @@ time with last frame's anchor and eye, consistently.
    September).
 4. Gun-hand glove without the animated offset (E), then `visible_grip_target`
    users to `weapon_grip_target` (F); both done, 16 September.
-5. User decision on melee and keyboard-and-mouse animated hands (G), then
-   fingers (H).
+5. Melee and keyboard-and-mouse hands (G): keep the animation (user,
+   16 September). Fingers (H) remain.
 6. Model-eye capture from constants (K), then the full-body-only items (L, M).
