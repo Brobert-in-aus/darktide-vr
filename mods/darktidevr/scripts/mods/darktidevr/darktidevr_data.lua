@@ -197,6 +197,11 @@ return {
                         default_value = false,
                     },
                     {
+                        setting_id = "vr_wrist_display",
+                        type = "checkbox",
+                        default_value = false,
+                    },
+                    {
                         setting_id = "vr_holster_counts",
                         type = "checkbox",
                         default_value = false,
