@@ -18,10 +18,23 @@ Forearm.ZONE_START = 0.20
 Forearm.ZONE_SPACING = 0.055
 Forearm.ZONE_HEIGHT = 0.10
 Forearm.ZONE_RADIUS = 0.035
--- Preview scales: a 1 m rifle or maul shows about 7 cm long; stims, carried
--- items and devices (about 20-40 cm) about 5-10 cm.
-Forearm.WEAPON_SCALE = 0.07
-Forearm.ITEM_SCALE = 0.25
+-- Preview scales: a 1 m rifle or maul shows about 14 cm long; stims, carried
+-- items and devices (about 20-40 cm) about 9-18 cm. The first pass (0.07 and
+-- 0.25) was too small and hidden by the gun hand's glove (user, 15 September).
+Forearm.WEAPON_SCALE = 0.14
+Forearm.ITEM_SCALE = 0.45
+-- Previews are drawn this far from their holster toward the eye, so the gun
+-- hand's gauntlet cuff cannot cover them; the grab zones stay at the holster.
+Forearm.PREVIEW_TOWARD_EYE = 0.08
+
+-- Where a preview is drawn: the holster centre moved toward the eye. Pure.
+function Forearm.preview_point(centre, eye)
+    local dx, dy, dz = eye[1] - centre[1], eye[2] - centre[2], eye[3] - centre[3]
+    local length = math.sqrt(dx * dx + dy * dy + dz * dz)
+    if length < 1e-6 then return {centre[1], centre[2], centre[3]} end
+    local step = math.min(Forearm.PREVIEW_TOWARD_EYE, length * 0.5) / length
+    return {centre[1] + dx * step, centre[2] + dy * step, centre[3] + dz * step}
+end
 Forearm.PREVIEW_NEAR = 0.30
 Forearm.TEST_FLAG = "./../mods/darktidevr/darktidevr_forearm_holsters_test.flag"
 
@@ -191,7 +204,14 @@ function Forearm.install(mod, presentation)
                         end
                         near = true
                     else
-                        Unit.set_local_position(data.link_unit, 1, Vector3(zone.world[1], zone.world[2], zone.world[3]))
+                        local first_person = ScriptUnit.has_extension(unit, "first_person_system")
+                        local eye_unit = first_person and first_person:first_person_unit()
+                        local point = zone.world
+                        if eye_unit then
+                            local eye = Unit.world_position(eye_unit, 1)
+                            point = Forearm.preview_point(zone.world, {Vector3.x(eye), Vector3.y(eye), Vector3.z(eye)})
+                        end
+                        Unit.set_local_position(data.link_unit, 1, Vector3(point[1], point[2], point[3]))
                         Unit.set_local_rotation(data.link_unit, 1, zone.slot == "slot_primary" and across_long_z or across)
                         if api.test_big then
                             Unit.set_local_scale(data.link_unit, 1, Vector3(0.3, 0.3, 0.3))

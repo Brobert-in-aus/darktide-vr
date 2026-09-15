@@ -35,4 +35,11 @@ assert(holsters.request('left',ready,{slot_pocketable_small='not_equipped',wield
 local other=Holsters.new()
 other.update('left',Holsters.local_point(frame,{.35,.31,1.5}),1)
 assert(other.update('left',Holsters.local_point(frame,{.35,.31,1.5}),1.1)==nil,'body zones unchanged')
-print('forearm_holsters=pass assignment centres spacing zone_override request empty')
+-- Previews move toward the eye, never past halfway.
+local p=Forearm.preview_point({0,1,0},{0,0,0})
+near(p[2],1-Forearm.PREVIEW_TOWARD_EYE,'toward the eye')
+p=Forearm.preview_point({0,.1,0},{0,0,0})
+near(p[2],.05,'at most halfway')
+p=Forearm.preview_point({1,1,1},{1,1,1})
+near(p[1],1,'coincident eye')
+print('forearm_holsters=pass assignment centres spacing zone_override request empty preview_point')
