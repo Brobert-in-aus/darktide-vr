@@ -71,6 +71,11 @@ local rigid_hands = {
     right = {},
 }
 
+-- Set by a presentation that draws its own hands on the same wrists (the
+-- dev-flag full-profile body overlay): the gloves keep being placed, since
+-- the weapons follow them, but are not drawn, so only one pair shows.
+local rigid_hands_hidden = false
+
 local hidden_source_slots = {
     slot_body_arms = true,
     slot_body_torso = true,
@@ -284,6 +289,9 @@ local function show_rigid_hand_surface(hand)
                 end
             end
         end
+    end
+    if rigid_hands_hidden then
+        Unit.set_unit_visibility(unit, false, true)
     end
     if not hand.surface_logged then
         hand.surface_logged = true
@@ -553,6 +561,24 @@ function BodyProxy.active()
             Unit.alive(left.unit) and Unit.alive(right.unit)
     end
     return state.ready and state.unit and Unit.alive(state.unit)
+end
+
+-- Hides (or shows again) both rigid gloves without changing their placement.
+function BodyProxy.set_rigid_hands_hidden(hidden)
+    hidden = hidden == true
+    if hidden == rigid_hands_hidden then return end
+    rigid_hands_hidden = hidden
+    for _, hand in pairs(rigid_hands) do
+        if hand.ready and hand.unit and Unit.alive(hand.unit) then
+            if hidden then Unit.set_unit_visibility(hand.unit, false, true)
+            else show_rigid_hand_surface(hand) end
+        end
+    end
+    print("DARKTIDEVR_IK rigid_hands_hidden=" .. tostring(hidden))
+end
+
+function BodyProxy.rigid_hands_hidden()
+    return rigid_hands_hidden
 end
 
 function BodyProxy.rigid_hands_active()

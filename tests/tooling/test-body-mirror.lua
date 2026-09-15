@@ -53,4 +53,8 @@ hide,d,why=Mirror.near_eye({0,0,1.36},{0.1,0.1,0.1},eye,1.40)
 assert(not hide and why=='below_shoulders')
 hide,d,why=Mirror.near_eye({0,0,1.45},{0.3,0.2,0.5},eye,1.34)
 assert(not hide and why=='too_large','whole torso is kept')
-print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye')
+for _,name in ipairs({'overlay','overlayarms','overlaycopy'}) do
+    assert(Mirror.MODES[name].hide_gloves,'one pair of hands: '..name)
+end
+assert(not Mirror.MODES.mirror.hide_gloves,'mirror stands apart from the player')
+print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hide_gloves')

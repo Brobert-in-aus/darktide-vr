@@ -24,6 +24,11 @@
 -- meshes near the eye (design, "What the player sees in first person"):
 -- overlay5 looking down showed the empty collar ring where the hidden head
 -- was. "overlayarms" is the arm solve without that hiding, for A/B.
+--
+-- Both overlay modes hide the rigid gloves while the copy is ready: the
+-- copy's own hands sit on the same wrists, and both drawn would show two
+-- pairs of hands (user, 15 September). The gloves are still placed; the
+-- weapons follow them.
 local Mirror = {}
 
 Mirror.FLAG = "./../mods/darktidevr/darktidevr_body_mirror.flag"
@@ -31,9 +36,9 @@ Mirror.MIRROR_DISTANCE = 2.5
 Mirror.KEPT_SLOT_TYPES = {body = true, gear = true, material = true}
 Mirror.MODES = {
     mirror = {distance = Mirror.MIRROR_DISTANCE, facing = true, hide_head = false},
-    overlaycopy = {distance = 0, facing = false, hide_head = true, solve_arms = false},
-    overlayarms = {distance = 0, facing = false, hide_head = true, solve_arms = true},
-    overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true},
+    overlaycopy = {distance = 0, facing = false, hide_head = true, solve_arms = false, hide_gloves = true},
+    overlayarms = {distance = 0, facing = false, hide_head = true, solve_arms = true, hide_gloves = true},
+    overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true},
 }
 -- Near-eye mesh hiding, in the character root's frame at the spawn pose.
 Mirror.NEAR_EYE_RADIUS = 0.25
@@ -144,7 +149,12 @@ function Mirror.install(mod, presentation)
         enabled = parsed ~= nil
         return enabled
     end
+    local function gloves_hidden(hidden)
+        local proxy = presentation.body_proxy
+        if proxy and proxy.set_rigid_hands_hidden then proxy.set_rigid_hands_hidden(hidden) end
+    end
     function api.destroy()
+        if state and state.gloves_hidden then gloves_hidden(false) end
         if state then
             if state.profile_spawner then pcall(state.profile_spawner.destroy, state.profile_spawner) end
             if state.unit_spawner then pcall(state.unit_spawner.destroy, state.unit_spawner) end
@@ -312,6 +322,10 @@ function Mirror.install(mod, presentation)
             state.count = Unit.num_scene_graph_items(unit)
             capture_arms(unit)
             if Mirror.MODES[mode_name].near_eye then hide_near_eye(unit, data) end
+            if Mirror.MODES[mode_name].hide_gloves then
+                gloves_hidden(true)
+                state.gloves_hidden = true
+            end
             local slots, hidden = 0, {}
             for slot_name, slot in pairs(data.slots or {}) do
                 slots = slots + 1
