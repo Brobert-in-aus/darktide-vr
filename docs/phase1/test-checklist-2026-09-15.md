@@ -275,3 +275,30 @@ the part of the hands refactor that runs for everyone.
     - The wrist display sits inside the glove's cuff, just past the wrist.
     - With Holster labels on, every forearm item shows its name above it
       while your hand is in it, not just the weapon.
+
+### Results (worn, 15 September, about 19:50)
+
+- 18 clip and case gone: pass.
+- 20 reverse grip grace: pass.
+- 21 maul centred: pass.
+- 22: pass (gun-relative counter, holsters steady on item switch, hidden
+  while two-handing and in ADS, wrist size), except the forearm items still
+  wobble while strafing. Controller-grip anchoring did not remove it; lead
+  in the 16 September todo.
+- 23 hub: pass. 24 holster ammo, refused grab, medkit zone: pass. 25 sway
+  cancel: pass.
+- 26: fingertip grabs pass. The wrist display sat below the wrist, not in the
+  cuff (screenshot 19:50: the grip pose's forward tilts with the handle), and
+  the stim and medkit showed no name (pocketables have no display name).
+- Not yet reported: 19 teammate status, and the earlier items listed in the
+  reminder (2, 4, 6, 7, 8, 10, 13, 17).
+
+27. **Wrist display in the cuff (again), pocketable names, holstered
+    charges** (restart).
+    - The wrist display sits inside the glove's cuff, just past the wrist, now
+      placed back along the forearm (the controller's aim).
+    - With Holster labels on, the stim, medkit, ammo crate and device show
+      their names on hover (from their pickup names).
+    - The holstered melee weapon shows its special charges beneath it (for
+      example the arc maul's), as the gun shows its ammo; a heat-only gun
+      shows its heat. Peril is never shown there.

@@ -46,7 +46,7 @@ return {
     vr_two_hand_steadying_classic = {en = "Classic"},
     vr_virtual_stock = {en = "Virtual stock (experimental)"},
     vr_forearm_holsters = {en = "Weapon hand holsters (experimental)"},
-    vr_forearm_holsters_description = {en = "Small holsters in a line above your gun hand's forearm, from the wrist: your other weapon, stim, carried item and device. Reach in with your other hand and press grip to equip. A small model of each item is always shown there; the one your hand is in grows and ticks (with Holster labels on, its name shows above it), and they hide while you two-hand the gun or aim down its sights."},
+    vr_forearm_holsters_description = {en = "Small holsters in a line above your gun hand's forearm, from the wrist: your other weapon, stim, carried item and device. Reach in with your other hand and press grip to equip. A small model of each item is always shown there; the one your hand is in grows and ticks (with Holster labels on, its name shows above it), the weapon shows its ammo or charges beneath it, and they hide while you two-hand the gun or aim down its sights."},
     vr_wrist_display = {en = "Wrist display"},
     vr_wrist_display_scale = {en = "Wrist display size (%%)"},
     vr_sway_cancel = {en = "Cancel weapon sway (%%)"},

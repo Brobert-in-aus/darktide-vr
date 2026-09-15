@@ -247,7 +247,8 @@ function Readout.reload_tracker()
 end
 
 function Readout.install(mod, presentation, observation)
-    local api = {}
+    -- The pure helpers, for the forearm holster labels.
+    local api = {Readout = Readout}
     local logged_slot
     local world, gui, failed, logged
     local UIFonts, Ammo, NetworkConstants

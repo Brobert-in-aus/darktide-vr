@@ -305,12 +305,59 @@ function Forearm.install(mod, presentation)
         local reserve = slot.current_ammunition_reserve
         return type(reserve) == "number" and string.format("%d / %d", clip, reserve) or tostring(clip)
     end
-    local function weapon_name(item)
-        local display = item and item.display_name
-        if type(display) ~= "string" or display == "" then return nil end
-        local ok, text = pcall(Localize, display)
-        if ok and type(text) == "string" and not text:find("<unlocalized", 1, true) then return text end
+    local function localized(key)
+        if type(key) ~= "string" or key == "" then return nil end
+        local ok, text = pcall(Localize, key)
+        if ok and type(text) == "string" and text ~= "" and not text:find("<unlocalized", 1, true) then return text end
         return nil
+    end
+    -- The item's display name; stims, crates and other pocketables have none,
+    -- so their pickup's description (the name shown when picking them up)
+    -- stands in (worn, 15 September evening: no names on the stim or medkit).
+    local Pickups
+    local pickup_names
+    local function weapon_name(item)
+        local name = item and localized(item.display_name)
+        if name or not item then return name end
+        if not pickup_names then
+            pickup_names = {}
+            local ok, pickups = pcall(require, "scripts/settings/pickup/pickups")
+            Pickups = ok and pickups or nil
+            for _, settings in pairs(Pickups and Pickups.by_name or {}) do
+                if type(settings) == "table" and settings.inventory_item and settings.description then
+                    pickup_names[settings.inventory_item] = settings.description
+                end
+            end
+        end
+        return localized(pickup_names[item.name])
+    end
+    -- The holstered weapon's count: a gun's clip and reserve (or heat), a melee
+    -- weapon's special charges, as the ammo count at the hand shows them, but
+    -- never peril (user, 15 September evening).
+    local NetworkConstants
+    local function holstered_text(unit, slot_name)
+        local readout = presentation.ammo_readout and presentation.ammo_readout.Readout
+        if slot_name == "slot_secondary" then
+            local text = ammo_text(unit)
+            if text or not readout then return text end
+        end
+        if not readout then return nil end
+        local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
+        local slot = unit_data and unit_data:read_component(slot_name)
+        if not slot then return nil end
+        local values
+        if slot_name == "slot_primary" then
+            local weapon = ScriptUnit.has_extension(unit, "weapon_system")
+            local entry = weapon and weapon._weapons and weapon._weapons.slot_primary
+            local template = entry and entry.weapon_template
+            values = readout.melee_values(slot, template and template.weapon_special_tweak_data)
+        else
+            Ammo = Ammo or require("scripts/utilities/ammo")
+            NetworkConstants = NetworkConstants or require("scripts/network_lookup/network_constants")
+            local count = NetworkConstants.clips_in_use and NetworkConstants.clips_in_use.max_size or 1
+            values = readout.values(slot, Ammo, count, nil)
+        end
+        return values and (readout.text(values)) or nil
     end
     local function label(world, key, position, text)
         local overlay = presentation.hand_overlay
@@ -433,8 +480,8 @@ function Forearm.install(mod, presentation)
                                 label(world, "forearm_name_" .. index, centre + Vector3.up() * (half + Forearm.LABEL_GAP), name)
                             end
                         end
-                        if zone.id == "forearm_weapon" and zone.slot == "slot_secondary" then
-                            local text = ammo_text(unit)
+                        if zone.id == "forearm_weapon" then
+                            local text = holstered_text(unit, zone.slot)
                             if text then
                                 label(world, "forearm_ammo", centre - Vector3.up() * (half + Forearm.LABEL_GAP), text)
                             end

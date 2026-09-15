@@ -171,8 +171,8 @@ Experimental features, "Weapon hand holsters". Small models of your other
 weapon, stim, carried item and device float in a line above your gun hand's
 forearm, the weapon nearest the wrist. Reach into one with the other hand and
 press grip to equip it; the model your hand is in grows and ticks, and with
-"Holster labels" on its name shows above it. The gun
-shows its ammo beneath it. They hide while you two-hand the gun or aim down
+"Holster labels" on its name shows above it. The weapon
+shows its ammo, heat or special charges beneath it. They hide while you two-hand the gun or aim down
 its sights, and in the hub.
 
 ### Wrist display, teammate status (experimental)

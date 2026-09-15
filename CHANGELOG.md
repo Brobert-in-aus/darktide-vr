@@ -56,7 +56,7 @@ off by default):
 - Weapon hand holsters: small models of your other weapon, stim, carried item
   and device above your gun hand's forearm; reach in with the other hand and
   press grip to equip. The one your hand is in grows and ticks (and shows its
-  name with Holster labels on), the gun shows its ammo beneath it, and they
+  name with Holster labels on), the weapon shows its ammo or charges beneath it, and they
   hide while you two-hand or aim down sights.
 - Wrist display: health, toughness and stamina bars with their numbers in your
   off-hand glove's cuff, drawn in front of everything, with a size slider. Not

@@ -13,8 +13,10 @@ local Wrist = {}
 -- Inside the glove's cuff, just past the wrist: it draws in front of
 -- everything, so it no longer needs to clear the hand (user, 15 September
 -- evening; it sat 7 cm above the wrist). The wrist is about 8 cm behind the
--- controller grip.
-Wrist.WRIST_BACK = 0.11
+-- controller grip, back along the controller's aim (the forearm): back along
+-- the grip pose's own forward, which tilts with the handle, it sat well below
+-- the wrist (worn screenshot 19:50).
+Wrist.WRIST_BACK = 0.12
 Wrist.OUT = 0.0
 -- ui_toughness_default in the game's colour table (the HUD toughness bar).
 Wrist.HEALTH_COLOR = {255, 255, 255}
@@ -126,6 +128,13 @@ function Wrist.install(mod, presentation, observation)
             if side == "left" then position, rotation = presentation.left_controller_grip_target()
             else position, rotation = presentation.controller_grip_target() end
             if not live or not position or not rotation then hide(); return end
+            local _, aim
+            if side == "left" and presentation.left_controller_aim_target then
+                _, aim = presentation.left_controller_aim_target()
+            elseif side == "right" and presentation.controller_aim_target then
+                _, aim = presentation.controller_aim_target()
+            end
+            rotation = aim or rotation
             anchor = position - Quaternion.forward(rotation) * Wrist.WRIST_BACK + Vector3.up() * Wrist.OUT
             api.visible = true
         end
