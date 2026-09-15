@@ -66,7 +66,10 @@ Mirror.MODES = {
     overlayfollow = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hand_rig = true,
         follow_neck = true},
     overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hand_rig = true,
-        follow_neck = true, scale_to_neck = true, clavicles = true},
+        follow_neck = true, scale_to_neck = true, clavicles = true, body_yaw = true},
+    -- "overlay" with clavicles but the avatar's root yaw, for A/B of the body yaw.
+    overlayrootyaw = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
+        hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true},
     -- "overlay" without the clavicle swing, for A/B (milestone 3).
     overlaystock = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true},
@@ -77,6 +80,9 @@ Mirror.MODES = {
 -- solve. rig1 showed the stock animated shoulders leave the support arm up to
 -- 0.31 m short.
 Mirror.CLAVICLE_MAX = math.rad(30)
+-- Milestone 3, root yaw (step 1): the copy faces the body frame's yaw instead
+-- of the avatar root's, which follows the aim. clav1 showed the left shoulder
+-- 0.23 m from its estimate against 0.10 m on the right, a turn between them.
 -- Near-eye mesh hiding, in the character root's frame at the spawn pose.
 Mirror.NEAR_EYE_RADIUS = 0.25
 Mirror.EYE_ABOVE_HEAD = 0.07
@@ -460,6 +466,12 @@ function Mirror.install(mod, presentation)
         World.update_unit(world, unit)
         local frame = Mirror.MODES[mode_name].follow_neck and presentation.body_frame and
             presentation.body_frame.sample(avatar, t)
+        if Mirror.MODES[mode_name].body_yaw and frame and type(frame.yaw) == "number" then
+            state.root_yaw_delta = math.deg(math.atan2(math.sin(frame.yaw - Quaternion.yaw(Unit.world_rotation(unit, 1))),
+                math.cos(frame.yaw - Quaternion.yaw(Unit.world_rotation(unit, 1)))))
+            Unit.set_local_rotation(unit, 1, Quaternion(Vector3.up(), frame.yaw))
+            World.update_unit(world, unit)
+        end
         if Mirror.MODES[mode_name].follow_neck and Unit.has_node(unit, "j_neck") then
             if frame and frame.neck and Mirror.MODES[mode_name].scale_to_neck then
                 local base = Unit.world_position(unit, 1)
@@ -501,6 +513,9 @@ function Mirror.install(mod, presentation)
             if state.neck_offset then
                 mod:info("DARKTIDEVR_BODY_MIRROR neck_follow offset_m=%.3f,%.3f,%.3f distance_m=%.3f scale_ratio=%.3f",
                     state.neck_offset[1], state.neck_offset[2], state.neck_offset[3], state.neck_distance, state.scale_ratio or 1)
+            end
+            if state.root_yaw_delta then
+                mod:info("DARKTIDEVR_BODY_MIRROR body_yaw delta_from_avatar_deg=%.1f", state.root_yaw_delta)
             end
             if state.shoulder_gap_left and state.shoulder_gap_right then
                 mod:info("DARKTIDEVR_BODY_MIRROR clavicles gap_left_m=%.3f->%.3f gap_right_m=%.3f->%.3f",

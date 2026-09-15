@@ -85,5 +85,6 @@ do
     assert(Mirror.clavicle_swing({0,0,0},{0.1,0,0},{0.2,0,0})==nil,'already aligned')
     assert(Mirror.clavicle_swing({0,0,0},{0,0,0},{0.2,0,0})==nil,'degenerate')
     assert(Mirror.MODES.overlay.clavicles and not Mirror.MODES.overlaystock.clavicles)
+    assert(Mirror.MODES.overlay.body_yaw and not Mirror.MODES.overlayrootyaw.body_yaw and Mirror.MODES.overlayrootyaw.clavicles)
 end
 print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles')
