@@ -19,6 +19,9 @@ Wrist.STAMINA_COLOR = {230, 220, 160}
 Wrist.BAR_WIDTH = 0.08
 Wrist.BAR_HEIGHT = 0.008
 Wrist.BAR_GAP = 0.014
+Wrist.TEXT_SIZE = 0.011
+-- Overlay panel scale: metres per panel pixel.
+Wrist.PIXEL_METRES = 0.0005
 Wrist.TEST_FLAG = "./../mods/darktidevr/darktidevr_wrist_display_test.flag"
 
 local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
@@ -104,37 +107,24 @@ function Wrist.install(mod, presentation, observation)
         end
         local bars = Wrist.bars(read_values(unit))
         if #bars == 0 then hide(); return end
-        local to_eye = Vector3.normalize(eye - anchor)
-        local right = Vector3.normalize(Vector3.cross(Vector3.up(), to_eye))
-        if Vector3.length(right) < 0.5 then right = Quaternion.right(eye_rotation) end
-        local up = Vector3.cross(to_eye, right)
-        if world ~= game_world then api.destroy(); world = game_world end
-        if not gui then gui = World.create_world_gui(world, Matrix4x4.identity(), 1, 1, "immediate") end
-        Gui.set_visible(gui, true)
-        local function plate(offset_up)
-            local tm = Matrix4x4.identity()
-            Matrix4x4.set_right(tm, right)
-            Matrix4x4.set_up(tm, up)
-            Matrix4x4.set_forward(tm, -to_eye)
-            Matrix4x4.set_translation(tm, anchor + up * offset_up)
-            return tm
-        end
-        UIFonts = UIFonts or require("scripts/managers/ui/ui_fonts")
-        local font = UIFonts.data_by_type("proxima_nova_bold")
+        -- In front of the scene: 2D UI on the hand overlay's panel at the
+        -- anchor (darktidevr_hand_overlay), in metres, x to the viewer's right.
+        world = game_world
+        local overlay = presentation.hand_overlay
+        local canvas = overlay and overlay.canvas(game_world, "wrist_display", anchor, Wrist.PIXEL_METRES)
+        if not canvas then hide(); return end
         local top = (#bars - 1) * Wrist.BAR_GAP * 0.5
         for i, bar in ipairs(bars) do
             local y = top - (i - 1) * Wrist.BAR_GAP
-            local tm = plate(y)
             local c = bar.color
-            Gui.rect_3d(gui, tm, Vector2(-Wrist.BAR_WIDTH * 0.5, -Wrist.BAR_HEIGHT * 0.5), 8,
-                Vector2(Wrist.BAR_WIDTH, Wrist.BAR_HEIGHT), Color(110, 20, 20, 20))
-            Gui.rect_3d(gui, tm, Vector2(-Wrist.BAR_WIDTH * 0.5, -Wrist.BAR_HEIGHT * 0.5), 9,
-                Vector2(Wrist.BAR_WIDTH * bar.fraction, Wrist.BAR_HEIGHT), Color(230, c[1], c[2], c[3]))
+            canvas.rect(0, y, Wrist.BAR_WIDTH, Wrist.BAR_HEIGHT, {110, 20, 20, 20})
+            local filled = Wrist.BAR_WIDTH * bar.fraction
+            if filled > 0 then
+                canvas.rect(-Wrist.BAR_WIDTH * 0.5 + filled * 0.5, y, filled, Wrist.BAR_HEIGHT, {230, c[1], c[2], c[3]})
+            end
             if bar.text then
-                local size = 0.011
-                Gui.slug_text_3d(gui, bar.text, font.path, size, tm,
-                    Vector3(Wrist.BAR_WIDTH * 0.5 + 0.004, -size * 0.35, 0), 10, Color(235, c[1], c[2], c[3]),
-                    "flags", font.render_flags or 0)
+                canvas.text(bar.text, Wrist.TEXT_SIZE / Wrist.PIXEL_METRES, Wrist.BAR_WIDTH * 0.5 + 0.004, y,
+                    {235, c[1], c[2], c[3]}, "left")
             end
         end
         if not logged then

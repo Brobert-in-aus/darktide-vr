@@ -1173,6 +1173,7 @@ function presentation.publish_mode(mode, reason)
     -- re-creates them.
     if not mode_changed and heartbeat_due and mode == 2 then
         if presentation.marker_atlas then pcall(presentation.marker_atlas.destroy) end
+        if presentation.hand_overlay then presentation.hand_overlay.destroy() end
         if presentation.hud_panel and presentation.hud_panel.release_mirror_materials then
             pcall(presentation.hud_panel.release_mirror_materials)
         end
@@ -3937,6 +3938,7 @@ local function teardown()
     presentation.world_menu_anchor = nil
     presentation.world_menu_draw_logged = false
     if presentation.marker_atlas then pcall(presentation.marker_atlas.forget_world) end
+    if presentation.hand_overlay then presentation.hand_overlay.forget_world() end
 end
 
 local function setup(manager)
@@ -5340,6 +5342,13 @@ local function update_stereo(manager)
             presentation.hud_panel.height, 2 * presentation.hud_panel.distance)
     end
     presentation.hud_panel.draw(world, clean_position, clean_rotation, hud_width, hud_center)
+    if presentation.hand_overlay then
+        local overlay_ok, overlay_error = pcall(presentation.hand_overlay.draw, world)
+        if not overlay_ok and not presentation.hand_overlay_error_logged then
+            presentation.hand_overlay_error_logged = true
+            mod:error("DARKTIDEVR_HAND_OVERLAY draw_failed error=%s", tostring(overlay_error))
+        end
+    end
     if presentation.marker_atlas then
         local atlas_ok, atlas_error = pcall(presentation.marker_atlas.draw, world,
             presentation.marker_atlas_frame)
@@ -15441,12 +15450,18 @@ end
 presentation.marker_atlas = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_marker_atlas"
 )
-presentation.marker_atlas.configure({
+presentation.marker_atlas_api = {
     Managers = Managers, UIRenderer = UIRenderer, Renderer = Renderer, World = World,
     ScriptWorld = ScriptWorld, Gui = Gui, Gui2 = Gui2, Material = Material,
     Matrix4x4 = Matrix4x4, Vector2 = Vector2, Vector3 = Vector3, Color = Color,
     log = function(line) mod:info(line) end,
-})
+}
+presentation.marker_atlas.configure(presentation.marker_atlas_api)
+-- Hand overlays (ammo counter, wrist display, holster labels) in front of
+-- the scene: their own atlas, shown from the camera update below.
+presentation.hand_overlay = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_hand_overlay"
+).install(mod, presentation, presentation.marker_atlas, presentation.marker_atlas_api)
 presentation.marker_gui = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_marker_gui"
 )
@@ -15778,6 +15793,7 @@ mod.on_game_state_changed = function(status, state_name)
     end
     if status == "enter" and (state_name == "StateGameScore" or state_name == "StateLoading") then
         if presentation.marker_atlas then pcall(presentation.marker_atlas.destroy) end
+        if presentation.hand_overlay then presentation.hand_overlay.destroy() end
         if presentation.hud_panel and presentation.hud_panel.release_mirror_materials then
             pcall(presentation.hud_panel.release_mirror_materials)
         end
@@ -15847,6 +15863,7 @@ mod.on_disabled = function()
     pcall(presentation.marker_gui.destroy_all)
     pcall(presentation.marker_world.destroy_all)
     pcall(presentation.marker_atlas.destroy)
+    if presentation.hand_overlay then presentation.hand_overlay.destroy() end
     pcall(teardown)
     pcall(teardown_ui_stereo)
     pcall(destroy_ui_offscreen_resources)
@@ -15872,6 +15889,7 @@ mod.on_unload = function()
     pcall(presentation.marker_gui.destroy_all)
     pcall(presentation.marker_world.destroy_all)
     pcall(presentation.marker_atlas.destroy)
+    if presentation.hand_overlay then presentation.hand_overlay.destroy() end
     pcall(teardown)
     pcall(teardown_ui_stereo)
     pcall(destroy_ui_offscreen_resources)

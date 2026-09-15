@@ -348,68 +348,48 @@ function Readout.install(mod, presentation, observation)
                 anchor = anchor - offset * (Readout.AWAY_FROM_EYE / distance)
             end
         end
-        -- Face the eye, text upright: local x to the viewer's right, y up.
-        local to_eye = Vector3.normalize(eye - anchor)
-        local right = Vector3.normalize(Vector3.cross(Vector3.up(), to_eye))
-        if Vector3.length(right) < 0.5 then right = Quaternion.right(eye_rotation) end
-        local up = Vector3.cross(to_eye, right)
-        if world ~= game_world then api.destroy(); world = game_world end
-        if not gui then gui = World.create_world_gui(world, Matrix4x4.identity(), 1, 1, "immediate") end
-        Gui.set_visible(gui, true)
-        UIFonts = UIFonts or require("scripts/managers/ui/ui_fonts")
-        local font = UIFonts.data_by_type("proxima_nova_bold")
+        -- In front of the scene: 2D UI on the hand overlay's panel at the anchor
+        -- (darktidevr_hand_overlay), laid out in metres, x to the viewer's
+        -- right and y up, one font pixel PIXEL_METRES wide as before.
+        world = game_world
+        local overlay = presentation.hand_overlay
+        local canvas = overlay and overlay.canvas(game_world, "ammo_readout", anchor, Readout.PIXEL_METRES)
+        if not canvas then hide(); return end
         local ps = Readout.PIXEL_METRES
         local size = Readout.FONT_SIZE * ps
-        local tm = Matrix4x4.identity()
-        Matrix4x4.set_right(tm, right)
-        Matrix4x4.set_up(tm, up)
-        Matrix4x4.set_forward(tm, -to_eye)
-        Matrix4x4.set_translation(tm, anchor)
         local primary, secondary = Readout.lines(values)
         local c = Readout.color(values)
-        local color = Color(240, c[1], c[2], c[3])
         -- An interrupted reload shakes the readout sideways, fading out.
         local dx = shake and math.sin(now * 55) * 0.006 * shake or 0
         local small = Readout.SMALL_FONT_SIZE * ps
-        local width = #primary * size * 0.52
         -- Measured in the eye render: the text position is above the glyphs,
-        -- whose tops sit 0.32 and bottoms 0.80 of the font size below it.
-        -- These place the clip and reserve as one block centred in the ring.
+        -- whose tops sit 0.32 and bottoms 0.80 of the font size below it;
+        -- the 2D text is centred on the glyphs' middle, 0.56 below.
         local layout = Readout.stack_layout(size, small)
         local primary_y = secondary and layout.clip_y or size * 0.56
-        Gui.slug_text_3d(gui, primary, font.path, size, tm, Vector3(dx - width * 0.5, primary_y, 0), 10,
-            color, "flags", font.render_flags or 0)
+        canvas.text(primary, Readout.FONT_SIZE, dx, primary_y - size * 0.56, {240, c[1], c[2], c[3]})
         if secondary then
             -- The reserve fades on its own capacity, independently of the clip.
-            local small_width = #secondary * small * 0.52
             local r = values.clip and Readout.fill_color(values.reserve, values.reserve_max) or c
-            Gui.slug_text_3d(gui, secondary, font.path, small, tm,
-                Vector3(dx - small_width * 0.5, layout.reserve_y, 0), 10,
-                Color(230, r[1], r[2], r[3]), "flags", font.render_flags or 0)
+            canvas.text(secondary, Readout.SMALL_FONT_SIZE, dx, layout.reserve_y - small * 0.56, {230, r[1], r[2], r[3]})
             -- The dash between them: a bar, so it never depends on the font's glyph.
-            local dash = Matrix4x4.identity()
-            Matrix4x4.set_right(dash, right)
-            Matrix4x4.set_up(dash, up)
-            Matrix4x4.set_forward(dash, -to_eye)
-            Matrix4x4.set_translation(dash, anchor + right * dx + up * layout.dash_y)
-            Gui.rect_3d(gui, dash, Vector2(-layout.dash_length * 0.5, -layout.dash_thickness * 0.5), 10,
-                Vector2(layout.dash_length, layout.dash_thickness), Color(200, r[1], r[2], r[3]))
+            canvas.rect(dx, layout.dash_y, layout.dash_length, layout.dash_thickness, {200, r[1], r[2], r[3]})
         end
         if progress then
-            -- Reload ring: a solid donut filling clockwise from the top over a
-            -- dim full track, smoothly (the leading piece grows with progress).
-            local centre = anchor + right * dx
+            -- Reload ring: squares along the circle (2D rectangles do not
+            -- rotate), a dim full track under the part filled clockwise from
+            -- the top.
+            local thickness = Readout.RING_THICKNESS
             for _, arc in ipairs(Readout.ring_arcs(progress)) do
-                local segment = Matrix4x4.identity()
-                local radial = right * math.sin(arc.angle) + up * math.cos(arc.angle)
-                Matrix4x4.set_right(segment, right * math.cos(arc.angle) - up * math.sin(arc.angle))
-                Matrix4x4.set_up(segment, radial)
-                Matrix4x4.set_forward(segment, -to_eye)
-                Matrix4x4.set_translation(segment, centre + radial * Readout.RING_RADIUS)
-                local length, thickness = arc.length, Readout.RING_THICKNESS
-                local alpha = arc.track and 70 or 230
-                Gui.rect_3d(gui, segment, Vector2(-length * 0.5, -thickness * 0.5), arc.track and 8 or 9,
-                    Vector2(length, thickness), Color(alpha, c[1], c[2], c[3]))
+                local steps = math.max(1, math.ceil(arc.length / thickness))
+                local step_angle = arc.length / Readout.RING_RADIUS / steps
+                local first = arc.angle - step_angle * (steps - 1) * 0.5
+                local color = {arc.track and 70 or 230, c[1], c[2], c[3]}
+                for k = 0, steps - 1 do
+                    local a = first + step_angle * k
+                    canvas.rect(dx + math.sin(a) * Readout.RING_RADIUS, math.cos(a) * Readout.RING_RADIUS,
+                        thickness, thickness, color)
+                end
             end
         end
         showing_t = not test and Managers.time:time("main") or nil

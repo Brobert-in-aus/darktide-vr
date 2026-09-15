@@ -8,7 +8,6 @@ local Counts = {}
 
 Counts.FONT_SIZE = 18
 Counts.PIXEL_METRES = 0.0009
-Counts.TOWARD_EYE = 0.04
 
 -- The label for a zone, or nil. data: blitz = {charges, max}; names by slot
 -- (false for an empty slot); ammo = {clip, reserve}. Pure.
@@ -100,32 +99,16 @@ function Counts.install(mod, presentation)
         local label = zone and Counts.label(zone, data_for(unit, zone))
         if not label then hide(); return end
         local frame = holsters.frame
-        local first_person = ScriptUnit.has_extension(unit, "first_person_system")
-        local eye_unit = first_person and first_person:first_person_unit()
-        if not eye_unit then hide(); return end
         local s, c = frame.scale, zone.centre
         local anchor = Vector3(frame.origin[1] + (frame.right[1] * c[1] + frame.forward[1] * c[2]) * s,
             frame.origin[2] + (frame.right[2] * c[1] + frame.forward[2] * c[2]) * s, frame.origin[3] + c[3] * s)
-        local eye = Unit.world_position(eye_unit, 1)
-        local to_eye = Vector3.normalize(eye - anchor)
-        anchor = anchor + to_eye * Counts.TOWARD_EYE
-        local right = Vector3.normalize(Vector3.cross(Vector3.up(), to_eye))
-        if Vector3.length(right) < 0.5 then right = Quaternion.right(Unit.world_rotation(eye_unit, 1)) end
-        local up = Vector3.cross(to_eye, right)
-        if world ~= game_world then api.destroy(); world = game_world end
-        if not gui then gui = World.create_world_gui(world, Matrix4x4.identity(), 1, 1, "immediate") end
-        Gui.set_visible(gui, true)
-        UIFonts = UIFonts or require("scripts/managers/ui/ui_fonts")
-        local font = UIFonts.data_by_type("proxima_nova_bold")
-        local size = Counts.FONT_SIZE * Counts.PIXEL_METRES
-        local tm = Matrix4x4.identity()
-        Matrix4x4.set_right(tm, right)
-        Matrix4x4.set_up(tm, up)
-        Matrix4x4.set_forward(tm, -to_eye)
-        Matrix4x4.set_translation(tm, anchor)
-        local width = #label * size * 0.5
-        Gui.slug_text_3d(gui, label, font.path, size, tm, Vector3(-width * 0.5, size * 0.3, 0), 10,
-            Color(235, 235, 225, 190), "flags", font.render_flags or 0)
+        -- In front of the scene: 2D UI on the hand overlay's panel at the zone
+        -- (darktidevr_hand_overlay); it was hidden behind the glove.
+        world = game_world
+        local overlay = presentation.hand_overlay
+        local canvas = overlay and overlay.canvas(game_world, "holster_counts", anchor, Counts.PIXEL_METRES)
+        if not canvas then hide(); return end
+        canvas.text(label, Counts.FONT_SIZE, 0, 0, {235, 235, 225, 190})
         if not logged[zone.id] then
             logged[zone.id] = true
             mod:info("DARKTIDEVR_HOLSTER_COUNTS first_draw zone=%s label=%s", zone.id, label)
