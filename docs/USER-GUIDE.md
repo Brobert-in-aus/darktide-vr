@@ -99,7 +99,9 @@ patch needs an update from us.
   right stick up switches weapon and right stick down interacts and
   reloads. Tutorial and HUD prompts show these badges.
 - Firing follows the right hand. Aim stabilisation and the crosshair size are
-  adjustable. Holding the sight dims the edges, tightens the reticle and
+  adjustable. "Cancel weapon sway (%)" removes the game's artificial weapon
+  sway from your shots (0, the default, keeps it), so only your own hands'
+  steadiness counts. Holding the sight dims the edges, tightens the reticle and
   steadies the aim ("Aim-down-sights focus" in the options). Melee is on a
   button, block uses the game's guard pose, and a swing preview can be
   toggled with F6.
@@ -153,10 +155,33 @@ to where an item is carried and press grip:
 | Right chest | ammo crate or medical kit |
 | Front of the belt | blitz: hold grip to draw and aim, let go to throw |
 
-The zones follow your body's facing and your height. An empty holster, or
-the item already in your hand, leaves the grip doing its normal action.
-Holsters are off in the hub. There is no vibration or visual hint yet when
-your hand is in a zone.
+The zones follow your body's facing and your height. An empty holster leaves
+the grip doing its normal action; pressing grip on the holster of the item
+already in your hand gives a double tap (with vibration on) and does nothing
+else. A grip pressed just before your hand arrives, or just after it has
+passed through, still counts. With "Controller vibration" on, the hand ticks
+as it reaches an armed holster; "Holster labels" shows what a holster holds
+while your hand rests on it. Holsters are off in the hub. The body zones are
+first estimates.
+
+### Weapon hand holsters (experimental)
+
+Experimental features, "Weapon hand holsters". Small models of your other
+weapon, stim, carried item and device float in a line above your gun hand's
+forearm, the weapon nearest the wrist. Reach into one with the other hand and
+press grip to equip it; the model your hand is in grows and ticks. The gun
+shows its ammo beneath it. They hide while you two-hand the gun or aim down
+its sights, and in the hub.
+
+### Wrist display, teammate status (experimental)
+
+- "Wrist display": health (white), toughness (the HUD's blue) and stamina bars
+  with their numbers above your off-hand wrist, drawn in front of everything.
+  "Wrist display size (%)" resizes it while playing. Not shown in the hub.
+- "Teammate status above teammates": each teammate's name, toughness and
+  health float above their head at a readable size at any distance, with
+  DOWNED, NETTED and similar when they need help. Their panels in the team HUD
+  are hidden while it is on; yours stays.
 
 ### Two-hand support (experimental)
 
@@ -165,7 +190,8 @@ two-handed gun out, bring your off hand to where the weapon's animation holds th
 foregrip: the glove slides onto the foregrip to show you are in place. Press
 grip there and the gun follows both hands, however far apart you move them,
 until you let go (or, with "Two-hand grip" set to Toggle, until you press grip
-again). Bringing your hands together or crossing them also lets go. The grip point comes from the game's own animation of
+again). Bringing your hands together or crossing them also lets go. The grip
+holds through reloads and bashes. The grip point comes from the game's own animation of
 each gun, found as the draw finishes and remembered between sessions, so it is
 ready as soon as the gun is in your hand; one-handed weapons offer no grip.
 Gripping does not aim down sights. Controller bindings, While gripping, lets an
@@ -173,6 +199,13 @@ action use a different control while you hold the foregrip; every action
 starts on Same as combat. Right-hand dominant only for now. The older
 `/dtvr_two_hand_calibrate` command still records a custom grip for the
 current session.
+
+"Virtual stock (experimental)": bring a two-handed rifle's butt to your
+shoulder and it rests there, aiming from the shoulder to your front hand.
+"Aim down sights by raising the gun (experimental)": bring the sights to your
+eye to aim down them, and move the gun away to stop. It knows the galvanic
+rifle's sight height; other guns learn theirs the first time you aim down
+their sights with the button.
 
 ### Controller vibration (experimental)
 
@@ -200,18 +233,21 @@ Mod Options, Darktide VR, Experimental features, "Controller vibration":
   damage, knockdown and block pulses. It leaves out the low ammo, low health,
   stamina, recharge and 75 % heat or peril notices.
 
-"Controller vibration strength" scales every vibration (25-200 %). Menu
-vibrations are planned.
+Informative also ticks lightly as the menu pointer moves onto a control and on
+a click. "Controller vibration strength" scales every vibration (25-200 %).
 
 ### Ammo count at the hand (experimental)
 
 Mod Options, Darktide VR, Experimental features, "Ammo count at the hand".
-With a ranged weapon out, the clip count shows beside your weapon hand with
-the reserve beneath it, instead of on the HUD panel. Each number is white
-when full and turns yellow, orange and finally red as it runs out. Reloading
-fills a ring around the count; if the reload is interrupted (for example by
-sprinting), the count shakes and the ring disappears. Weapons with heat show
-it as a percentage.
+With a ranged weapon out, the clip count shows on the gun, beside the
+receiver just ahead of your hand, with the reserve beneath it, instead of on
+the HUD panel. It draws in front of your hand, the gun and the scene. Each
+number is white when full and turns yellow, orange and finally red as it runs
+out. Reloading fills a ring around the count; if the reload is interrupted
+(for example by sprinting), the count shakes and the ring disappears. Weapons
+with heat show it as a percentage, force staffs show peril, and melee weapons
+with special charges (such as the Skitarius arc maul) show their charges
+beside the hand.
 
 ## Known limits of this alpha
 
@@ -244,6 +280,15 @@ it as a percentage.
   show.
 - Weapon charge meters (for example the Skitarii shock maul's) sit at the
   centre of the HUD panel rather than around the hand-aimed crosshair.
+- The gun hand's glove still follows the character's animation, so it can
+  shift slightly while strafing and differs a little between weapons.
+- The crosshair may still sit slightly off a gun's iron sights. Stray
+  magazine and cartridge parts at the grip have been fixed on the galvanic
+  rifle only.
+- Two-hand support is right-hand dominant, and moving the right hand while
+  gripping can feel off; the virtual stock's shoulder position is an estimate.
+- If a crash wipes your game settings, `Darktide VR Mode.bat` option 4
+  restores the last good copy.
 - Only one setup has been tested: an RTX 4090, a Quest 3 and Virtual
   Desktop.
 
@@ -251,8 +296,7 @@ it as a percentage.
 
 Already in the pipeline; no need to request these:
 
-- A broad haptics pass: firing, melee contact, block, sight, damage taken,
-  interaction and pointer hover, with per-event strength options.
+- Per-event vibration strength options.
 - Fuller two-hand weapon support: staffs and two-handed melee, left-hand
   dominant grips and saved custom grips (the experimental option above
   covers two-handed guns only).

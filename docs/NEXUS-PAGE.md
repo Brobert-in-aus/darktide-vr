@@ -1,4 +1,4 @@
-# Nexus Mods page text (12 September 2026, updated for 0.1.0-alpha.3 on 13 September)
+# Nexus Mods page text (12 September 2026, updated for 0.2.0-alpha.1 on 15 September)
 
 Paste-ready sections for the Nexus page. Keep the claims in step with
 USER-GUIDE.md; anything not listed under "What works" has not been checked
@@ -31,7 +31,12 @@ like any other Darktide mod and is launched through Steam as usual.
   HUD.
 - World markers, nameplates and interaction popups in world space, drawn in
   front of the scene.
-- Experimental: seated keyboard and mouse play (see below).
+- Experimental: seated keyboard and mouse play (see below); two-hand gun
+  support with a virtual stock; virtual holsters on the body and above the
+  gun hand's forearm; ammo, health and teammate status in the world;
+  controller vibration.
+- Optional removal of the game's artificial weapon sway, so only your own
+  hands' steadiness counts.
 - A two-pose calibration that also sets your character's official height.
 - Optional third-person body in the hub.
 - One batch file switches between VR and flat play and keeps a separate
@@ -63,8 +68,7 @@ like any other Darktide mod and is launched through Steam as usual.
 
 **Planned** (already in the pipeline, no need to request):
 
-- Haptics pass.
-- Proper two-hand weapon support with saved grips.
+- Two-hand support for staffs and two-handed melee, and left-hand grips.
 - Left-hand dominant presentation.
 - Bindings for Index, Vive, WMR and Pico controllers; checks on SteamVR,
   Meta Link and other headsets; AMD and Intel verification.
@@ -96,6 +100,31 @@ the Psykhanium and part of a mission.
   it at the native frame rate; other GPUs untested).
 - Optional: Custom HUD (continued), for HUD layout editing (tested with
   2.1.6; the original Custom HUD is untested).
+
+## Changelog post: 0.2.0-alpha.1
+
+For the Nexus changelog and the Posts tab. Matches CHANGELOG.md.
+
+- Fixed: closing the game in VR no longer crashes; the headset view no longer
+  goes dark after a level load and the viewer restarts itself if it fails;
+  the view returns after the headset sleeps; flamer, chain lightning, wind
+  slash and shield glow effects start from your weapon.
+- The crosshair sits closer to the iron sights, and the galvanic rifle no
+  longer shows stray rounds or parts at the grip.
+- New option "Cancel weapon sway (%)": remove the game's artificial sway so
+  only your own hands' steadiness counts.
+- Settings wiped by a crash? `Darktide VR Mode.bat` option 4 restores the last
+  good copy.
+- New experimental features (all off by default, Mod Options, Experimental
+  features):
+  - two-hand support for guns, holding through reloads, with a virtual stock
+    and aiming down sights by raising the gun;
+  - virtual holsters on your body, and small item models above your gun hand's
+    forearm to grab from;
+  - ammo count on the gun, a health, toughness and stamina display on your
+    wrist, and teammate status above teammates, all drawn in front of the
+    scene;
+  - controller vibration, Informative or Immersive.
 
 ## Changelog post: 0.1.0-alpha.3
 

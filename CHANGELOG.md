@@ -4,32 +4,75 @@ All notable user-facing changes to Darktide VR. Versions follow
 `major.minor.patch` with a pre-release suffix while the mod is in alpha; the
 runtime package records the exact source revision alongside the version.
 
-## 0.1.0-alpha.4 (unreleased)
+## 0.2.0-alpha.1 (unreleased)
+
+Fixes:
 
 - Closing the game in VR mode no longer crashes it on the way out.
 - The headset view no longer goes dark when a level finishes loading (for
   example entering the Psykhanium), and the headset viewer no longer crashes
   at level load. If the headset viewer ever fails during play, the game starts
   it again.
-- Experimental ammo count at the hand (off by default): clip and reserve
-  beside the weapon hand, fading from white to red as they run down, with a
-  ring that fills while reloading.
-- Experimental two-hand support (off by default): grip where the weapon's own
-  animation holds the foregrip to steady a gun with both hands, available as
-  soon as the gun is drawn. The glove slides onto the foregrip when your hand
-  is close enough, grip can be a hold or a toggle, and actions can have their
-  own controls while gripping.
-- Experimental controller vibration (off by default), Informative or Immersive:
-  grip and holster feedback, empty clip, reload finished, low ammo, damage,
-  knockdown, blocks, stamina, ability recharge, heat, peril and charge, heavy attack ready, melee specials, finished interactions, with a strength
-  slider, and in
-  Immersive every shot (by weapon), melee hit and push.
+- Taking the headset off until it sleeps and putting it back on brings the
+  view back.
+- The crosshair sits closer to a gun's iron sights (it was up and to the left
+  of them). Guns other than the galvanic rifle are corrected after about a
+  second of aiming down their sights.
+- The galvanic rifle no longer shows a stray round, cartridge case or clip at
+  the grip outside reloads.
 - Flamethrower streams, chain lightning, the force sword's wind slash and the
   shield's windup glow start from the weapon in your hand.
-- Experimental virtual holsters (off by default): reach to your shoulder,
-  hip or chest and press grip to take out a weapon, stim, device or carried
-  item; hold grip at the front of the belt to draw a blitz and let go to
-  throw it.
+- If a crash wipes the game's settings, run `Darktide VR Mode.bat` and choose
+  4 to restore the last good copy; the mod keeps one from every launch.
+
+New option:
+
+- "Cancel weapon sway (%)" (default 0): removes the game's artificial weapon
+  sway from your shots, so only your own hands' steadiness counts. Recoil and
+  spread are unchanged.
+
+Experimental features (Mod Options, Darktide VR, Experimental features; all
+off by default):
+
+- Two-hand support: grip where the weapon's own animation holds the foregrip
+  to steady a gun with both hands, available as soon as the gun is drawn. The
+  glove slides onto the foregrip when your hand is close enough, grip can be a
+  hold or a toggle, and it holds through reloads and bashes. "While gripping"
+  in the controller bindings gives actions their own controls while you hold
+  the foregrip. "Two-hand steadying" offers an experimental Hands line mode.
+- Virtual stock: bring a two-handed rifle's butt to your shoulder and it rests
+  there.
+- Aim down sights by raising the gun: bring the sights to your eye to aim down
+  them. Works for the galvanic rifle straight away, and for other guns once
+  you have aimed down their sights with the button.
+- Virtual holsters: reach to your shoulder, hip or chest and press grip to take
+  out a weapon, stim, device or carried item; hold grip at the front of the
+  belt to draw a blitz and let go to throw it. The zones scale with your
+  height. A grip pressed just before your hand arrives, or just after it has
+  passed through, still counts. Pressing grip on the holster of the item you
+  are already holding gives a double tap and does nothing else. "Holster
+  labels" shows what a holster holds while your hand rests on it.
+- Weapon hand holsters: small models of your other weapon, stim, carried item
+  and device above your gun hand's forearm; reach in with the other hand and
+  press grip to equip. The one your hand is in grows and ticks, the gun shows
+  its ammo beneath it, and they hide while you two-hand or aim down sights.
+- Wrist display: health, toughness and stamina bars with their numbers above
+  your off-hand wrist, drawn in front of everything, with a size slider. Not
+  shown in the hub.
+- Teammate status above teammates: each teammate's name, toughness and health
+  float above their head at a readable size, with DOWNED, NETTED and similar
+  when they need help; their panels leave the team HUD while it is on.
+- Ammo count at the hand: clip and reserve on the gun, beside the receiver,
+  instead of on the HUD panel, fading from white to red as they run down, with
+  a ring that fills while reloading. It draws in front of the hand, gun and
+  scene. Heat shows as a percentage, force staffs show peril, and melee
+  weapons with special charges (such as the Skitarius arc maul) show their
+  charges.
+- Controller vibration, Informative or Immersive, with a strength slider:
+  grip and holster feedback, empty clip, reload finished, low ammo, damage,
+  knockdown, blocks, stamina, ability recharge, heat, peril and charge, heavy
+  attack ready, melee specials, finished interactions and menu ticks, and in
+  Immersive every shot (by weapon), melee hit and push.
 
 ## 0.1.0-alpha.3 (13 September 2026)
 
