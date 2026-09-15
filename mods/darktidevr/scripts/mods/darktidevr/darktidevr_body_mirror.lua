@@ -20,7 +20,10 @@
 -- Flag "overlay": the same, then each arm is re-solved as two bones of their
 -- spawned lengths so the hand reaches the avatar's hand (which carries the
 -- weapon and sits on the glove), bending toward the stock animated elbow.
--- Swing only: the forearm roll joints are not twisted yet.
+-- Swing only: the forearm roll joints are not twisted yet. It also hides the
+-- meshes near the eye (design, "What the player sees in first person"):
+-- overlay5 looking down showed the empty collar ring where the hidden head
+-- was. "overlayarms" is the arm solve without that hiding, for A/B.
 local Mirror = {}
 
 Mirror.FLAG = "./../mods/darktidevr/darktidevr_body_mirror.flag"
@@ -29,8 +32,29 @@ Mirror.KEPT_SLOT_TYPES = {body = true, gear = true, material = true}
 Mirror.MODES = {
     mirror = {distance = Mirror.MIRROR_DISTANCE, facing = true, hide_head = false},
     overlaycopy = {distance = 0, facing = false, hide_head = true, solve_arms = false},
-    overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true},
+    overlayarms = {distance = 0, facing = false, hide_head = true, solve_arms = true},
+    overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true},
 }
+-- Near-eye mesh hiding, in the character root's frame at the spawn pose.
+Mirror.NEAR_EYE_RADIUS = 0.25
+Mirror.EYE_ABOVE_HEAD = 0.07
+Mirror.EYE_FORWARD_OF_HEAD = 0.08
+-- A box this large (largest half extent) is a whole garment such as the
+-- torso: hiding it would remove the body, so it is kept and logged.
+Mirror.NEAR_EYE_MAX_HALF_EXTENT = 0.30
+
+-- Whether a mesh is hidden as near the eye: its box centre within the radius
+-- of the eye and above the shoulder line, and the box not a whole garment.
+-- Arrays in the root frame (z up). Returns hide, distance, reason. Pure.
+function Mirror.near_eye(centre, half_extents, eye, shoulder_height)
+    local distance = math.sqrt((centre[1] - eye[1]) ^ 2 + (centre[2] - eye[2]) ^ 2 + (centre[3] - eye[3]) ^ 2)
+    if distance > Mirror.NEAR_EYE_RADIUS then return false, distance, "far" end
+    if centre[3] < shoulder_height then return false, distance, "below_shoulders" end
+    if math.max(half_extents[1], half_extents[2], half_extents[3]) > Mirror.NEAR_EYE_MAX_HALF_EXTENT then
+        return false, distance, "too_large"
+    end
+    return true, distance, "near_eye"
+end
 Mirror.ARM_SIDES = {"left", "right"}
 -- Added to the stock elbow as the bend hint, so a straight stock arm still
 -- bends downward.
@@ -157,6 +181,52 @@ function Mirror.install(mod, presentation)
         set_world_rotation(unit, joint, Quaternion.multiply(swing, Unit.world_rotation(unit, joint)))
         World.update_unit(world, unit)
     end
+    -- Hide near-eye meshes of every spawned slot unit and its attachments,
+    -- logging each decision so a worn test can name wrong ones.
+    local function hide_near_eye(unit, data)
+        if not (Unit.has_node(unit, "j_head") and Unit.has_node(unit, "j_leftarm")) then
+            log_once("near_eye_nodes", "near_eye=skipped reason=nodes_missing")
+            return
+        end
+        local root_inverse = Matrix4x4.inverse(Unit.world_pose(unit, 1))
+        local function root_local(position) return array(Matrix4x4.transform(root_inverse, position)) end
+        local head = root_local(Unit.world_position(unit, Unit.node(unit, "j_head")))
+        local eye = {head[1], head[2] + Mirror.EYE_FORWARD_OF_HEAD, head[3] + Mirror.EYE_ABOVE_HEAD}
+        local shoulder_height = root_local(Unit.world_position(unit, Unit.node(unit, "j_leftarm")))[3]
+        local hidden, total = 0, 0
+        local function scan(slot_name, slot_unit)
+            local pose = Unit.world_pose(slot_unit, 1)
+            for index = 1, Unit.num_meshes(slot_unit) do
+                local ok, box_pose, half = pcall(Mesh.box, Unit.mesh(slot_unit, index))
+                if ok and box_pose and half then
+                    total = total + 1
+                    local centre = root_local(Matrix4x4.transform(pose, Matrix4x4.translation(box_pose)))
+                    local hide, distance, reason = Mirror.near_eye(centre, array(half), eye, shoulder_height)
+                    if hide then
+                        Unit.set_mesh_visibility(slot_unit, index, false)
+                        hidden = hidden + 1
+                    end
+                    if distance <= Mirror.NEAR_EYE_RADIUS * 2 then
+                        mod:info("DARKTIDEVR_BODY_MIRROR near_eye slot=%s unit=%s mesh=%d centre=%.3f,%.3f,%.3f half=%.3f,%.3f,%.3f eye_m=%.3f decision=%s",
+                            slot_name, tostring(Unit.get_data(slot_unit, "unit_name") or slot_unit), index,
+                            centre[1], centre[2], centre[3], Vector3.x(half), Vector3.y(half), Vector3.z(half), distance, reason)
+                    end
+                end
+            end
+        end
+        for slot_name, slot in pairs(data.slots or {}) do
+            local slot_unit = slot.unit_3p
+            if slot_unit and Unit.alive(slot_unit) then
+                scan(slot_name, slot_unit)
+                local attachments = slot.attachments_by_unit_3p and slot.attachments_by_unit_3p[slot_unit]
+                for _, attachment in ipairs(attachments or {}) do
+                    if Unit.alive(attachment) then scan(slot_name .. "/attachment", attachment) end
+                end
+            end
+        end
+        mod:info("DARKTIDEVR_BODY_MIRROR near_eye eye=%.3f,%.3f,%.3f shoulder_z=%.3f meshes=%d hidden=%d",
+            eye[1], eye[2], eye[3], shoulder_height, total, hidden)
+    end
     local function capture_arms(unit)
         state.arms = {}
         for _, side in ipairs(Mirror.ARM_SIDES) do
@@ -241,6 +311,7 @@ function Mirror.install(mod, presentation)
                 function(name) return Unit.has_node(unit, name) and Unit.node(unit, name) end, probes)
             state.count = Unit.num_scene_graph_items(unit)
             capture_arms(unit)
+            if Mirror.MODES[mode_name].near_eye then hide_near_eye(unit, data) end
             local slots, hidden = 0, {}
             for slot_name, slot in pairs(data.slots or {}) do
                 slots = slots + 1
@@ -278,6 +349,12 @@ function Mirror.install(mod, presentation)
         end
         state.frames = state.frames + 1
         if state.frames == 1 or state.frames % 900 == 0 then
+            local first_person = ScriptUnit.has_extension(avatar, "first_person_system")
+            local camera = first_person and first_person:first_person_unit()
+            if camera and Mirror.MODES[mode_name].near_eye then
+                local eye = Matrix4x4.transform(Matrix4x4.inverse(Unit.world_pose(unit, 1)), Unit.world_position(camera, 1))
+                mod:info("DARKTIDEVR_BODY_MIRROR live_eye_root_local=%.3f,%.3f,%.3f", Vector3.x(eye), Vector3.y(eye), Vector3.z(eye))
+            end
             local unit_hand, avatar_hand = Unit.node(unit, "j_righthand"), Unit.node(avatar, "j_righthand")
             local hand = Vector3.distance(Unit.local_position(unit, unit_hand), Unit.local_position(avatar, avatar_hand))
             -- Overlay: how far the copied hand lands from the avatar's (which
