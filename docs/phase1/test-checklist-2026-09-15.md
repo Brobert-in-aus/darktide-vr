@@ -224,4 +224,14 @@ the part of the hands refactor that runs for everyone.
       teammate, readable near and far and through walls;
     - DOWNED or NETTED shows when they need help;
     - their panels leave the team HUD (yours stays).
+20. **Reverse grip grace** (`reverse grace` commit after `84609e7`). Press
+    grip a moment before the off hand reaches the foregrip or a holster, and
+    keep holding as it arrives: it should take the grip or item, and the
+    class ability or special should not fire.
+    - If the hand never arrives, the ability fires about a quarter second
+      late.
+    - A quick tap near a zone still fires as a tap.
+
+    Say if that delay is noticeable. It only happens with the hand within
+    about 12 cm of the foregrip or 1.5 holster radii.
 
