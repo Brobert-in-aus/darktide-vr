@@ -36,6 +36,15 @@ assert(select(2, Readout.text(empty_maul)) == "critical")
 local r = Readout.color(Readout.melee_values({num_special_charges = 3, max_num_special_charges = 3, special_active = true}))
 assert(r[1] == 110 and r[3] == 255, "active special shows blue")
 assert(Readout.melee_values({num_special_charges = 9, max_num_special_charges = 3}).charges == 3, "clamped")
+-- The Skitarius arc maul: 0-40 stored in the tweak data, shown as eight charges.
+local arc = {max_charges = 40, activation_cost_divisor = 8}
+local brutus = assert(Readout.melee_values({num_special_charges = 23, max_num_special_charges = 0}, arc))
+assert(brutus.charges == 4 and brutus.charges_max == 8 and Readout.lines(brutus) == "4/8", "arc maul shows 4/8")
+assert(Readout.melee_values({num_special_charges = 40, max_num_special_charges = 0}, arc).charges == 8)
+assert(Readout.melee_values({num_special_charges = 4, max_num_special_charges = 0}, arc).charges == 0, "below one charge")
+assert(Readout.melee_values({num_special_charges = 1, max_num_special_charges = 0}, {}) == nil, "no tweak maximum")
+assert(Readout.melee_values({num_special_charges = 7, max_num_special_charges = 0}, {max_charges = 10}).charges == 7,
+    "tweak maximum without a divisor")
 -- A staff (no ammo, no heat) shows peril while there is any.
 assert(Readout.values({}, Ammo, 2, 0) == nil, "no peril, nothing shown")
 local staff = assert(Readout.values({}, Ammo, 2, 0.63))

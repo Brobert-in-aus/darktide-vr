@@ -102,15 +102,24 @@ function Readout.values(slot, Ammo, clip_count, peril)
     return result
 end
 
--- A melee weapon with special charges (two-handed force swords, some axes,
--- crowbars and shivs; not power mauls): charges left
--- and whether the special is active. nil for melee weapons without charges.
-function Readout.melee_values(slot)
+-- A melee weapon with special charges: charges left and whether the special
+-- is active. nil for melee weapons without charges. The maximum is the slot's
+-- max_num_special_charges or, for charge specials such as the Skitarius arc
+-- maul (WeaponSpecialHitCharges: 0-40 stored, gained over time and on hits),
+-- the template tweak data's max_charges; an activation_cost_divisor turns the
+-- stored count into the charges the player sees (40 / 8 = 5 per charge).
+function Readout.melee_values(slot, tweak)
     if type(slot) ~= "table" then return nil end
     local max = slot.max_num_special_charges
+    if (type(max) ~= "number" or max <= 0) and type(tweak) == "table" then max = tweak.max_charges end
     if type(max) ~= "number" or max <= 0 then return nil end
-    return {charges = math.max(0, math.min(max, slot.num_special_charges or 0)), charges_max = max,
-        active = slot.special_active == true}
+    local stored = math.max(0, math.min(max, slot.num_special_charges or 0))
+    local divisor = type(tweak) == "table" and tweak.activation_cost_divisor
+    if type(divisor) == "number" and divisor >= 1 then
+        return {charges = math.floor(stored / (max / divisor) + 1e-6), charges_max = divisor,
+            active = slot.special_active == true}
+    end
+    return {charges = stored, charges_max = max, active = slot.special_active == true}
 end
 
 -- Display text and colour: white, amber from 20 % left (stock's low-ammo
@@ -257,7 +266,9 @@ function Readout.install(mod, presentation, observation)
         local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
         local inventory = unit_data and unit_data:read_component("inventory")
         if inventory and inventory.wielded_slot == "slot_primary" then
-            return Readout.melee_values(unit_data:read_component("slot_primary"))
+            local weapon = ScriptUnit.has_extension(unit, "weapon_system")
+            local template = weapon and weapon:weapon_template()
+            return Readout.melee_values(unit_data:read_component("slot_primary"), template and template.weapon_special_tweak_data)
         end
         if not inventory or inventory.wielded_slot ~= "slot_secondary" then return nil end
         Ammo = Ammo or require("scripts/utilities/ammo")
