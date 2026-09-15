@@ -163,11 +163,6 @@ return {
                         default_value = true,
                     },
                     {
-                        setting_id = "vr_holsters",
-                        type = "checkbox",
-                        default_value = false,
-                    },
-                    {
                         setting_id = "vr_two_hand_support",
                         type = "checkbox",
                         default_value = false,

@@ -32,8 +32,8 @@ like any other Darktide mod and is launched through Steam as usual.
 - World markers, nameplates and interaction popups in world space, drawn in
   front of the scene.
 - Experimental: seated keyboard and mouse play (see below); two-hand gun
-  support with a virtual stock; virtual holsters on the body and above the
-  gun hand's forearm; ammo, health and teammate status in the world;
+  support with a virtual stock; holsters above the gun hand's forearm;
+  ammo, health and teammate status in the world;
   controller vibration.
 - Optional removal of the game's artificial weapon sway, so only your own
   hands' steadiness counts.
@@ -119,8 +119,7 @@ For the Nexus changelog and the Posts tab. Matches CHANGELOG.md.
   features):
   - two-hand support for guns, holding through reloads, with a virtual stock
     and aiming down sights by raising the gun;
-  - virtual holsters on your body, and small item models above your gun hand's
-    forearm to grab from;
+  - small item models above your gun hand's forearm to grab from;
   - ammo count on the gun, a health, toughness and stamina display on your
     wrist, and teammate status above teammates, all drawn in front of the
     scene;

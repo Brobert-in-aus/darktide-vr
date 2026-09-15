@@ -47,21 +47,15 @@ off by default):
 - Aim down sights by raising the gun: bring the sights to your eye to aim down
   them. Works for the galvanic rifle straight away, and for other guns once
   you have aimed down their sights with the button.
-- Virtual holsters: reach to your shoulder, hip or chest and press grip to take
-  out a weapon, stim, device or carried item; hold grip at the front of the
-  belt to draw a blitz and let go to throw it. The zones scale with your
-  height. A grip pressed just before your hand arrives, or just after it has
-  passed through, still counts. Pressing grip on the holster of the item you
-  are already holding gives a double tap and does nothing else. "Holster
-  labels" shows what a holster holds while your hand rests on it. A holster
-  counts your hand as soon as your fingertips reach it. The hip and chest
-  holsters show a small model of what they hold, so you can see where to reach;
-  the shoulder holster, out of sight, is extra large.
 - Weapon hand holsters: small models of your other weapon, stim, carried item
   and device above your gun hand's forearm; reach in with the other hand and
   press grip to equip. The one your hand is in grows and ticks (and shows its
-  name with Holster labels on), the weapon shows its ammo or charges beneath it, and they
-  hide while you two-hand or aim down sights.
+  name with "Holster labels" on), the weapon shows its ammo or charges beneath
+  it, and they hide while you two-hand or aim down sights. Your hand counts as
+  soon as your fingertips reach a model, a grip pressed just before your hand
+  arrives or just after it has passed through still counts, and pressing grip
+  on the item you are already holding gives a double tap and does nothing
+  else.
 - Wrist display: health, toughness and stamina bars with their numbers in your
   off-hand glove's cuff, drawn in front of everything, with a size slider. Not
   shown in the hub.

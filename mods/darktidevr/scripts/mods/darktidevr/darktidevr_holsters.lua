@@ -24,6 +24,11 @@ Holsters.REFUSED_TAP_GAP = 0.12
 -- controller's aim toward the fingertips: fingers inside an item did not
 -- count while the palm was outside its zone (worn, 15 September evening).
 Holsters.HAND_REACH = 0.10
+-- Body holsters are withheld from 0.2.0-alpha.1 (user, 15 September
+-- evening): the option is out of the menu and a saved setting is ignored
+-- until the tracked-eye frame (checklist item 32) is checked worn. The
+-- unattended test flag still turns them on.
+Holsters.BODY_AVAILABLE = false
 Holsters.PROBE_SECONDS = 2
 Holsters.PROBE_LINES = 60
 Holsters.TEST_FLAG = "./../mods/darktidevr/darktidevr_holsters_test.flag"
@@ -328,11 +333,12 @@ function Holsters.install(mod, presentation, observation)
             if presentation.haptics then presentation.haptics.pulse(pending_tap.hand, "refused", t) end
             pending_tap = nil
         end
-        local body = mod:get("vr_holsters") or test_flag()
+        local body = (Holsters.BODY_AVAILABLE and mod:get("vr_holsters")) or test_flag()
+        api.body_active = body == true
         local forearm = presentation.forearm_holsters
         local forearm_on = forearm and forearm.enabled()
         if not active or not (body or forearm_on) or not unit then
-            api.reset(); owner_hand = nil; haptic_zone = {}; api.frame = nil
+            api.reset(); owner_hand = nil; haptic_zone = {}; api.frame = nil; api.body_active = false
             return nil
         end
         local frame = body_frame(unit)

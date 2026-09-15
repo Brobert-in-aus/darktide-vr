@@ -141,41 +141,18 @@ Options, Darktide VR, Experimental features, "Keyboard and mouse in VR".
   horizontal-only mouselook. Full mouselook and remote mission servers are
   less tested.
 
-### Virtual holsters (experimental)
-
-Mod Options, Darktide VR, Experimental features, "Virtual holsters". Reach
-to where an item is carried and press grip:
-
-| Where | What comes out |
-| --- | --- |
-| Over your right shoulder | ranged weapon |
-| Left hip | melee weapon |
-| Right hip | auspex or other device |
-| Left chest | stim |
-| Right chest | ammo crate or medical kit |
-| Front of the belt | blitz: hold grip to draw and aim, let go to throw |
-
-The zones follow your body's facing and your height. An empty holster leaves
-the grip doing its normal action; pressing grip on the holster of the item
-already in your hand gives a double tap (with vibration on) and does nothing
-else. A grip pressed just before your hand arrives, or just after it has
-passed through, still counts, and your hand counts as soon as your fingertips
-reach a holster. With "Controller vibration" on, the hand ticks
-as it reaches an armed holster; "Holster labels" shows what a holster holds
-while your hand rests on it. The hip and chest holsters always show a small
-model of what they hold (not the item already in your hand), which grows while
-your hand is in the holster; the shoulder holster is out of sight and extra
-large. Holsters are off in the hub. The body zones are first estimates.
-
 ### Weapon hand holsters (experimental)
 
 Experimental features, "Weapon hand holsters". Small models of your other
 weapon, stim, carried item and device float in a line above your gun hand's
 forearm, the weapon nearest the wrist. Reach into one with the other hand and
 press grip to equip it; the model your hand is in grows and ticks, and with
-"Holster labels" on its name shows above it. The weapon
-shows its ammo, heat or special charges beneath it. They hide while you two-hand the gun or aim down
-its sights, and in the hub.
+"Holster labels" on its name shows above it. The weapon shows its ammo, heat or
+special charges beneath it. Your hand counts as soon as your fingertips reach a
+model; a grip pressed just before your hand arrives, or just after it has
+passed through, still counts; pressing grip on the item already in your hand
+gives a double tap (with vibration on) and does nothing else. They hide while
+you two-hand the gun or aim down its sights, and in the hub.
 
 ### Wrist display, teammate status (experimental)
 
@@ -303,6 +280,8 @@ beside the hand.
 Already in the pipeline; no need to request these:
 
 - Per-event vibration strength options.
+- Body holsters (shoulder, hips, chest and belt), with item models showing
+  where to reach.
 - Fuller two-hand weapon support: staffs and two-handed melee, left-hand
   dominant grips and saved custom grips (the experimental option above
   covers two-handed guns only).

@@ -378,3 +378,6 @@ the part of the hands refactor that runs for everyone.
     models should appear in front of and beside your body, and all five
     zones (shoulder, both hips, both chests) and the belt should pulse and
     grab. The probe log lines stay for this check.
+
+Body holsters withheld from 0.2.0-alpha.1 (user, 15 September, about 20:50):
+the option is hidden and ignored; item 32 moves to the 16 September todo.

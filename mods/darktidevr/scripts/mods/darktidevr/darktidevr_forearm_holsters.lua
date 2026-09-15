@@ -80,11 +80,13 @@ end
 -- grows while a hand is in the holster. The shoulder holster is behind the
 -- head and the belt holds a blitz, so neither has one.
 Forearm.BODY_MODELS = {hip_left = true, hip_right = true, chest_left = true, chest_right = true}
--- With Virtual holsters on, the holster frame known, presentation in
--- gameplay and not in the hub. Pure over its arguments.
+-- With the body holsters active this frame (darktidevr_holsters: available
+-- and turned on), the holster frame known, presentation in gameplay and not
+-- in the hub. Pure over its arguments.
 function Forearm.body_models_enabled(mod, presentation, frame)
     if presentation.current_game_mode_name and presentation.current_game_mode_name() == "hub" then return false end
-    return frame ~= nil and presentation.mode == 1 and mod.get ~= nil and mod:get("vr_holsters") == true
+    return frame ~= nil and presentation.mode == 1 and presentation.holsters ~= nil and
+        presentation.holsters.body_active == true
 end
 
 -- A preview's scale this frame. Pure.
