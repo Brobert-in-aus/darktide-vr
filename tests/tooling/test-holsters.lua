@@ -47,8 +47,16 @@ assert(api.update("left", chest, 1.00) == nil, "armed on the first frame")
 assert(api.update("left", chest, 1.03) == nil, "armed before the dwell")
 local ready = api.update("left", chest, 1.06)
 assert(ready and ready.id == "chest_left")
-assert(api.update("left", {0, 0, 0}, 1.07) == nil and api.hands.left.zone == nil, "left the zone")
-assert(api.update("left", chest, 1.08) == nil, "dwell restarts on re-entry")
+-- Grace: just after leaving, the zone is still offered (a press on the haptic).
+local graced = api.update("left", {0, 0, 0}, 1.07)
+assert(graced and graced.id == "chest_left" and api.hands.left.zone == nil, "left the zone, within the grace")
+assert(api.update("left", {0, 0, 0}, 1.07 + Holsters.GRACE_SECONDS + 0.01) == nil, "grace expires")
+assert(api.update("left", chest, 1.50) == nil, "dwell restarts on re-entry")
+assert(api.update("left", chest, 1.50 + Holsters.DWELL_SECONDS) ~= nil, "armed again after the dwell")
+-- Passing through without the dwell leaves no grace.
+local quick = Holsters.new()
+quick.update("left", chest, 2.00)
+assert(quick.update("left", {0, 0, 0}, 2.02) == nil, "no grace for a zone never armed")
 assert(api.update("left", nil, 1.2) == nil and api.hands.left.zone == nil, "lost tracking leaves the zone")
 assert(api.update("both", chest, 1.2) == nil, "unknown hand")
 

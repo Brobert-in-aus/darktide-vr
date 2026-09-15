@@ -8,9 +8,10 @@ local Readout = {}
 Readout.OFFSET_UP = 0.09        -- metres above the grip
 Readout.OFFSET_INWARD = 0.05    -- towards the body's midline
 -- Worn, 15 September evening: 5 cm further toward the end of the hand (along
--- the aim), and drawn toward the eye so the hand and gun cannot cover it.
+-- the aim), then 6 cm away from the eye (drawn toward the eye it filled the
+-- view while aiming; staying visible is a rendering matter, not position).
 Readout.OFFSET_FORWARD = 0.05
-Readout.TOWARD_EYE = 0.06
+Readout.AWAY_FROM_EYE = 0.06
 Readout.PIXEL_METRES = 0.0011   -- world size of one font pixel
 Readout.FONT_SIZE = 30          -- clip count (or heat)
 Readout.SMALL_FONT_SIZE = 15    -- reserve under it
@@ -344,7 +345,7 @@ function Readout.install(mod, presentation, observation)
             local offset = eye - anchor
             local distance = Vector3.length(offset)
             if distance > 1e-4 then
-                anchor = anchor + offset * (math.min(Readout.TOWARD_EYE, distance * 0.5) / distance)
+                anchor = anchor - offset * (Readout.AWAY_FROM_EYE / distance)
             end
         end
         -- Face the eye, text upright: local x to the viewer's right, y up.

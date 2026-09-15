@@ -6,13 +6,12 @@
 -- unchanged.
 --
 -- The panel sits above the wrist in world up, so it stays put as the wrist
--- rolls (like the ammo counter), then moves toward the eye so the glove's
--- cuff does not cover it (worn: it was occluded by the gloves).
+-- rolls (like the ammo counter). Moving it toward the eye made it large and
+-- close (worn, 15 September evening); staying visible is a rendering matter.
 local Wrist = {}
 
 Wrist.WRIST_BACK = 0.10
 Wrist.OUT = 0.07
-Wrist.TOWARD_EYE = 0.06
 -- ui_toughness_default in the game's colour table (the HUD toughness bar).
 Wrist.HEALTH_COLOR = {255, 255, 255}
 Wrist.TOUGHNESS_COLOR = {108, 187, 196}
@@ -101,11 +100,6 @@ function Wrist.install(mod, presentation, observation)
             else position, rotation = presentation.controller_grip_target() end
             if not live or not position or not rotation then hide(); return end
             anchor = position - Quaternion.forward(rotation) * Wrist.WRIST_BACK + Vector3.up() * Wrist.OUT
-            local offset = eye - anchor
-            local distance = Vector3.length(offset)
-            if distance > 1e-4 then
-                anchor = anchor + offset * (math.min(Wrist.TOWARD_EYE, distance * 0.5) / distance)
-            end
             api.visible = true
         end
         local bars = Wrist.bars(read_values(unit))

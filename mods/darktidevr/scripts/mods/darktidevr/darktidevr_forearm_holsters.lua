@@ -24,7 +24,8 @@ Forearm.ZONE_GAP = 0.04
 Forearm.ZONE_SPACING = 2 * Forearm.ZONE_RADIUS + Forearm.ZONE_GAP
 Forearm.ZONE_HEIGHT = 0.08
 -- Every miniature's largest dimension, and its growth while hovered.
-Forearm.PREVIEW_SIZE = 0.064
+-- 50% larger than the first fit (worn, 15 September evening).
+Forearm.PREVIEW_SIZE = 0.096
 Forearm.HOVER_SCALE = 1.25
 -- Scale used until the item's meshes report a size, and if they never do.
 Forearm.SPAWN_SCALE = 0.2

@@ -9,6 +9,10 @@ local Holsters = {}
 Holsters.REFERENCE_EYE_HEIGHT = 1.64
 Holsters.EXIT_SCALE = 1.25
 Holsters.DWELL_SECONDS = 0.05
+-- A grip press this soon after the hand passed through a zone still takes
+-- that zone (worn, 15 September evening: the hand is thrown out and grips on
+-- the haptic, by which time it has already left).
+Holsters.GRACE_SECONDS = 0.35
 Holsters.TEST_FLAG = "./../mods/darktidevr/darktidevr_holsters_test.flag"
 
 -- Zone centres in the body frame at the reference eye height, metres from the
@@ -101,20 +105,30 @@ function Holsters.new(zones)
     end
 
     -- Track one hand. Returns the zone the hand has rested in for the dwell
-    -- time, or nil. A hand without a usable point leaves its zone.
+    -- time, or for GRACE_SECONDS after it left that zone while in no other,
+    -- or nil. A hand without a usable point leaves its zone.
     -- zones: this hand's zones this frame (default api.zones).
     function api.update(hand, point, t, zones)
         local state = api.hands[hand]
         if not state then return nil end
         if not point or not finite(t) then
-            state.zone, state.since = nil, nil
+            state.zone, state.since, state.recent, state.recent_t = nil, nil, nil, nil
             return nil
         end
         local zone = Holsters.zone_at(point, zones or api.zones, state.zone and state.zone.id)
         if zone ~= state.zone then
+            if state.zone and state.since and t - state.since >= Holsters.DWELL_SECONDS then
+                state.recent, state.recent_t = state.zone, t
+            end
             state.zone, state.since = zone, zone and t or nil
         end
-        return zone and t - state.since >= Holsters.DWELL_SECONDS and zone or nil
+        if zone then
+            if t - state.since >= Holsters.DWELL_SECONDS then return zone end
+            return nil
+        end
+        if state.recent and t - state.recent_t <= Holsters.GRACE_SECONDS then return state.recent end
+        state.recent, state.recent_t = nil, nil
+        return nil
     end
 
     -- The grip request for one hand. A claim keeps its owner until the grip

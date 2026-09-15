@@ -11,8 +11,11 @@
 local SightAds = {}
 
 SightAds.SIGHT_EYE_OFFSET = 0.032
-SightAds.ENTER_DISTANCE = 0.045
-SightAds.EXIT_DISTANCE = 0.075
+-- Worn, 15 September evening: works, wants a slightly larger area and a
+-- short grace before letting go.
+SightAds.ENTER_DISTANCE = 0.06
+SightAds.EXIT_DISTANCE = 0.09
+SightAds.RELEASE_GRACE_SECONDS = 0.3
 SightAds.MIN_BEHIND = 0.03   -- the eye is behind the grip plane along the aim
 SightAds.MAX_BEHIND = 0.6
 SightAds.ENTER_FACING = math.cos(math.rad(25))
@@ -48,6 +51,15 @@ function SightAds.engaged(was_engaged, distance, behind, facing)
         return distance <= SightAds.EXIT_DISTANCE and facing >= SightAds.EXIT_FACING
     end
     return distance <= SightAds.ENTER_DISTANCE and facing >= SightAds.ENTER_FACING
+end
+
+-- Engaged after the release grace: stays engaged until the sights have been
+-- away for RELEASE_GRACE_SECONDS. Returns engaged, seconds away. Pure.
+function SightAds.hold(was_engaged, at_eye, away, dt)
+    if at_eye then return true, 0 end
+    if not was_engaged then return false, 0 end
+    away = (away or 0) + ((type(dt) == "number" and dt == dt and dt > 0) and dt or 0)
+    return away < SightAds.RELEASE_GRACE_SECONDS, away
 end
 
 -- Input edges for one frame: held stays set while engaged. Hold mode presses
@@ -104,7 +116,12 @@ function SightAds.install(mod, presentation, observation)
         local eye = eye_position + Quaternion.right(head) * (SightAds.SIGHT_EYE_OFFSET * side)
         local distance, behind, facing = SightAds.measure(vector(grip), vector(Quaternion.forward(aim)),
             vector(Quaternion.up(aim)), vector(Quaternion.right(aim)), offset, vector(eye), vector(Quaternion.forward(head)))
-        local engaged = SightAds.engaged(api.engaged, distance, behind, facing)
+        local at_eye = SightAds.engaged(api.engaged, distance, behind, facing)
+        local now = Managers.time and Managers.time:time("main") or 0
+        local dt = api.last_t and now - api.last_t or 0
+        api.last_t = now
+        local engaged
+        engaged, api.away = SightAds.hold(api.engaged, at_eye, api.away, dt)
         if test_enabled then
             test_frames = test_frames + 1
             if test_frames % 90 == 1 then

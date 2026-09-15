@@ -28,6 +28,13 @@ function Support.ads_supported(template)
     return found.aim==true and found.unaim==true
 end
 local function finite(x) return type(x)=='number' and x==x and math.abs(x)<math.huge end
+-- Seconds since the support hand was last near the grip: 0 while near, nil
+-- when it has not been near since the gesture began. Pure.
+function Support.near_age(previous,near,dt)
+    if near then return 0 end
+    if previous==nil or not finite(dt) or dt<0 then return previous end
+    return previous+dt
+end
 -- Grip zone feedback: while the support hand is close enough for a grip press
 -- to take hold (the profile's acquire radius, left again ZONE_EXIT_MARGIN
 -- further out), the support glove eases onto the grip over SNAP_SECONDS and
@@ -38,6 +45,10 @@ local function finite(x) return type(x)=='number' and x==x and math.abs(x)<math.
 -- the anchor sits a little inside the shoulder point, toward the neck.
 Support.STOCK={offset={0,-.30,.06},radius=.15,strength=1,inward=.03}
 Support.SNAP_SECONDS=.1
+-- A grip press this soon after the support hand passed the grip still takes
+-- hold (worn, 15 September evening: the press lands on the haptic, after the
+-- hand has gone through, and fired the special instead).
+Support.GRACE_SECONDS=.35
 Support.ZONE_EXIT_MARGIN=.015
 function Support.snap_step(weight,target,dt)
     if not finite(weight) then weight=0 end
@@ -140,13 +151,15 @@ function Support.new(Pose)
         end
         -- A new gesture identity re-enters the zone from outside; the glove
         -- blend itself carries over (a weapon change clears it through clear()).
-        if identity.zone_owner~=identity then api.in_zone=false; identity.zone_owner=identity end
+        if identity.zone_owner~=identity then api.in_zone=false; api.near_age=nil; identity.zone_owner=identity end
         api.in_zone=Pose.near(frame.rotation,frame.primary,frame.support,profile.socket,
             profile.acquire+(api.in_zone and Support.ZONE_EXIT_MARGIN or 0))
         context=frame
         api.ads_unavailable=profile.ads==true and (frame.toggle_ads~=false or frame.ads_supported~=true)
+        local near=Pose.near(frame.rotation,frame.primary,frame.support,profile.socket,profile.acquire)
+        api.near_age=Support.near_age(api.near_age,near,frame.dt)
         return {control=frame.side..'_grip',owner=identity,action=action,toggle=api.grip_toggle()==true,layer='gripping',
-            acquire=Pose.near(frame.rotation,frame.primary,frame.support,profile.socket,profile.acquire),
+            acquire=api.near_age~=nil and api.near_age<=Support.GRACE_SECONDS,
             -- Once held, the grip keeps any hand spacing: only the guards above end
             -- it (hands too close or crossed to give the gun a direction, lost
             -- tracking, weapon or action changes, a menu).

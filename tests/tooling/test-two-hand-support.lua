@@ -548,3 +548,9 @@ do
     assert(stock_api.held and not stock_api.stock_active,'engaged without an anchor')
 end
 print('two_hand_virtual_stock=pass option_off contact aim far none')
+-- Grip grace: a press soon after the hand passed the grip still takes hold.
+assert(Support.near_age(nil,false,.1)==nil,'never near: no grace')
+assert(Support.near_age(nil,true,.1)==0 and Support.near_age(.2,true,.1)==0,'near resets')
+local age=Support.near_age(0,false,.2); assert(math.abs(age-.2)<1e-9 and age<=Support.GRACE_SECONDS,'within the grace')
+age=Support.near_age(age,false,.2); assert(age>Support.GRACE_SECONDS,'grace expires')
+print('two_hand_grip_grace=pass never near within expires')
