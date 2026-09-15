@@ -6252,7 +6252,24 @@ end
 -- displays) reads it instead of the first-person unit, which does not carry
 -- the head's tracked translation (worn, 15 September: sight ADS never
 -- engaged from the headset eye).
+--
+-- The eye is also kept relative to the body anchor the camera has just
+-- written, and read back from the anchor current at the time of the read.
+-- It is stored at the camera update, after everything placed in the
+-- locomotion post-update; those placements read it one frame late, and on
+-- frames where a fixed step moved the player it lagged a step of travel
+-- behind their anchor. While strafing that step is sideways to the view, so
+-- the forearm miniatures (billboarded to the eye) turned back and forth
+-- between two poses (worn, 15 September evening; audit 16 September). Readers
+-- at input time see the anchor the eye was stored with, so they are
+-- unchanged.
 presentation.TRACKED_EYE_MAX_AGE = 0.25
+local function current_body_anchor()
+    local o = controller_observation
+    if not o.body_anchor_qw or not o.body_anchor_x then return nil end
+    return Vector3(o.body_anchor_x, o.body_anchor_y, o.body_anchor_z),
+        Quaternion.from_elements(o.body_anchor_qx, o.body_anchor_qy, o.body_anchor_qz, o.body_anchor_qw)
+end
 function presentation.store_tracked_eye(position, rotation)
     if not position or not rotation then return end
     if presentation.tracked_eye_position then
@@ -6262,16 +6279,41 @@ function presentation.store_tracked_eye(position, rotation)
         presentation.tracked_eye_position = Vector3Box(position)
         presentation.tracked_eye_rotation = QuaternionBox(rotation)
     end
+    local anchor_position, anchor_rotation = current_body_anchor()
+    if anchor_position then
+        local offset = position - anchor_position
+        local in_anchor = Vector3(Vector3.dot(offset, Quaternion.right(anchor_rotation)),
+            Vector3.dot(offset, Quaternion.forward(anchor_rotation)), Vector3.dot(offset, Quaternion.up(anchor_rotation)))
+        local rotation_in_anchor = Quaternion.multiply(Quaternion.inverse(anchor_rotation), rotation)
+        if presentation.tracked_eye_in_anchor then
+            presentation.tracked_eye_in_anchor:store(in_anchor)
+            presentation.tracked_eye_rotation_in_anchor:store(rotation_in_anchor)
+        else
+            presentation.tracked_eye_in_anchor = Vector3Box(in_anchor)
+            presentation.tracked_eye_rotation_in_anchor = QuaternionBox(rotation_in_anchor)
+        end
+        presentation.tracked_eye_anchored = true
+    else
+        presentation.tracked_eye_anchored = false
+    end
     presentation.tracked_eye_t = Managers and Managers.time and Managers.time:time("main") or nil
 end
 
--- The eye's world position and rotation: the tracked eye while it is fresh,
--- otherwise the unit's first-person unit (nil when neither exists).
+-- The eye's world position and rotation: the tracked eye while it is fresh
+-- (from the current body anchor when it was stored with one), otherwise the
+-- unit's first-person unit (nil when neither exists).
 function presentation.eye_pose(unit)
     local now = Managers and Managers.time and Managers.time:time("main") or nil
     if presentation.tracked_eye_position and presentation.tracked_eye_t and now and
             now - presentation.tracked_eye_t <= presentation.TRACKED_EYE_MAX_AGE and
             now >= presentation.tracked_eye_t then
+        local anchor_position, anchor_rotation
+        if presentation.tracked_eye_anchored then anchor_position, anchor_rotation = current_body_anchor() end
+        if anchor_position then
+            local in_anchor = presentation.tracked_eye_in_anchor:unbox()
+            return anchor_position + presentation.rotate_vector(anchor_rotation, in_anchor),
+                Quaternion.multiply(anchor_rotation, presentation.tracked_eye_rotation_in_anchor:unbox())
+        end
         return presentation.tracked_eye_position:unbox(), presentation.tracked_eye_rotation:unbox()
     end
     local first_person = unit and ScriptUnit.has_extension(unit, "first_person_system")

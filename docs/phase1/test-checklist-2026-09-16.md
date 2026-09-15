@@ -37,3 +37,12 @@ tracked eye).
      the option off returns the skull to its stock place.
    - Unattended evidence: unit tests only. No run with the talent and a
      grabbing hand is possible without the user.
+
+2. **Strafe wobble: eye from the current anchor** (restart; always on).
+   Weapon hand holsters on, gun out: strafe left and right, then walk forward
+   and back, looking at the forearm models. They should stay steady, no
+   longer turning back and forth between two poses while strafing. Also check
+   nothing else moved: the ammo counter on the gun, the wrist display, sight
+   ADS by raising the gun, and the crosshair on the iron sights.
+   - Evidence so far: static audit (`docs/phase1/animation-audit-2026-09-16.md`)
+     and the `tracked_eye_anchor` unit test; no worn or eye-render check.
