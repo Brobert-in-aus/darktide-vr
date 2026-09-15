@@ -191,8 +191,9 @@ its sights, and in the hub.
 
 Mod Options, Darktide VR, Experimental features, "Two-hand support". With a
 two-handed gun out, put your off hand on the gun anywhere from just ahead of
-your gun hand to the muzzle; near the foregrip (where the weapon's animation
-holds it) the glove slides onto it to show you are in place. Press grip and
+your gun hand to the muzzle: the glove slides onto the foregrip (where the
+weapon's animation holds it) and, with vibration on, the controller ticks, to
+show it is safe to grip. Press grip and
 the gun follows the line between your hands, however far apart you move them,
 until you let go (or, with "Two-hand grip" set to Toggle, until you press grip
 again). Bringing your hands together or crossing them also lets go. The grip

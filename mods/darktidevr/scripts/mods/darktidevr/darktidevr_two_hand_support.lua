@@ -155,8 +155,11 @@ function Support.new(Pose)
         -- A new gesture identity re-enters the zone from outside; the glove
         -- blend itself carries over (a weapon change clears it through clear()).
         if identity.zone_owner~=identity then api.in_zone=false; api.near_age=nil; identity.zone_owner=identity end
-        api.in_zone=Pose.near(frame.rotation,frame.primary,frame.support,profile.socket,
-            profile.acquire+(api.in_zone and Support.ZONE_EXIT_MARGIN or 0))
+        -- The whole gun, as the grab itself: the zone pulse and the glove sliding
+        -- onto the foregrip tell the player it is safe to grip there (user, 15
+        -- September evening).
+        api.in_zone=Pose.near_gun(frame.rotation,frame.primary,frame.support,profile.socket,
+            profile.acquire+(api.in_zone and Support.ZONE_EXIT_MARGIN or 0),frame.gun_length)
         context=frame
         api.ads_unavailable=profile.ads==true and (frame.toggle_ads~=false or frame.ads_supported~=true)
         local near=Pose.near_gun(frame.rotation,frame.primary,frame.support,profile.socket,profile.acquire,

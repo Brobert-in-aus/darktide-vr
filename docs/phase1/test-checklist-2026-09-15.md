@@ -336,3 +336,8 @@ the part of the hands refactor that runs for everyone.
     - The shoulder holster is much larger (25 cm radius, centred a little
       further back and out); a hand up by your face or aiming down sights must
       not enter it.
+
+30. **Grab feedback along the whole gun** (restart). Touch the gun with the
+    off hand anywhere from just ahead of the gun hand to the muzzle: the
+    glove slides onto the foregrip and the controller ticks (vibration on)
+    wherever a grip press would take hold, not only near the foregrip.

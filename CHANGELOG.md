@@ -36,8 +36,8 @@ off by default):
 
 - Two-hand support: press grip with your off hand anywhere on a gun, from just
   ahead of your gun hand to the muzzle, to steady it with both hands; available
-  as soon as the gun is drawn. The glove slides onto the foregrip when your
-  hand is close to it, grip can be a hold or a toggle, and it holds through
+  as soon as the gun is drawn. The glove slides onto the foregrip and the
+  controller ticks as soon as your hand is on the gun, grip can be a hold or a toggle, and it holds through
   reloads and bashes. The gun follows the line between your hands, so turning
   your gun wrist does not swing the barrel off your front hand. "While
   gripping" in the controller bindings gives actions their own controls while
