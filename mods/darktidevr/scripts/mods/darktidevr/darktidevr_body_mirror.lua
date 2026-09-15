@@ -37,6 +37,11 @@
 -- lifted it 27-48 cm to reach a camera taller than the model and put the eye
 -- inside the hood and cloak. It moves sideways and down only, so the feet
 -- stay on the floor or sink (crouch) until the legs are solved (milestone 3).
+--
+-- "overlay" collapses the neck joint's scale (j_neck and so the hidden head):
+-- overlay8 looking down still showed the open collar ring of the torso mesh
+-- where the head was. "overlayfollow" is the same without the collapse, for
+-- A/B.
 local Mirror = {}
 
 Mirror.FLAG = "./../mods/darktidevr/darktidevr_body_mirror.flag"
@@ -46,8 +51,10 @@ Mirror.MODES = {
     mirror = {distance = Mirror.MIRROR_DISTANCE, facing = true, hide_head = false},
     overlaycopy = {distance = 0, facing = false, hide_head = true, solve_arms = false, hide_gloves = true},
     overlayarms = {distance = 0, facing = false, hide_head = true, solve_arms = true, hide_gloves = true},
-    overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true,
+    overlayfollow = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true,
         follow_neck = true},
+    overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true,
+        follow_neck = true, collapse_neck = true},
 }
 -- Near-eye mesh hiding, in the character root's frame at the spawn pose.
 Mirror.NEAR_EYE_RADIUS = 0.25
@@ -58,6 +65,7 @@ Mirror.EYE_FORWARD_OF_HEAD = 0.08
 Mirror.NEAR_EYE_MAX_HALF_EXTENT = 0.30
 -- Largest root move toward the body frame's neck.
 Mirror.NECK_FOLLOW_MAX = 0.5
+Mirror.COLLAPSED_NECK_SCALE = 0.01
 
 -- The root move that puts the copy's neck on the target neck, never upward
 -- unless allow_lift, capped in length. Arrays. Returns offset, uncapped
@@ -391,6 +399,11 @@ function Mirror.install(mod, presentation)
                 World.update_unit(world, unit)
                 state.neck_offset, state.neck_distance = offset, length
             end
+        end
+        if Mirror.MODES[mode_name].collapse_neck and Unit.has_node(unit, "j_neck") then
+            local k = Mirror.COLLAPSED_NECK_SCALE
+            Unit.set_local_scale(unit, Unit.node(unit, "j_neck"), Vector3(k, k, k))
+            World.update_unit(world, unit)
         end
         if Mirror.MODES[mode_name].solve_arms then
             for _, arm in ipairs(state.arms) do solve_arm(world, avatar, unit, arm) end
