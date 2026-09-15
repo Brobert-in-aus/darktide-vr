@@ -24,6 +24,8 @@ Holsters.REFUSED_TAP_GAP = 0.12
 -- controller's aim toward the fingertips: fingers inside an item did not
 -- count while the palm was outside its zone (worn, 15 September evening).
 Holsters.HAND_REACH = 0.10
+Holsters.PROBE_SECONDS = 2
+Holsters.PROBE_LINES = 60
 Holsters.TEST_FLAG = "./../mods/darktidevr/darktidevr_holsters_test.flag"
 
 -- Zone centres in the body frame at the reference eye height, metres from the
@@ -316,6 +318,39 @@ function Holsters.install(mod, presentation, observation)
         local frame = body_frame(unit)
         -- For holster counts: the zones' frame this frame.
         api.frame = frame
+        -- Probe (worn, 15 September evening: on the Psyker the body holsters
+        -- gave no zone and their models did not show, on the Skitarius they
+        -- worked): every PROBE_SECONDS, up to PROBE_LINES per session, the
+        -- frame against the tracked eye and each hand's local point and nearest
+        -- body zone.
+        if body and frame and type(t) == "number" and (api.probe_lines or 0) < Holsters.PROBE_LINES and
+                t >= (api.probe_t or 0) then
+            api.probe_t, api.probe_lines = t + Holsters.PROBE_SECONDS, (api.probe_lines or 0) + 1
+            local eye, eye_rotation
+            if presentation.eye_pose then eye, eye_rotation = presentation.eye_pose(unit) end
+            local parts = {}
+            for _, hand in ipairs({"right", "left"}) do
+                local position
+                if hand == "right" then position = presentation.controller_grip_target()
+                else position = presentation.left_controller_grip_target() end
+                local p = position and Holsters.local_point(frame, vector(position))
+                local nearest, ratio
+                for _, zone in ipairs(api.zones) do
+                    local r = p and distance(p, zone.centre) / zone.radius
+                    if r and (not ratio or r < ratio) then nearest, ratio = zone.id, r end
+                end
+                parts[#parts + 1] = string.format("%s=%s nearest=%s ratio=%s", hand,
+                    p and string.format("%.2f,%.2f,%.2f", p[1], p[2], p[3]) or "nil", tostring(nearest),
+                    ratio and string.format("%.2f", ratio) or "nil")
+            end
+            local eye_local = eye and Holsters.local_point(frame, vector(eye))
+            local eye_yaw = eye_rotation and math.deg(Quaternion.yaw(eye_rotation))
+            local frame_yaw = math.deg(math.atan2(-frame.forward[1], frame.forward[2]))
+            mod:info("DARKTIDEVR_HOLSTER probe scale=%.2f origin=%.2f,%.2f,%.2f eye_local=%s eye_yaw=%s frame_yaw=%.1f %s %s",
+                frame.scale, frame.origin[1], frame.origin[2], frame.origin[3],
+                eye_local and string.format("%.2f,%.2f,%.2f", eye_local[1], eye_local[2], eye_local[3]) or "nil",
+                eye_yaw and string.format("%.1f", eye_yaw) or "nil", frame_yaw, parts[1], parts[2])
+        end
         local inventory = inventory_of(unit)
         -- Weapon hand holsters: zones on the gun hand's forearm, for the off
         -- hand only.

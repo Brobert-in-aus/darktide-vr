@@ -341,3 +341,22 @@ the part of the hands refactor that runs for everyone.
     off hand anywhere from just ahead of the gun hand to the muzzle: the
     glove slides onto the foregrip and the controller ticks (vibration on)
     wherever a grip press would take hold, not only near the foregrip.
+
+### Results (worn, 15 September, about 20:30, Psyker)
+
+- 27 wrist display in the cuff, pocketable names, holstered charges: pass.
+- 28 Hands line only, menu ticks in Immersive, grab along the gun: pass.
+- 29 body holster models: fail. On the Psyker (switched from the
+  Skitarius) the body holsters were gone: no models, and no zone pulse even
+  at the enlarged shoulder holster. The log has no body zone armed that
+  session, where the previous Skitarius session armed all five. Forearm
+  holsters worked. Holstered force staff showed "0 / 0".
+
+31. **Holster probe, no staff 0 / 0, no peril at the hand** (restart).
+    - Body holsters on the Psyker: reach to each chest and hip holster and the
+      shoulder for a few seconds each, then quit. The log gains
+      `DARKTIDEVR_HOLSTER probe` lines (every 2 s, 60 at most) with the body
+      frame against the tracked eye and each hand's nearest zone. If there
+      is time, the same on the Skitarius for comparison.
+    - With the sword out, the holstered staff shows no count.
+    - With the staff out, nothing shows at the hand; peril stays on the HUD.

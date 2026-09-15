@@ -310,7 +310,11 @@ function Forearm.install(mod, presentation)
     local function ammo_text(unit)
         local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
         local slot = unit_data and unit_data:read_component("slot_secondary")
-        if not slot then return nil end
+        -- A weapon without ammo (a force staff) has no count: it showed 0 / 0
+        -- (worn, 15 September evening).
+        if not slot or not (type(slot.max_ammunition_reserve) == "number" and slot.max_ammunition_reserve > 0) then
+            return nil
+        end
         Ammo = Ammo or require("scripts/utilities/ammo")
         local ok, clip = pcall(Ammo.current_ammo_in_clips, slot)
         if not ok or type(clip) ~= "number" then return nil end
@@ -367,7 +371,7 @@ function Forearm.install(mod, presentation)
             Ammo = Ammo or require("scripts/utilities/ammo")
             NetworkConstants = NetworkConstants or require("scripts/network_lookup/network_constants")
             local count = NetworkConstants.clips_in_use and NetworkConstants.clips_in_use.max_size or 1
-            values = readout.values(slot, Ammo, count, nil)
+            values = readout.values(slot, Ammo, count)
         end
         return values and (readout.text(values)) or nil
     end

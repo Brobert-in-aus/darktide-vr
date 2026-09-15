@@ -71,7 +71,7 @@ off by default):
 - Ammo count at the hand: clip and reserve on the gun, beside the receiver,
   instead of on the HUD panel, fading from white to red as they run down, with
   a ring that fills while reloading. It draws in front of the hand, gun and
-  scene. Heat shows as a percentage, force staffs show peril, and melee
+  scene. Heat shows as a percentage, and melee
   weapons with special charges (such as the Skitarius arc maul) show their
   charges.
 - Controller vibration, Informative or Immersive, with a strength slider:

@@ -93,10 +93,9 @@ function Readout.ring_arcs(progress)
 end
 Readout.TEST_FLAG = "./../mods/darktidevr/darktidevr_ammo_readout_test.flag"
 
--- Ammo and heat of a slot component. nil when the slot shows neither. A
--- weapon with neither (a force staff) shows psyker peril instead, as heat,
--- while there is any (peril: the warp charge fraction).
-function Readout.values(slot, Ammo, clip_count, peril)
+-- Ammo and heat of a slot component. nil when the slot shows neither (a
+-- force staff: peril stays on the HUD).
+function Readout.values(slot, Ammo, clip_count)
     if type(slot) ~= "table" then return nil end
     local result = {}
     local max_reserve = slot.max_ammunition_reserve
@@ -116,9 +115,6 @@ function Readout.values(slot, Ammo, clip_count, peril)
     end
     local heat = slot.overheat_current_percentage
     if type(heat) == "number" and heat > 0 then result.heat = math.min(heat, 1) end
-    if not result.clip and not result.heat and type(peril) == "number" and peril > 0 then
-        result.heat, result.peril = math.min(peril, 1), true
-    end
     if not result.clip and not result.heat then return nil end
     return result
 end
@@ -296,9 +292,9 @@ function Readout.install(mod, presentation, observation)
         Ammo = Ammo or require("scripts/utilities/ammo")
         NetworkConstants = NetworkConstants or require("scripts/network_lookup/network_constants")
         local count = NetworkConstants.clips_in_use and NetworkConstants.clips_in_use.max_size or 1
-        local ok, warp = pcall(unit_data.read_component, unit_data, "warp_charge")
-        local peril = ok and warp and warp.current_percentage or nil
-        return Readout.values(unit_data:read_component("slot_secondary"), Ammo, count, peril)
+        -- Peril stays on the HUD, where it usually lives (user, 15 September
+        -- evening): a staff shows nothing here.
+        return Readout.values(unit_data:read_component("slot_secondary"), Ammo, count)
     end
     -- The wielded ranged weapon's values, for other features (haptics).
     api.slot_values = slot_values
@@ -354,7 +350,7 @@ function Readout.install(mod, presentation, observation)
             anchor = gun_position + Quaternion.forward(gun_rotation) * Readout.GUN_FORWARD +
                 midline * Readout.GUN_SIDE + Quaternion.up(gun_rotation) * Readout.GUN_UP
         else
-            -- No gun placed (melee charges, staff peril): beside the hand.
+            -- No gun placed (melee charges): beside the hand.
             local side = presentation.weapon_hand_roles.physical("dominant")
             -- The grip as drawn (see presentation.visible_grip_target).
             local grip = (presentation.visible_grip_target or presentation.weapon_grip_target)("dominant")

@@ -45,12 +45,8 @@ assert(Readout.melee_values({num_special_charges = 4, max_num_special_charges = 
 assert(Readout.melee_values({num_special_charges = 1, max_num_special_charges = 0}, {}) == nil, "no tweak maximum")
 assert(Readout.melee_values({num_special_charges = 7, max_num_special_charges = 0}, {max_charges = 10}).charges == 7,
     "tweak maximum without a divisor")
--- A staff (no ammo, no heat) shows peril while there is any.
-assert(Readout.values({}, Ammo, 2, 0) == nil, "no peril, nothing shown")
-local staff = assert(Readout.values({}, Ammo, 2, 0.63))
-assert(staff.peril and math.abs(staff.heat - 0.63) < 1e-9 and Readout.lines(staff) == "63%")
-assert(Readout.values({}, Ammo, 2, 1.4).heat == 1, "peril clamped")
-assert(not Readout.values({overheat_current_percentage = 0.2}, Ammo, 2, 0.9).peril, "a weapon's own heat wins")
+-- A staff (no ammo, no heat) shows nothing: peril stays on the HUD.
+assert(Readout.values({}, Ammo, 2) == nil, "staff shows nothing")
 v = assert(Readout.values({overheat_current_percentage = 0.5}, Ammo, 2))
 text, level = Readout.text(v)
 assert(text == "50%" and level == "normal", text)

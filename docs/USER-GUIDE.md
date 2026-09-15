@@ -251,7 +251,7 @@ the HUD panel. It draws in front of your hand, the gun and the scene. Each
 number is white when full and turns yellow, orange and finally red as it runs
 out. Reloading fills a ring around the count; if the reload is interrupted
 (for example by sprinting), the count shakes and the ring disappears. Weapons
-with heat show it as a percentage, force staffs show peril, and melee weapons
+with heat show it as a percentage, and melee weapons
 with special charges (such as the Skitarius arc maul) show their charges
 beside the hand.
 
