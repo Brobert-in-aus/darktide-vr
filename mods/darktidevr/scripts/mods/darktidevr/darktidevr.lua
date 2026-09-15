@@ -5241,6 +5241,7 @@ local function update_stereo(manager)
         clean_rotation
     )
     clean_rotation = presentation.apply_offline_benchmark_spin(clean_rotation)
+    presentation.store_tracked_eye(clean_position, clean_rotation)
     if controller_observation.body_visibility_enabled then
         presentation.log_body_camera_alignment(
             presentation.body_alignment_unit,
@@ -6234,6 +6235,40 @@ function presentation.track_wielded_weapon()
         last_wielded_weapon_slot = wielded
     end
     return wielded
+end
+
+-- The tracked cyclopean eye: the stereo camera pose after head tracking,
+-- stored each rendered frame. Presentation that must match what the headset
+-- sees (sight-to-eye ADS, the body frame's shoulders, wrist and forearm
+-- displays) reads it instead of the first-person unit, which does not carry
+-- the head's tracked translation (worn, 15 September: sight ADS never
+-- engaged from the headset eye).
+presentation.TRACKED_EYE_MAX_AGE = 0.25
+function presentation.store_tracked_eye(position, rotation)
+    if not position or not rotation then return end
+    if presentation.tracked_eye_position then
+        presentation.tracked_eye_position:store(position)
+        presentation.tracked_eye_rotation:store(rotation)
+    else
+        presentation.tracked_eye_position = Vector3Box(position)
+        presentation.tracked_eye_rotation = QuaternionBox(rotation)
+    end
+    presentation.tracked_eye_t = Managers and Managers.time and Managers.time:time("main") or nil
+end
+
+-- The eye's world position and rotation: the tracked eye while it is fresh,
+-- otherwise the unit's first-person unit (nil when neither exists).
+function presentation.eye_pose(unit)
+    local now = Managers and Managers.time and Managers.time:time("main") or nil
+    if presentation.tracked_eye_position and presentation.tracked_eye_t and now and
+            now - presentation.tracked_eye_t <= presentation.TRACKED_EYE_MAX_AGE and
+            now >= presentation.tracked_eye_t then
+        return presentation.tracked_eye_position:unbox(), presentation.tracked_eye_rotation:unbox()
+    end
+    local first_person = unit and ScriptUnit.has_extension(unit, "first_person_system")
+    local eye_unit = first_person and first_person:first_person_unit()
+    if not eye_unit or not Unit.alive(eye_unit) then return nil end
+    return Unit.world_position(eye_unit, 1), Unit.world_rotation(eye_unit, 1)
 end
 
 -- Aim-down-sights (alternate fire) on the wielded weapon. The viewer

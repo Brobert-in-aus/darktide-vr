@@ -7,6 +7,10 @@ local Readout = {}
 
 Readout.OFFSET_UP = 0.09        -- metres above the grip
 Readout.OFFSET_INWARD = 0.05    -- towards the body's midline
+-- Worn, 15 September evening: 5 cm further toward the end of the hand (along
+-- the aim), and drawn toward the eye so the hand and gun cannot cover it.
+Readout.OFFSET_FORWARD = 0.05
+Readout.TOWARD_EYE = 0.06
 Readout.PIXEL_METRES = 0.0011   -- world size of one font pixel
 Readout.FONT_SIZE = 30          -- clip count (or heat)
 Readout.SMALL_FONT_SIZE = 15    -- reserve under it
@@ -318,11 +322,9 @@ function Readout.install(mod, presentation, observation)
             progress, shake = tracker.update(settings and settings.kind, action and action.start_t,
                 action and action.end_t, now, values.clip)
         end
-        local first_person = ScriptUnit.has_extension(unit, "first_person_system")
-        local eye_unit = first_person and first_person:first_person_unit()
-        if not eye_unit then hide(); return end
-        local eye = Unit.world_position(eye_unit, 1)
-        local eye_rotation = Unit.world_rotation(eye_unit, 1)
+        local eye, eye_rotation
+        if presentation.eye_pose then eye, eye_rotation = presentation.eye_pose(unit) end
+        if not eye or not eye_rotation then hide(); return end
         local anchor
         if test then
             anchor = eye + Quaternion.forward(eye_rotation) * 0.5
@@ -333,6 +335,17 @@ function Readout.install(mod, presentation, observation)
             local flat_right = Quaternion.right(eye_rotation)
             local inward = side == "left" and flat_right or -flat_right
             anchor = grip + Vector3.up() * Readout.OFFSET_UP + inward * Readout.OFFSET_INWARD
+            local aim
+            if presentation.weapon_aim_target then
+                local _, rotation = presentation.weapon_aim_target("dominant")
+                aim = rotation
+            end
+            if aim then anchor = anchor + Quaternion.forward(aim) * Readout.OFFSET_FORWARD end
+            local offset = eye - anchor
+            local distance = Vector3.length(offset)
+            if distance > 1e-4 then
+                anchor = anchor + offset * (math.min(Readout.TOWARD_EYE, distance * 0.5) / distance)
+            end
         end
         -- Face the eye, text upright: local x to the viewer's right, y up.
         local to_eye = Vector3.normalize(eye - anchor)

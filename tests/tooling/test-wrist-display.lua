@@ -1,12 +1,4 @@
 local Wrist=dofile(assert(arg[1]))
--- Visibility: facing the eye, within reach, with hysteresis.
-assert(Wrist.visible(false,{1,0,0},{1,0,0},.4),'facing the eye shows')
-assert(not Wrist.visible(false,{1,0,0},{0.7,0.714,0},.4),'0.7 facing does not show')
-assert(Wrist.visible(true,{1,0,0},{0.7,0.714,0},.4),'0.7 facing keeps it shown')
-assert(not Wrist.visible(true,{1,0,0},{0.5,0.866,0},.4),'0.5 facing hides')
-assert(not Wrist.visible(false,{1,0,0},{1,0,0},.9),'too far')
-assert(not Wrist.visible(false,{1,0,0},{-1,0,0},.3),'back of the wrist away')
-assert(not Wrist.visible(false,nil,{1,0,0},.3) and not Wrist.visible(false,{1,0,0},{1,0,0},0/0))
 -- Bars.
 local bars=Wrist.bars({health=150,max_health=200,toughness=.5,stamina=1})
 assert(#bars==3 and bars[1].id=='health' and math.abs(bars[1].fraction-.75)<1e-9 and bars[1].text=='150')
@@ -16,4 +8,9 @@ assert(bars[1].fraction==1 and bars[2].fraction==1 and bars[3].fraction==0,'clam
 assert(#Wrist.bars({toughness=.3})==1,'missing values skipped')
 assert(#Wrist.bars({health=10,max_health=0})==0,'zero max health')
 assert(#Wrist.bars(nil)==0)
-print('wrist_display=pass visibility hysteresis reach bars clamp missing')
+-- Colours: health white, toughness the HUD's toughness blue.
+local c=Wrist.bars({health=1,max_health=2,toughness=.5,stamina=.5})
+assert(c[1].color==Wrist.HEALTH_COLOR and c[1].color[1]==255 and c[1].color[2]==255 and c[1].color[3]==255)
+assert(c[2].color[1]==108 and c[2].color[2]==187 and c[2].color[3]==196)
+assert(Wrist.visible==nil,'always shown: no facing gate')
+print('wrist_display=pass bars clamp missing colours always_shown')

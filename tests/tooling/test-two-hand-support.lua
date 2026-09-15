@@ -179,6 +179,8 @@ local _,stock_hold=installed_sample(512)
 assert(stock_hold==0 and not installed.stock_active,'Adding a stock profile retained the old grip gesture')
 installed_sample(0); installed_sample(512)
 assert(installed.stock_active)
+-- The stock eases into engagement; settle before capturing the mounted aim.
+for _=1,120 do installed_sample(512) end
 local mounted=installed.resolve(unit,{0,0,0,1})
 assert(math.abs(mounted[3])>0,'Production stock did not influence supported aim')
 observations.body_visual_yaw=math.pi/2
@@ -536,9 +538,9 @@ do
     local plain=Pose.correction(f.rotation,f.primary,f.support,{0,.3,0})
     local steered=stock_api.rotation(f.unit,f.rotation)
     assert(math.abs(steered[3]-plain[3])>1e-4,'stock did not change the aim')
-    -- Anchor far away: no contact.
+    -- Anchor far away: no contact once the release has eased out.
     f.stock_anchor={1,1,1}
-    step(512)
+    for _=1,100 do step(512) end
     assert(stock_api.held and not stock_api.stock_active and stock_api.stock_weight==0,'far anchor engaged')
     -- No anchor (no body frame): ordinary two-handing.
     f.stock_anchor=nil

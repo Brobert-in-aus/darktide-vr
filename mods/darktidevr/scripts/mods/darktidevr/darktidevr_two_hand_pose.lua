@@ -147,6 +147,25 @@ function Pose.correction(rotation,primary,support,socket)
 end
 -- Also returns the stock's blend weight (0 when not in contact) and the
 -- butt-to-anchor distance (nil without a usable stock).
+-- Virtual stock engagement (worn, 15 September evening: "the gun wiggles").
+-- The shouldered weight was proximity squared, recomputed every frame, so
+-- each small change in the butt's distance blended the gun between two
+-- directions. Instead it engages once the butt is ENGAGE_FRACTION inside the
+-- radius, releases only past the radius, and eases between 0 and the
+-- strength over STOCK_EASE_SECONDS. Pure.
+Pose.STOCK_ENGAGE_FRACTION=.7
+Pose.STOCK_EASE_SECONDS=.12
+function Pose.stock_engagement(previous,distance,radius,strength,dt)
+    previous=finite(previous) and previous or 0
+    local limit=radius*(previous>0 and 1 or Pose.STOCK_ENGAGE_FRACTION)
+    local target=(finite(distance) and distance<limit) and strength or 0
+    if not finite(dt) or dt<=0 then return target end
+    local w=previous+(target-previous)*(1-math.exp(-dt/Pose.STOCK_EASE_SECONDS))
+    if math.abs(w-target)<1e-3 then w=target end
+    return w
+end
+-- stock.engagement, when given ({weight=, dt=}), holds the eased engagement
+-- between frames and replaces the per-frame proximity weight.
 function Pose.stock_correction(rotation,primary,support,socket,stock)
     local correction=Pose.correction(rotation,primary,support,socket)
     if not correction or type(stock)~='table' or not valid(stock.anchor,3) or
@@ -159,6 +178,15 @@ function Pose.stock_correction(rotation,primary,support,socket,stock)
         primary[3]+placed[3]-stock.anchor[3]}
     local distance=math.sqrt(dot(delta,delta))
     if not finite(distance) then return correction,0 end
+    local engagement=stock.engagement
+    if type(engagement)=='table' then
+        local w=Pose.stock_engagement(engagement.weight,distance,stock.radius,stock.strength,engagement.dt)
+        engagement.weight=w
+        if w<=0 then return correction,0,distance end
+        local shouldered=Pose.correction(q,stock.anchor,support,difference(socket,stock.offset))
+        if not shouldered then engagement.weight=0; return correction,0,distance end
+        return slerp(correction,shouldered,w),w,distance
+    end
     if distance>=stock.radius then return correction,0,distance end
     local stock_ray=difference(socket,stock.offset)
     local shouldered=Pose.correction(q,stock.anchor,support,stock_ray)
@@ -239,10 +267,11 @@ end
 Pose.HANDS_LINE_BETA=20
 Pose.HANDS_LINE_DERIVATIVE_CUTOFF=1
 function Pose.new()
-    local state={correction={0,0,0,1},owner=nil,engaged=0}
+    local state={correction={0,0,0,1},owner=nil,engaged=0,stock_engagement={weight=0}}
     local line=Pose.new_one_euro(1,Pose.HANDS_LINE_BETA,Pose.HANDS_LINE_DERIVATIVE_CUTOFF)
     function state.reset()
         state.correction={0,0,0,1}; state.owner=nil; state.engaged=0; line.reset()
+        state.stock_engagement.weight=0
     end
     function state.apply(rotation)
         local q=normalize(rotation,4)
@@ -256,6 +285,11 @@ function Pose.new()
             not finite(smoothing) or smoothing<0 then state.reset(); return q end
         if state.owner~=owner then state.reset(); state.owner=owner end
         local weight=smoothing==0 and 1 or 1-math.exp(-dt/smoothing)
+        if not held then state.stock_engagement.weight=0 end
+        if type(stock)=='table' then
+            state.stock_engagement.dt=dt
+            stock.engagement=state.stock_engagement
+        end
         if type(steady)=='table' and steady.mode=='hands_line' and held and
             valid(primary,3) and valid(support,3) then
             local scene=steady.scene and normalize(steady.scene,4)

@@ -18,7 +18,14 @@ near(c1[2]-c4[2],Forearm.ZONE_SPACING*3,'spacing')
 -- Turned arm: forward along +x.
 local c2=Forearm.centre(2,grip,{1,0,0},up)
 near(c2[1],1-(Forearm.ZONE_START+Forearm.ZONE_SPACING),'follows the arm')
-assert(Forearm.ZONE_SPACING>=Forearm.ZONE_RADIUS*1.5,'neighbouring zones overlap too much')
+-- User layout: 8 cm zones, 4 cm apart, the weapon above the wrist.
+near(Forearm.ZONE_RADIUS*2,.08,'8 cm zones'); near(Forearm.ZONE_SPACING-2*Forearm.ZONE_RADIUS,.04,'4 cm between zones')
+near(Forearm.ZONE_START,.08,'weapon zone above the wrist')
+assert(Forearm.PREVIEW_SIZE*Forearm.HOVER_SCALE<=Forearm.ZONE_RADIUS*2+1e-9,'a hovered miniature stays inside its zone')
+-- Miniatures are fitted to one size; unusable extents are refused.
+near(Forearm.fit_scale(1.0),Forearm.PREVIEW_SIZE,'a 1 m weapon'); near(Forearm.fit_scale(0.25),Forearm.PREVIEW_SIZE*4,'a 25 cm stim')
+assert(Forearm.fit_scale(0)==nil and Forearm.fit_scale(nil)==nil and Forearm.fit_scale(0/0)==nil)
+near(Forearm.shown_scale(.1,true),.1*Forearm.HOVER_SCALE,'hovered grows'); near(Forearm.shown_scale(.1,false),.1)
 -- Holster state with a per-hand zone list: the off hand arms a forearm zone.
 local frame=Holsters.frame({0,0,1.64},{0,1,0},1.64)
 local zone={id='forearm_stim',slot='slot_pocketable_small',selector='stim',radius=.04,
@@ -35,11 +42,11 @@ assert(holsters.request('left',ready,{slot_pocketable_small='not_equipped',wield
 local other=Holsters.new()
 other.update('left',Holsters.local_point(frame,{.35,.31,1.5}),1)
 assert(other.update('left',Holsters.local_point(frame,{.35,.31,1.5}),1.1)==nil,'body zones unchanged')
--- Previews move toward the eye, never past halfway.
-local p=Forearm.preview_point({0,1,0},{0,0,0})
-near(p[2],1-Forearm.PREVIEW_TOWARD_EYE,'toward the eye')
-p=Forearm.preview_point({0,.1,0},{0,0,0})
-near(p[2],.05,'at most halfway')
-p=Forearm.preview_point({1,1,1},{1,1,1})
-near(p[1],1,'coincident eye')
-print('forearm_holsters=pass assignment centres spacing zone_override request empty preview_point')
+-- Roll-stable above: world up across the forearm, whatever the wrist roll.
+local u=Forearm.stable_up({0,1,0},{1,0,0})
+near(u[1],0); near(u[2],0); near(u[3],1,'level forearm: straight up')
+u=Forearm.stable_up({0,math.sqrt(.5),math.sqrt(.5)},{1,0,0})
+near(u[1]*0+u[2]*math.sqrt(.5)+u[3]*math.sqrt(.5),0,'perpendicular to the forearm'); assert(u[3]>0,'still above')
+u=Forearm.stable_up({0,0,1},{1,0,0})
+assert(u[1]==1,'vertical forearm uses the fallback')
+print('forearm_holsters=pass assignment centres layout fit hover stable_up zone_override request empty')

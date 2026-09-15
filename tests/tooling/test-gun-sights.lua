@@ -73,4 +73,24 @@ near(out[4],1,1e-6,'foreign reticle ignored')
 presentation.controller_aim.reticle_point_owner=unit
 out=api.drawn_rotation(unit,'autogun_p1_m1',{0,0,0},identity,1/90)
 assert(math.abs(out[1])<1e-6,'unknown template')
-print('gun_sights=pass offset zeroing general_pose near cap ease foreign unknown')
+-- The zeroing applies only as the sights reach the eye.
+local d,b=Sights.eye_distance({0,0,0},identity,{x=0,z=.118},{0,-.3,.118})
+near(d,0,1e-9,'eye on the sight line'); near(b,.3,1e-9,'30 cm behind the sight')
+d=Sights.eye_distance({0,0,0},identity,{x=0,z=.118},{.1,-.3,.118}); near(d,.1,1e-9,'10 cm off the line')
+near(Sights.zeroing_weight(0,.3),1,1e-12,'at the eye: full')
+near(Sights.zeroing_weight(Sights.ZEROING_NONE_DISTANCE+.01,.3),0,1e-12,'low ready: none')
+local mid=Sights.zeroing_weight((Sights.ZEROING_FULL_DISTANCE+Sights.ZEROING_NONE_DISTANCE)/2,.3)
+assert(mid>0 and mid<1,'blends between'); near(mid,.5,1e-9,'smooth midpoint')
+assert(Sights.zeroing_weight(0,-.1)==0,'eye in front of the sight')
+assert(Sights.zeroing_weight(nil,.3)==0)
+-- Adapter with a tracked eye far from the sights: the gun follows the hand.
+Quaternion.right=function() return {1,0,0} end
+local eye_vec=setmetatable({0,-.3,-.5},{__add=function(a,v) return {a[1]+v[1],a[2]+v[2],a[3]+v[3]} end})
+local vmt={__mul=function(v,k) return {v[1]*k,v[2]*k,v[3]*k} end}
+Quaternion.right=function() return setmetatable({1,0,0},vmt) end
+presentation.eye_pose=function() return eye_vec,identity end
+presentation.weapon_hand_roles={physical=function() return 'right' end}
+presentation.controller_aim.reticle_point_owner=unit
+for _=1,90 do out=api.drawn_rotation(unit,'galvanic_rifle_p1_m1',{0,0,0},identity,1/90) end
+near(out[4],1,1e-6,'eye 60 cm below the sights: no zeroing')
+print('gun_sights=pass offset zeroing general_pose near cap ease foreign unknown eye_weight')

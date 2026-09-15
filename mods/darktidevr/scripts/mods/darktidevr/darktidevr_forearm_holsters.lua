@@ -2,41 +2,47 @@
 -- request, 15 September): small holsters along the gun hand's forearm. The
 -- off hand reaches into one and presses grip to wield what it holds, through
 -- the same grip request as the body holsters (darktidevr_holsters.lua). Each
--- occupied holster shows a miniature of its item while the off hand is near.
+-- occupied holster always shows a miniature of its item; the one the off hand
+-- is in grows a little and ticks in that hand.
 --
--- Layout, from the wrist toward the elbow, in the gun hand's grip frame
--- (forward along the controller, up on top). Starting values to tune worn:
--- the first zone ZONE_START behind the grip, ZONE_SPACING apart, ZONE_HEIGHT
--- above the forearm line, ZONE_RADIUS each.
+-- Layout (user, 15 September evening): 8 cm grab zones with 4 cm between
+-- them, in a line above the forearm along the gun hand's aim, the weapon
+-- above the wrist. The miniature is drawn at its grab zone.
 --   1. the other weapon (ranged while the melee weapon is out, and back)
 --   2. stim, 3. carried item, 4. device
+--
+-- Worn, 15 September evening: the first layout used the controller grip's
+-- axes, which put the holsters below the wrist; the 3.5 cm grab zones were
+-- far too small; the miniatures overlapped; fixed scales left the weapon tiny
+-- and the medkit and ammo pack large. Miniatures are now fitted to one size.
 local Forearm = {}
 
--- Clear of the gun hand glove's gauntlet cuff, which flares about 12 cm above
--- the forearm and runs well back from the wrist (eye renders forearm7-12).
-Forearm.ZONE_START = 0.20
-Forearm.ZONE_SPACING = 0.055
-Forearm.ZONE_HEIGHT = 0.10
-Forearm.ZONE_RADIUS = 0.035
--- Preview scales: a 1 m rifle or maul shows about 14 cm long; stims, carried
--- items and devices (about 20-40 cm) about 9-18 cm. The first pass (0.07 and
--- 0.25) was too small and hidden by the gun hand's glove (user, 15 September).
-Forearm.WEAPON_SCALE = 0.14
-Forearm.ITEM_SCALE = 0.45
--- Previews are drawn this far from their holster toward the eye, so the gun
--- hand's gauntlet cuff cannot cover them; the grab zones stay at the holster.
-Forearm.PREVIEW_TOWARD_EYE = 0.08
-
--- Where a preview is drawn: the holster centre moved toward the eye. Pure.
-function Forearm.preview_point(centre, eye)
-    local dx, dy, dz = eye[1] - centre[1], eye[2] - centre[2], eye[3] - centre[3]
-    local length = math.sqrt(dx * dx + dy * dy + dz * dz)
-    if length < 1e-6 then return {centre[1], centre[2], centre[3]} end
-    local step = math.min(Forearm.PREVIEW_TOWARD_EYE, length * 0.5) / length
-    return {centre[1] + dx * step, centre[2] + dy * step, centre[3] + dz * step}
-end
-Forearm.PREVIEW_NEAR = 0.30
+-- The wrist sits about 8 cm behind the controller grip.
+Forearm.ZONE_START = 0.08
+Forearm.ZONE_RADIUS = 0.04
+Forearm.ZONE_GAP = 0.04
+Forearm.ZONE_SPACING = 2 * Forearm.ZONE_RADIUS + Forearm.ZONE_GAP
+Forearm.ZONE_HEIGHT = 0.08
+-- Every miniature's largest dimension, and its growth while hovered.
+Forearm.PREVIEW_SIZE = 0.064
+Forearm.HOVER_SCALE = 1.25
+-- Scale used until the item's meshes report a size, and if they never do.
+Forearm.SPAWN_SCALE = 0.2
+Forearm.FALLBACK_SCALE = 0.12
+Forearm.FIT_TIMEOUT = 3
 Forearm.TEST_FLAG = "./../mods/darktidevr/darktidevr_forearm_holsters_test.flag"
+
+-- The scale that makes an item whose largest unscaled dimension is extent
+-- PREVIEW_SIZE long, or nil for an unusable extent. Pure.
+function Forearm.fit_scale(extent)
+    if type(extent) ~= "number" or extent ~= extent or extent < 0.01 or extent > 10 then return nil end
+    return Forearm.PREVIEW_SIZE / extent
+end
+
+-- A preview's scale this frame. Pure.
+function Forearm.shown_scale(base, hovered)
+    return hovered and base * Forearm.HOVER_SCALE or base
+end
 
 Forearm.SLOTS = {
     {id = "forearm_weapon"},
@@ -56,8 +62,20 @@ function Forearm.assignment(index, wielded_slot)
     return entry.slot, entry.selector
 end
 
--- A zone centre in world space from the gun hand's grip position and axes
--- (3-arrays). Pure.
+-- The forearm's "above" direction that ignores wrist roll: world up with
+-- its component along the forearm removed, like the ammo counter's world-up
+-- placement (user, 15 September evening). Falls back to the given axis when
+-- the forearm points almost straight up or down. 3-arrays. Pure.
+function Forearm.stable_up(forward, fallback)
+    local d = forward[3]
+    local up = {-forward[1] * d, -forward[2] * d, 1 - forward[3] * d}
+    local length = math.sqrt(up[1] ^ 2 + up[2] ^ 2 + up[3] ^ 2)
+    if length < 0.2 then return fallback end
+    return {up[1] / length, up[2] / length, up[3] / length}
+end
+
+-- A forearm point in world space from the gun hand's grip position and the
+-- forearm's axes (3-arrays: forward along the aim, up above it). Pure.
 function Forearm.centre(index, grip, forward, up)
     local along = -(Forearm.ZONE_START + Forearm.ZONE_SPACING * (index - 1))
     return {grip[1] + forward[1] * along + up[1] * Forearm.ZONE_HEIGHT,
@@ -83,11 +101,8 @@ function Forearm.install(mod, presentation)
         if not file then test_enabled = false; return false end
         local value = file:read("*all"); file:close()
         test_enabled = type(value) == "string" and (value:match("^%s*enabled%s*$") ~= nil or
-            value:match("^%s*front%s*$") ~= nil or value:match("^%s*big%s*$") ~= nil)
-        -- "big": previews at their holsters but four times larger, always shown.
-        api.test_big = type(value) == "string" and value:match("^%s*big%s*$") ~= nil
-        -- "front": previews 50 cm ahead of the eye, larger and always shown,
-        -- to check they render at all.
+            value:match("^%s*front%s*$") ~= nil)
+        -- "front": previews 50 cm ahead of the eye, to check they render.
         api.test_front = type(value) == "string" and value:match("^%s*front%s*$") ~= nil
         return test_enabled
     end
@@ -95,19 +110,31 @@ function Forearm.install(mod, presentation)
         return (mod.get and mod:get("vr_forearm_holsters") == true) or test_flag()
     end
     local function array(v) return v and {Vector3.x(v), Vector3.y(v), Vector3.z(v)} or nil end
+    local function eye_of(unit)
+        if not presentation.eye_pose then return nil end
+        local position, rotation = presentation.eye_pose(unit)
+        return position, rotation
+    end
 
     -- Zones in the holster body frame (x right, y forward, z up, divided by
     -- the frame scale) for the off hand this frame, or nil.
     function api.local_zones(unit, frame, Holsters, inventory)
-        local position, rotation = presentation.weapon_grip_target("dominant")
-        if not position or not rotation or not frame then return nil end
-        local grip, forward, up = array(position), array(Quaternion.forward(rotation)), array(Quaternion.up(rotation))
+        local position, grip_rotation = presentation.weapon_grip_target("dominant")
+        if not position or not frame then return nil end
+        local aim
+        if presentation.weapon_aim_target then
+            local _, rotation = presentation.weapon_aim_target("dominant")
+            aim = rotation
+        end
+        local rotation = aim or grip_rotation
+        if not rotation then return nil end
+        local grip, forward = array(position), array(Quaternion.forward(rotation))
+        local up = Forearm.stable_up(forward, array(Quaternion.up(rotation)))
         for index, zone in ipairs(zones) do
             local world = Forearm.centre(index, grip, forward, up)
             zone.world = world
             zone.slot, zone.selector = Forearm.assignment(index, inventory and inventory.wielded_slot)
-            local point = Holsters.local_point(frame, world)
-            zone.centre = point
+            zone.centre = Holsters.local_point(frame, world)
             zone.radius = Forearm.ZONE_RADIUS / frame.scale
             local_zones[index] = zone
         end
@@ -116,21 +143,64 @@ function Forearm.install(mod, presentation)
     end
 
     -- Miniature previews: one UIWeaponSpawner per zone, respawned when the
-    -- zone's item changes, posed each frame, hidden while the off hand is far.
+    -- zone's item changes, fitted to PREVIEW_SIZE once its meshes report a
+    -- size, and posed every frame.
     local UIWeaponSpawner, UIUnitSpawner
     local previews, preview_world, failed = {}, nil, false
+    local hovered_id
     local function destroy_preview(preview)
         if preview.spawner then pcall(preview.spawner.destroy, preview.spawner) end
         if preview.unit_spawner then pcall(preview.unit_spawner.destroy, preview.unit_spawner) end
     end
     function api.destroy()
         for index, preview in pairs(previews) do destroy_preview(preview); previews[index] = nil end
-        preview_world = nil
+        preview_world, hovered_id = nil, nil
     end
     local function item_in(unit, slot)
         local loadout = ScriptUnit.has_extension(unit, "visual_loadout_system")
         local equipment = loadout and loadout._equipment and loadout._equipment[slot]
         return equipment and equipment.item or nil
+    end
+    local function collect_units(value, out, depth)
+        if depth > 3 then return out end
+        if type(value) == "userdata" then
+            out[#out + 1] = value
+        elseif type(value) == "table" then
+            for _, inner in pairs(value) do collect_units(inner, out, depth + 1) end
+        end
+        return out
+    end
+    -- The largest dimension of the item's meshes in the link unit's unscaled
+    -- frame, or nil while no mesh reports a size.
+    local function model_extent(data)
+        local link = data.link_unit
+        local inverse = Matrix4x4.inverse(Unit.world_pose(link, 1))
+        local low, high = {math.huge, math.huge, math.huge}, {-math.huge, -math.huge, -math.huge}
+        local units = collect_units(data.attachment_units_3p, {data.item_unit_3p}, 0)
+        local boxes = 0
+        for _, candidate in ipairs(units) do
+            local alive_ok, alive = pcall(Unit.alive, candidate)
+            if alive_ok and alive then
+                for mesh_index = 1, Unit.num_meshes(candidate) do
+                    local ok, pose, half = pcall(Mesh.box, Unit.mesh(candidate, mesh_index))
+                    if ok and pose and half and Vector3.length(half) > 1e-4 then
+                        boxes = boxes + 1
+                        local hx, hy, hz = Vector3.x(half), Vector3.y(half), Vector3.z(half)
+                        for sx = -1, 1, 2 do for sy = -1, 1, 2 do for sz = -1, 1, 2 do
+                            local world = Matrix4x4.transform(pose, Vector3(sx * hx, sy * hy, sz * hz))
+                            local p = Matrix4x4.transform(inverse, world)
+                            local c = {Vector3.x(p), Vector3.y(p), Vector3.z(p)}
+                            for i = 1, 3 do
+                                if c[i] < low[i] then low[i] = c[i] end
+                                if c[i] > high[i] then high[i] = c[i] end
+                            end
+                        end end end
+                    end
+                end
+            end
+        end
+        if boxes == 0 then return nil end
+        return math.max(high[1] - low[1], high[2] - low[2], high[3] - low[3]), boxes
     end
     local function update_previews(world, unit, dt, t)
         if not api.enabled() or not api.grip or presentation.mode ~= 1 then api.destroy(); return end
@@ -138,9 +208,20 @@ function Forearm.install(mod, presentation)
         UIWeaponSpawner = UIWeaponSpawner or require("scripts/managers/ui/ui_weapon_spawner")
         UIUnitSpawner = UIUnitSpawner or require("scripts/managers/ui/ui_unit_spawner")
         local support = presentation.weapon_hand_roles.physical("support")
-        local hand = support == "left" and presentation.left_controller_grip_target() or presentation.controller_grip_target()
-        local middle = Forearm.centre(2.5, api.grip, api.forward, api.up)
-        local near = hand and Vector3.distance(hand, Vector3(middle[1], middle[2], middle[3])) <= Forearm.PREVIEW_NEAR
+        -- The zone the off hand is in, from the holster state.
+        local holsters = presentation.holsters
+        local hand_state = holsters and holsters.hands and holsters.hands[support]
+        local hovered = hand_state and hand_state.zone
+        local hovered_forearm
+        for index, zone in ipairs(zones) do
+            if zone == hovered and previews[index] then hovered_forearm = zone end
+        end
+        local hover_id = hovered_forearm and hovered_forearm.id or nil
+        if hover_id and hover_id ~= hovered_id and presentation.haptics and presentation.haptics.pulse and
+                (support == "left" or support == "right") then
+            pcall(presentation.haptics.pulse, support, "zone", t)
+        end
+        hovered_id = hover_id
         -- Previews lie across the forearm so neighbours do not overlap. Melee
         -- weapons are long along their local z, guns and items along y.
         local arm_forward = Vector3(api.forward[1], api.forward[2], api.forward[3])
@@ -156,7 +237,8 @@ function Forearm.install(mod, presentation)
                 local unit_spawner = UIUnitSpawner:new(world)
                 local spawner = UIWeaponSpawner:new("DarktideVRForearm_" .. index, world, nil, unit_spawner)
                 local position = Vector3(zone.world[1], zone.world[2], zone.world[3])
-                spawner:start_presentation(item, position, across, Vector3(0.2, 0.2, 0.2), nil, false)
+                local scale = Forearm.SPAWN_SCALE
+                spawner:start_presentation(item, position, across, Vector3(scale, scale, scale), nil, false)
                 preview = {item = item, spawner = spawner, unit_spawner = unit_spawner, started_t = t}
                 previews[index] = preview
                 mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_start zone=%s item=%s", zone.id, tostring(item.name))
@@ -164,86 +246,35 @@ function Forearm.install(mod, presentation)
             if preview then
                 preview.spawner:update(dt, t, nil)
                 local data = preview.spawner:get_spawn_data()
-                if data and not preview.spawn_logged then
-                    preview.spawn_logged = true
-                    mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_spawned zone=%s after_s=%.2f item_unit=%s link=%s",
-                        zone.id, t - (preview.started_t or t), tostring(data.item_unit_3p), tostring(data.link_unit))
-                elseif not data and not preview.wait_logged and t - (preview.started_t or t) > 5 then
-                    preview.wait_logged = true
-                    mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_waiting zone=%s seconds=5", zone.id)
-                end
-                if data and data.link_unit and Unit.alive(data.link_unit) then
-                    -- Fixed scales: part boxes are not reliable right after spawning.
-                    if not preview.fitted and data.item_unit_3p and Unit.alive(data.item_unit_3p) then
-                        local weapon = zone.slot == "slot_primary" or zone.slot == "slot_secondary"
-                        local scale = weapon and Forearm.WEAPON_SCALE or Forearm.ITEM_SCALE
-                        Unit.set_local_scale(data.link_unit, 1, Vector3(scale, scale, scale))
-                        preview.fitted = true
-                        mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview zone=%s item=%s scale=%.3f",
-                            zone.id, tostring(item.name), scale)
-                        local first_person = ScriptUnit.has_extension(unit, "first_person_system")
-                        local eye_unit = first_person and first_person:first_person_unit()
-                        if eye_unit then
-                            local eye_rotation = Unit.world_rotation(eye_unit, 1)
-                            local d = Vector3(zone.world[1], zone.world[2], zone.world[3]) - Unit.world_position(eye_unit, 1)
-                            mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_in_eye zone=%s right_m=%.3f up_m=%.3f forward_m=%.3f near=%s",
-                                zone.id, Vector3.dot(d, Quaternion.right(eye_rotation)), Vector3.dot(d, Quaternion.up(eye_rotation)),
-                                Vector3.dot(d, Quaternion.forward(eye_rotation)), tostring(near))
-                        end
-                    end
+                if data and data.link_unit and Unit.alive(data.link_unit) and
+                        data.item_unit_3p and Unit.alive(data.item_unit_3p) then
                     if api.test_front then
-                        local first_person = ScriptUnit.has_extension(unit, "first_person_system")
-                        local eye_unit = first_person and first_person:first_person_unit()
-                        local eye_rotation = eye_unit and Unit.world_rotation(eye_unit, 1)
-                        if eye_unit then
-                            local place = Unit.world_position(eye_unit, 1) + Quaternion.forward(eye_rotation) * 0.5 +
-                                Quaternion.right(eye_rotation) * (0.12 * (index - 2.5))
-                            Unit.set_local_position(data.link_unit, 1, place)
+                        local eye, eye_rotation = eye_of(unit)
+                        if eye then
+                            Unit.set_local_position(data.link_unit, 1, eye + Quaternion.forward(eye_rotation) * 0.5 +
+                                Quaternion.right(eye_rotation) * (0.12 * (index - 2.5)))
                             Unit.set_local_rotation(data.link_unit, 1, Quaternion.look(Quaternion.right(eye_rotation), Vector3.up()))
-                            Unit.set_local_scale(data.link_unit, 1, Vector3(0.15, 0.15, 0.15))
                         end
-                        near = true
                     else
-                        local first_person = ScriptUnit.has_extension(unit, "first_person_system")
-                        local eye_unit = first_person and first_person:first_person_unit()
-                        local point = zone.world
-                        if eye_unit then
-                            local eye = Unit.world_position(eye_unit, 1)
-                            point = Forearm.preview_point(zone.world, {Vector3.x(eye), Vector3.y(eye), Vector3.z(eye)})
-                        end
-                        Unit.set_local_position(data.link_unit, 1, Vector3(point[1], point[2], point[3]))
+                        Unit.set_local_position(data.link_unit, 1, Vector3(zone.world[1], zone.world[2], zone.world[3]))
                         Unit.set_local_rotation(data.link_unit, 1, zone.slot == "slot_primary" and across_long_z or across)
-                        if api.test_big then
-                            Unit.set_local_scale(data.link_unit, 1, Vector3(0.3, 0.3, 0.3))
-                            near = true
+                    end
+                    if not preview.base_scale then
+                        local extent, boxes = model_extent(data)
+                        local fitted = Forearm.fit_scale(extent)
+                        if fitted or t - (preview.started_t or t) > Forearm.FIT_TIMEOUT then
+                            preview.base_scale = fitted or Forearm.FALLBACK_SCALE
+                            mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_fitted zone=%s item=%s extent_m=%s boxes=%s scale=%.3f",
+                                zone.id, tostring(item.name), tostring(extent), tostring(boxes), preview.base_scale)
                         end
                     end
-                    if (api.test_big or api.test_front) and data.item_unit_3p and Unit.alive(data.item_unit_3p) then
-                        preview.debug_t = preview.debug_t or 0
-                        if t - preview.debug_t > 2 then
-                            preview.debug_t = t
-                            local first_person = ScriptUnit.has_extension(unit, "first_person_system")
-                            local eye_unit = first_person and first_person:first_person_unit()
-                            if eye_unit then
-                                local eye_rotation = Unit.world_rotation(eye_unit, 1)
-                                local function in_eye(p)
-                                    local d = p - Unit.world_position(eye_unit, 1)
-                                    return string.format("%.3f,%.3f,%.3f", Vector3.dot(d, Quaternion.right(eye_rotation)),
-                                        Vector3.dot(d, Quaternion.up(eye_rotation)), Vector3.dot(d, Quaternion.forward(eye_rotation)))
-                                end
-                                mod:info("DARKTIDEVR_FOREARM_HOLSTERS debug zone=%s link_in_eye=%s item_in_eye=%s target_in_eye=%s scale=%.3f near=%s linked_parent=%s",
-                                    zone.id, in_eye(Unit.world_position(data.link_unit, 1)), in_eye(Unit.world_position(data.item_unit_3p, 1)),
-                                    in_eye(Vector3(zone.world[1], zone.world[2], zone.world[3])),
-                                    Vector3.x(Unit.local_scale(data.link_unit, 1)), tostring(near),
-                                    tostring(Unit.scene_graph_parent(data.item_unit_3p, 1)))
-                            end
-                        end
+                    local shown = preview.base_scale ~= nil and not api.debug_hide
+                    if preview.base_scale then
+                        local scale = Forearm.shown_scale(preview.base_scale, hover_id == zone.id)
+                        Unit.set_local_scale(data.link_unit, 1, Vector3(scale, scale, scale))
                     end
                     -- Every frame: the spawner shows the unit once streaming completes.
-                    if data.item_unit_3p and Unit.alive(data.item_unit_3p) then
-                        preview.visible = near and preview.fitted == true and not api.debug_hide
-                        Unit.set_unit_visibility(data.item_unit_3p, preview.visible, true)
-                    end
+                    Unit.set_unit_visibility(data.item_unit_3p, shown, true)
                 end
             end
         end

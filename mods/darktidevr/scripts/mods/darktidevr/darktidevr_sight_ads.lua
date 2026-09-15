@@ -93,12 +93,15 @@ function SightAds.install(mod, presentation, observation)
         if not offset then return false end
         local grip = presentation.weapon_grip_target and presentation.weapon_grip_target("dominant")
         local _, aim = presentation.weapon_aim_target("dominant")
-        local first_person = ScriptUnit.has_extension(unit, "first_person_system")
-        local camera = first_person and first_person:first_person_unit()
-        if not grip or not aim or not camera then return false end
-        local head = Unit.world_rotation(camera, 1)
-        local side = presentation.weapon_hand_roles.physical("dominant") == "left" and -1 or 1
-        local eye = Unit.world_position(camera, 1) + Quaternion.right(head) * (SightAds.SIGHT_EYE_OFFSET * side)
+        -- The tracked headset eye (presentation.eye_pose): the first-person
+        -- unit misses head translation and never met the sights (worn, 15
+        -- September).
+        local eye_position, head
+        if presentation.eye_pose then eye_position, head = presentation.eye_pose(unit) end
+        if not grip or not aim or not eye_position or not head then return false end
+        local dominant = presentation.weapon_hand_roles.physical("dominant")
+        local side = dominant == "left" and -1 or 1
+        local eye = eye_position + Quaternion.right(head) * (SightAds.SIGHT_EYE_OFFSET * side)
         local distance, behind, facing = SightAds.measure(vector(grip), vector(Quaternion.forward(aim)),
             vector(Quaternion.up(aim)), vector(Quaternion.right(aim)), offset, vector(eye), vector(Quaternion.forward(head)))
         local engaged = SightAds.engaged(api.engaged, distance, behind, facing)
@@ -111,6 +114,10 @@ function SightAds.install(mod, presentation, observation)
         end
         if engaged and not api.engaged then
             api.entries = api.entries + 1
+            -- A tick in the gun hand as the sights meet the eye.
+            if presentation.haptics and presentation.haptics.pulse and (dominant == "left" or dominant == "right") then
+                pcall(presentation.haptics.pulse, dominant, "zone", Managers.time and Managers.time:time("main") or 0)
+            end
             if api.entries <= 10 then
                 mod:info("DARKTIDEVR_SIGHT_ADS enter template=%s distance_m=%.3f behind_m=%.3f facing=%.3f entries=%d",
                     template.name, distance, behind, facing, api.entries)

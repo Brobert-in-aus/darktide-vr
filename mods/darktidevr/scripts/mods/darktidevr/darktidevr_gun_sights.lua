@@ -15,6 +15,13 @@
 -- reticle are unchanged. The correction is eased, clamped to a maximum angle,
 -- and skipped for very near points.
 --
+-- It applies only as the sights come to the dominant eye (full within
+-- ZEROING_FULL_DISTANCE of the sight line, none past ZEROING_NONE_DISTANCE):
+-- raising the gun swept the reticle point from the floor to the distance and
+-- swung the gun by up to the cap on the way (worn, 15 September evening).
+-- Away from the eye nobody sees the sight picture, so the gun simply follows
+-- the hand there.
+--
 -- The sight line's offset from the grip is (eye - grip) in the muzzle frame
 -- (x right, y forward, z up). The eye comes from the hidden first-person
 -- rig's stock aim-down-sights pose, where the sights sit on the camera; the
@@ -33,6 +40,9 @@ Sights.MAX_GRIP_OFFSET = 0.25
 Sights.MIN_POINT_DISTANCE = 0.75
 Sights.MAX_CORRECTION_DEGREES = 5
 Sights.EASE_SECONDS = 0.08
+Sights.ZEROING_FULL_DISTANCE = 0.06
+Sights.ZEROING_NONE_DISTANCE = 0.18
+Sights.DOMINANT_EYE_OFFSET = 0.032
 
 local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
 local function dot(a, b) return a[1] * b[1] + a[2] * b[2] + a[3] * b[3] end
@@ -111,6 +121,31 @@ function Sights.zeroing(grip, aim, offset, point)
     return q
 end
 
+-- How far the eye is from the sight line (perpendicular) and how far behind
+-- the sight it is along the aim. Arrays: grip, eye {x,y,z}; aim {x,y,z,w};
+-- offset {x=,z=}. Pure.
+function Sights.eye_distance(grip, aim, offset, eye)
+    aim = normalize(aim)
+    if not aim or not offset or type(grip) ~= "table" or type(eye) ~= "table" then return nil end
+    local lever = rotate(aim, {offset.x, 0, offset.z})
+    local forward = rotate(aim, {0, 1, 0})
+    local to_eye = sub(eye, {grip[1] + lever[1], grip[2] + lever[2], grip[3] + lever[3]})
+    local along = dot(to_eye, forward)
+    local across = {to_eye[1] - forward[1] * along, to_eye[2] - forward[2] * along, to_eye[3] - forward[3] * along}
+    local distance = math.sqrt(dot(across, across))
+    if not finite(distance) or not finite(along) then return nil end
+    return distance, -along
+end
+
+-- How much of the zeroing applies for an eye this far from the sight line and
+-- this far behind the sight: 1 at the eye, easing to 0. Pure.
+function Sights.zeroing_weight(distance, behind)
+    if not finite(distance) or not finite(behind) or behind < 0 then return 0 end
+    local span = Sights.ZEROING_NONE_DISTANCE - Sights.ZEROING_FULL_DISTANCE
+    local x = math.max(0, math.min(1, (Sights.ZEROING_NONE_DISTANCE - distance) / span))
+    return x * x * (3 - 2 * x)
+end
+
 function Sights.install(mod, presentation)
     local api = {eyes = {}, grips = {}, correction = {0, 0, 0, 1}}
     for name, eye in pairs(Sights.SHIPPED_EYES) do api.eyes[name] = {x = eye.x, z = eye.z, source = "shipped"} end
@@ -134,8 +169,21 @@ function Sights.install(mod, presentation)
         if offset and boxed then
             local point = boxed:unbox()
             local ax, ay, az, aw = Quaternion.to_elements(aim)
-            target = Sights.zeroing({Vector3.x(grip), Vector3.y(grip), Vector3.z(grip)}, {ax, ay, az, aw}, offset,
+            local grip_array = {Vector3.x(grip), Vector3.y(grip), Vector3.z(grip)}
+            target = Sights.zeroing(grip_array, {ax, ay, az, aw}, offset,
                 {Vector3.x(point), Vector3.y(point), Vector3.z(point)}) or target
+            -- Only as the sights reach the dominant eye; without a known eye,
+            -- the full correction as before.
+            local eye, head
+            if presentation.eye_pose then eye, head = presentation.eye_pose(unit) end
+            if eye and head then
+                local roles = presentation.weapon_hand_roles
+                local side = roles and roles.physical("dominant") == "left" and -1 or 1
+                eye = eye + Quaternion.right(head) * (Sights.DOMINANT_EYE_OFFSET * side)
+                local distance, behind = Sights.eye_distance(grip_array, {ax, ay, az, aw}, offset,
+                    {Vector3.x(eye), Vector3.y(eye), Vector3.z(eye)})
+                target = slerp({0, 0, 0, 1}, target, Sights.zeroing_weight(distance, behind)) or {0, 0, 0, 1}
+            end
         end
         local weight = (not finite(dt) or dt <= 0) and 1 or 1 - math.exp(-dt / Sights.EASE_SECONDS)
         api.correction = slerp(api.correction, target, weight) or {0, 0, 0, 1}

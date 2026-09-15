@@ -103,8 +103,7 @@ function BodyFrame.new()
     return state
 end
 
--- Live adapter: world eye and head axes from the first-person unit (the
--- same eye the holster zones use), both tracked grips, and the player's eye
+-- Live adapter: world eye and head axes from the tracked eye, both tracked grips, and the player's eye
 -- height times the character scale. Sampled at most once per game time.
 function BodyFrame.install(mod, presentation, observation)
     local api = {}
@@ -112,10 +111,12 @@ function BodyFrame.install(mod, presentation, observation)
     local last_t, last_frame, failures = nil, nil, 0
     local function vector(v) return v and {Vector3.x(v), Vector3.y(v), Vector3.z(v)} or nil end
     local function sample(unit, t)
-        local first_person = unit and ScriptUnit.has_extension(unit, "first_person_system")
-        local eye_unit = first_person and first_person:first_person_unit()
-        if not eye_unit or not Unit.alive(eye_unit) then frame_state.reset(); return nil end
-        local rotation = Unit.world_rotation(eye_unit, 1)
+        -- The tracked eye (presentation.eye_pose), not the first-person unit:
+        -- that misses head translation, and the virtual stock's shoulder
+        -- anchored to it wobbled (worn, 15 September).
+        local eye_position, rotation
+        if presentation.eye_pose then eye_position, rotation = presentation.eye_pose(unit) end
+        if not eye_position or not rotation then frame_state.reset(); return nil end
         local hands = {}
         if observation.left_grip_tracking_live and presentation.left_controller_grip_target then
             hands[#hands + 1] = vector(presentation.left_controller_grip_target())
@@ -127,7 +128,7 @@ function BodyFrame.install(mod, presentation, observation)
         local scale = presentation.calibrated_character_scale and presentation.calibrated_character_scale(player) or 1
         local eye_height = presentation.physical_eye_height and presentation.physical_eye_height()
         local dt = last_t and t - last_t or nil
-        return frame_state.update({eye = vector(Unit.world_position(eye_unit, 1)),
+        return frame_state.update({eye = vector(eye_position),
             head_forward = vector(Quaternion.forward(rotation)), head_up = vector(Quaternion.up(rotation)),
             hands = hands, eye_height = eye_height and eye_height * (tonumber(scale) or 1) or nil}, dt)
     end

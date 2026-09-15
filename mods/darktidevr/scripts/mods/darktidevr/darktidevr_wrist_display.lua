@@ -1,18 +1,22 @@
 -- Wrist display (option "vr_wrist_display", default off; diegetic HUD
--- backlog, 15 September): turning the off hand's wrist toward the face, as
--- when checking a watch, shows health (with its number), toughness and
--- stamina bars at the wrist. The panel HUD is unchanged.
+-- backlog, 15 September): health (white, with its number), toughness (the
+-- HUD's toughness blue) and stamina bars at the off hand's wrist, always
+-- shown while the hand is tracked (user, 15 September evening; it first
+-- showed only with the wrist turned toward the face). The panel HUD is
+-- unchanged.
 --
--- Assumption (to confirm worn): with a controller in hand, the back of the
--- hand faces outward, the left hand's toward its grip frame's -right and the
--- right hand's toward +right. The display sits on that side of the wrist.
+-- The panel sits above the wrist in world up, so it stays put as the wrist
+-- rolls (like the ammo counter), then moves toward the eye so the glove's
+-- cuff does not cover it (worn: it was occluded by the gloves).
 local Wrist = {}
 
-Wrist.SHOW_FACING = 0.75
-Wrist.HIDE_FACING = 0.6
-Wrist.MAX_DISTANCE = 0.7
 Wrist.WRIST_BACK = 0.10
-Wrist.OUT = 0.05
+Wrist.OUT = 0.07
+Wrist.TOWARD_EYE = 0.06
+-- ui_toughness_default in the game's colour table (the HUD toughness bar).
+Wrist.HEALTH_COLOR = {255, 255, 255}
+Wrist.TOUGHNESS_COLOR = {108, 187, 196}
+Wrist.STAMINA_COLOR = {230, 220, 160}
 Wrist.BAR_WIDTH = 0.08
 Wrist.BAR_HEIGHT = 0.008
 Wrist.BAR_GAP = 0.014
@@ -21,16 +25,6 @@ Wrist.TEST_FLAG = "./../mods/darktidevr/darktidevr_wrist_display_test.flag"
 local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
 local function clamp01(x) return finite(x) and math.max(0, math.min(1, x)) or nil end
 
--- Whether the display shows: the wrist's outward normal (unit) points at the
--- eye, within reach, with hysteresis. to_eye: unit vector wrist -> eye. Pure.
-function Wrist.visible(was_visible, normal, to_eye, distance)
-    if type(normal) ~= "table" or type(to_eye) ~= "table" or not finite(distance) then return false end
-    if distance > Wrist.MAX_DISTANCE then return false end
-    local facing = normal[1] * to_eye[1] + normal[2] * to_eye[2] + normal[3] * to_eye[3]
-    if not finite(facing) then return false end
-    return facing >= (was_visible and Wrist.HIDE_FACING or Wrist.SHOW_FACING)
-end
-
 -- Bars from the sampled values, top to bottom. Pure.
 function Wrist.bars(values)
     if type(values) ~= "table" then return {} end
@@ -38,14 +32,14 @@ function Wrist.bars(values)
     local health = finite(values.health) and finite(values.max_health) and values.max_health > 0 and
         values.health / values.max_health or nil
     if health then
-        bars[#bars + 1] = {id = "health", fraction = clamp01(health), color = {230, 90, 80},
+        bars[#bars + 1] = {id = "health", fraction = clamp01(health), color = Wrist.HEALTH_COLOR,
             text = string.format("%d", math.floor(values.health + 0.5))}
     end
     if clamp01(values.toughness) then
-        bars[#bars + 1] = {id = "toughness", fraction = clamp01(values.toughness), color = {120, 200, 230}}
+        bars[#bars + 1] = {id = "toughness", fraction = clamp01(values.toughness), color = Wrist.TOUGHNESS_COLOR}
     end
     if clamp01(values.stamina) then
-        bars[#bars + 1] = {id = "stamina", fraction = clamp01(values.stamina), color = {230, 220, 160}}
+        bars[#bars + 1] = {id = "stamina", fraction = clamp01(values.stamina), color = Wrist.STAMINA_COLOR}
     end
     return bars
 end
@@ -91,11 +85,9 @@ function Wrist.install(mod, presentation, observation)
                 presentation.gameplay_context.ui_blocks_gameplay(Managers.ui) then
             hide(); return
         end
-        local first_person = ScriptUnit.has_extension(unit, "first_person_system")
-        local eye_unit = first_person and first_person:first_person_unit()
-        if not eye_unit then hide(); return end
-        local eye = Unit.world_position(eye_unit, 1)
-        local eye_rotation = Unit.world_rotation(eye_unit, 1)
+        local eye, eye_rotation
+        if presentation.eye_pose then eye, eye_rotation = presentation.eye_pose(unit) end
+        if not eye or not eye_rotation then hide(); return end
         local anchor
         if test == "front" then
             anchor = eye + Quaternion.forward(eye_rotation) * 0.45 - Quaternion.up(eye_rotation) * 0.05
@@ -108,13 +100,13 @@ function Wrist.install(mod, presentation, observation)
             if side == "left" then position, rotation = presentation.left_controller_grip_target()
             else position, rotation = presentation.controller_grip_target() end
             if not live or not position or not rotation then hide(); return end
-            local normal = Quaternion.right(rotation) * (side == "left" and -1 or 1)
-            anchor = position - Quaternion.forward(rotation) * Wrist.WRIST_BACK + normal * Wrist.OUT
+            anchor = position - Quaternion.forward(rotation) * Wrist.WRIST_BACK + Vector3.up() * Wrist.OUT
             local offset = eye - anchor
             local distance = Vector3.length(offset)
-            local to_eye = distance > 1e-4 and offset / distance or Vector3(0, 0, 1)
-            api.visible = Wrist.visible(api.visible, array(normal), array(to_eye), distance)
-            if not api.visible then hide(); return end
+            if distance > 1e-4 then
+                anchor = anchor + offset * (math.min(Wrist.TOWARD_EYE, distance * 0.5) / distance)
+            end
+            api.visible = true
         end
         local bars = Wrist.bars(read_values(unit))
         if #bars == 0 then hide(); return end

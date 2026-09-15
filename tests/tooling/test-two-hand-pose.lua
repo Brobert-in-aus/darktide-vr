@@ -151,7 +151,17 @@ for _,bad in ipairs({{anchor={30,30,30},offset={0,-.25,0},radius=.2,strength=1},
         {anchor=stock.anchor,offset=stock.offset,radius=math.huge,strength=1}}) do
     near(Pose.new().update(identity,primary,{3,4.3,5},socket,true,owner,.01,0,false,bad),identity)
 end
-print('virtual_stock_pose=pass proximity strength release invalidity fixed_primary')
+-- Engagement: enters deeper than it leaves, eases in and out.
+local r=.2
+assert(Pose.stock_engagement(0,r*.8,r,1,.01)==0,'not yet engaged at 80% of the radius')
+local w=Pose.stock_engagement(0,r*.5,r,1,.01); assert(w>0 and w<1,'eases in')
+assert(Pose.stock_engagement(w,r*.9,r,1,.01)>w,'stays engaged inside the radius')
+local out=Pose.stock_engagement(1,r*1.1,r,1,.01); assert(out<1 and out>0,'eases out past the radius')
+local settled=0
+for _=1,200 do settled=Pose.stock_engagement(settled,r*.5,r,.5,.01) end
+assert(settled==.5,'settles at the strength')
+assert(Pose.stock_engagement(0,0/0,r,1,.01)==0)
+print('virtual_stock_pose=pass proximity strength release invalidity fixed_primary engagement')
 local anchor=Pose.new_stock_anchor()
 local stock_profile=Pose.stock_profile({shoulder={.2,0,1.4},offset={0,-.25,0},radius=.2,strength=.5})
 local body_frame={body_position={0,0,0},scene_yaw=0,body_yaw=0,
