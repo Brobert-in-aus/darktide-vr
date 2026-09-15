@@ -102,10 +102,23 @@ function Readout.values(slot, Ammo, clip_count, peril)
     return result
 end
 
+-- A melee weapon with special charges (power maul, force sword): charges left
+-- and whether the special is active. nil for melee weapons without charges.
+function Readout.melee_values(slot)
+    if type(slot) ~= "table" then return nil end
+    local max = slot.max_num_special_charges
+    if type(max) ~= "number" or max <= 0 then return nil end
+    return {charges = math.max(0, math.min(max, slot.num_special_charges or 0)), charges_max = max,
+        active = slot.special_active == true}
+end
+
 -- Display text and colour: white, amber from 20 % left (stock's low-ammo
 -- threshold) or 75 % heat, red when the clip is empty or heat is past 90 %.
 function Readout.text(values)
     if not values then return nil end
+    if values.charges then
+        return string.format("%d/%d", values.charges, values.charges_max), values.charges == 0 and "critical" or "normal"
+    end
     local parts = {}
     if values.clip then parts[#parts + 1] = string.format("%d | %d", values.clip, values.reserve) end
     if values.heat then parts[#parts + 1] = string.format("%d%%", math.floor(values.heat * 100 + 0.5)) end
@@ -121,6 +134,7 @@ end
 -- reserve (or heat, for a weapon with both) small beneath it.
 function Readout.lines(values)
     if not values then return nil end
+    if values.charges then return string.format("%d/%d", values.charges, values.charges_max), nil end
     if values.clip then
         return tostring(values.clip), values.heat and string.format("%d  %d%%", values.reserve,
             math.floor(values.heat * 100 + 0.5)) or tostring(values.reserve)
@@ -151,6 +165,11 @@ end
 -- heat left. The reserve line uses fill_color(reserve, reserve_max).
 function Readout.color(values)
     if not values then return WHITE end
+    -- Special active: the power field's blue.
+    if values.charges then
+        if values.active then return {110, 190, 255} end
+        return Readout.fill_color(values.charges, values.charges_max)
+    end
     local fraction
     if values.clip and values.clip_max and values.clip_max > 0 then
         return Readout.fill_color(values.clip, values.clip_max)
@@ -235,6 +254,9 @@ function Readout.install(mod, presentation, observation)
     local function slot_values(unit)
         local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
         local inventory = unit_data and unit_data:read_component("inventory")
+        if inventory and inventory.wielded_slot == "slot_primary" then
+            return Readout.melee_values(unit_data:read_component("slot_primary"))
+        end
         if not inventory or inventory.wielded_slot ~= "slot_secondary" then return nil end
         Ammo = Ammo or require("scripts/utilities/ammo")
         NetworkConstants = NetworkConstants or require("scripts/network_lookup/network_constants")

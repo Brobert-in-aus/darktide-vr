@@ -63,7 +63,7 @@ return {
     vr_haptics_informative = {en = "Informative"},
     vr_haptics_immersive = {en = "Immersive"},
     vr_ammo_readout = {en = "Ammo count at the hand"},
-    vr_ammo_readout_description = {en = "Show the ranged weapon's clip and reserve (or heat) beside your weapon hand instead of on the HUD panel. With a force staff out, it shows your peril there while you have any."},
+    vr_ammo_readout_description = {en = "Show the ranged weapon's clip and reserve (or heat) beside your weapon hand instead of on the HUD panel. With a force staff out, it shows your peril there while you have any; with a charged melee weapon (power maul, force sword), its charges."},
     hud_visible = {en = "Show the HUD panel"},
     hud_visible_description = {en = "Off hides the fixed HUD panel (health, ammo, objectives, prompts). World markers and the crosshair stay."},
     spectate_third_person_description = {en = "When dead or captured and watching a teammate, follow them with the third-person camera instead of looking through their eyes. Applies on the next mission."},

@@ -27,6 +27,15 @@ assert(level == "low", level)
 text, level = Readout.text(Readout.values(gun(0, 300), Ammo, 2))
 assert(text == "0 | 300" and level == "critical")
 -- Heat-only weapons (plasma, some staffs report heat without reserve).
+-- Melee special charges.
+assert(Readout.melee_values({max_num_special_charges = 0}) == nil and Readout.melee_values({}) == nil)
+local maul = assert(Readout.melee_values({num_special_charges = 2, max_num_special_charges = 3, special_active = false}))
+assert(Readout.text(maul) == "2/3" and Readout.lines(maul) == "2/3" and select(2, Readout.lines(maul)) == nil)
+local empty_maul = Readout.melee_values({num_special_charges = 0, max_num_special_charges = 3})
+assert(select(2, Readout.text(empty_maul)) == "critical")
+local r = Readout.color(Readout.melee_values({num_special_charges = 3, max_num_special_charges = 3, special_active = true}))
+assert(r[1] == 110 and r[3] == 255, "active special shows blue")
+assert(Readout.melee_values({num_special_charges = 9, max_num_special_charges = 3}).charges == 3, "clamped")
 -- A staff (no ammo, no heat) shows peril while there is any.
 assert(Readout.values({}, Ammo, 2, 0) == nil, "no peril, nothing shown")
 local staff = assert(Readout.values({}, Ammo, 2, 0.63))
