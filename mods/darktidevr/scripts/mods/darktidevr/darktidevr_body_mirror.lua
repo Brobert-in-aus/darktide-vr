@@ -33,8 +33,10 @@
 -- "overlay" also moves the copy so its neck sits at the body frame's neck (7
 -- cm behind and 8 cm below the eye): overlay6 found the camera about 21 cm
 -- above the copy's head, looking down into the collar, which is part of the
--- torso mesh and cannot be hidden alone. The whole root moves, so the feet
--- float or sink by the same amount until the legs are solved (milestone 3).
+-- torso mesh and cannot be hidden alone. The root never lifts: overlay7
+-- lifted it 27-48 cm to reach a camera taller than the model and put the eye
+-- inside the hood and cloak. It moves sideways and down only, so the feet
+-- stay on the floor or sink (crouch) until the legs are solved (milestone 3).
 local Mirror = {}
 
 Mirror.FLAG = "./../mods/darktidevr/darktidevr_body_mirror.flag"
@@ -57,10 +59,12 @@ Mirror.NEAR_EYE_MAX_HALF_EXTENT = 0.30
 -- Largest root move toward the body frame's neck.
 Mirror.NECK_FOLLOW_MAX = 0.5
 
--- The root move that puts the copy's neck on the target neck, capped in
--- length. Arrays. Returns offset, uncapped length. Pure.
-function Mirror.neck_offset(neck, target)
+-- The root move that puts the copy's neck on the target neck, never upward
+-- unless allow_lift, capped in length. Arrays. Returns offset, uncapped
+-- length. Pure.
+function Mirror.neck_offset(neck, target, allow_lift)
     local offset = {target[1] - neck[1], target[2] - neck[2], target[3] - neck[3]}
+    if not allow_lift and offset[3] > 0 then offset[3] = 0 end
     local length = math.sqrt(offset[1] ^ 2 + offset[2] ^ 2 + offset[3] ^ 2)
     if length > Mirror.NECK_FOLLOW_MAX then
         local k = Mirror.NECK_FOLLOW_MAX / length
