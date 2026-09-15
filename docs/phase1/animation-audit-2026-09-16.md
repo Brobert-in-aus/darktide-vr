@@ -38,7 +38,7 @@ animation, except what the server drives. Static audit of the branch at
 | H | `copy_gameplay_fingers` (`darktidevr_body_proxy.lua:245-272`) | finger curl only | later: fixed per-item grip poses |
 | I | `sync_equipment_hand_to_proxy` (`darktidevr.lua:9267-9313`) | held item placement, via E in body-drawn-hand mode | clean once E is fixed |
 | J | holsters `body_frame` (`darktidevr_holsters.lua:283-311`): built at input time, drawn in post-update; yaw from the first-person unit rotation when `body_visual_yaw` is nil (includes stock recoil offsets) | body holster zones, models, counts (withheld) | fixed: rebuilt at draw time for the body models and counts, yaw from the tracked eye (16 September) |
-| K | one-time capture of the model-eye offset from animated eye bones and 3p root yaw (`darktidevr.lua:4839-4843`, `:4887-4901`, `:4960-4974`) | camera and every controller target (constant offset) | open: breed constants or capture only when root yaw matches scene yaw |
+| K | one-time capture of the model-eye offset from animated eye bones and 3p root yaw (`darktidevr.lua:4839-4843`, `:4887-4901`, `:4960-4974`) | camera and every controller target (constant offset) | fixed: measured in the aim's own yaw frame (`presentation.cyclopean_eye_offset`), so neither the 3p root's turn-to-run nor the scene facing enters it, and a pitched aim defers the capture (16 September) |
 | L | `body_visual_yaw` seeded from 3p root yaw (`:9691`) | full-body spine and shoulders, two-hand stock | fixed: seeded from the tracked head yaw (16 September) |
 | M | virtual stock `frame.body_position = Unit.world_position(unit, 1)` (`darktidevr_two_hand_support.lua:503`) | virtual stock anchor | left as is: the calibrated stock profile's shoulder offset is measured from the root, so moving the origin would invalidate saved tunings; this tuning path is superseded by the body frame's `stock_anchor` used by the Virtual stock option |
 | N | `observe_authored` reads the 1p rig's left hand in the attach node | support grip socket (averaged, frozen) | acceptable; shipped or stored grips only |
@@ -63,4 +63,13 @@ time with last frame's anchor and eye, consistently.
    users to `weapon_grip_target` (F); both done, 16 September.
 5. Melee and keyboard-and-mouse hands (G): keep the animation (user,
    16 September). Fingers (H) remain.
-6. Model-eye capture from constants (K), then the full-body-only items (L, M).
+6. Model-eye capture (K; done, 16 September). The eye bones are still the
+   landmark, but the offset is now taken in the aim's yaw frame rather than the
+   recenter basis. That was not only an animation question: measuring in the
+   basis silently dropped the eye's forward depth whenever the avatar faced
+   across it, because the lateral term zeroed to keep the camera cyclopean was
+   then the depth. Breed constants were the alternative and are not needed; the
+   remaining animation in the landmark is head pitch, which the capture now
+   waits out (15 degrees) instead of baking in. L and M are recorded above.
+7. Finger curl (H) stays with the animation until per-item grip poses exist;
+   it drives no placement, only the curl of the drawn fingers.
