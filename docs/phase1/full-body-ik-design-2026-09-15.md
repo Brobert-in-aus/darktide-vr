@@ -525,6 +525,18 @@ for the future handedness toggle.
 
 ## Milestone 3 start: clavicles (16 September)
 
+**Limit on every run in this section (found after spine2):** the runner's
+external viewer failed at startup in all five runs (`viewer-error.log`: the
+OpenXR loader's instance error, then `Invalid recentered projection inputs`
+with a zero runtime field of view), and the game skipped its own viewer
+because of the external-viewer flag. No head tracking, controllers or
+synthetic hand path reached the game. The hands were the stock animated
+wrists (the no-controller fallback) and the body frame was built from the
+first-person unit, not the tracked eye. The comparisons between modes are
+still like for like, but none of these numbers describes tracked play; they
+must be repeated with a working viewer. The 15 September overlay runs had a
+working viewer and eye readbacks.
+
 - `ea302f8`: in `overlay`, each clavicle (`j_leftshoulder`,
   `j_rightshoulder`) swings its upper arm root toward the body frame's
   shoulder by at most 30 degrees before the arm solve (`Mirror.clavicle_swing`,
