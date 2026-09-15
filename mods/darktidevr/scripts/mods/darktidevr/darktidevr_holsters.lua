@@ -280,7 +280,7 @@ function Holsters.install(mod, presentation, observation)
         local loadout = ScriptUnit.has_extension(unit, "visual_loadout_system")
         return loadout and loadout._inventory_component
     end
-    local function body_frame(unit)
+    local function body_frame(unit, t)
         local first_person = ScriptUnit.has_extension(unit, "first_person_system")
         local eye_unit = first_person and first_person:first_person_unit()
         if not eye_unit or not Unit.alive(eye_unit) then return nil end
@@ -293,6 +293,13 @@ function Holsters.install(mod, presentation, observation)
         if presentation.eye_pose then eye, eye_rotation = presentation.eye_pose(unit) end
         eye = eye or Unit.world_position(eye_unit, 1)
         local yaw = observation.body_visual_yaw
+        if not (type(yaw) == "number" and yaw == yaw) and presentation.body_frame and type(t) == "number" then
+            -- The shared body frame's yaw: head yaw with a 20 degree dead zone,
+            -- biased toward the hands, so a glance does not swing the holsters
+            -- (full-body design, "Shared body frame"; 16 September).
+            local shared = presentation.body_frame.sample(unit, t)
+            yaw = shared and shared.yaw
+        end
         local forward
         if type(yaw) == "number" and yaw == yaw then
             forward = Quaternion.forward(Quaternion(Vector3.up(), yaw))
@@ -334,7 +341,7 @@ function Holsters.install(mod, presentation, observation)
     -- the locomotion post-update (animation audit, 16 September, item J).
     function api.draw_frame(unit)
         if not api.frame or not unit then return api.frame end
-        local ok, frame = pcall(body_frame, unit)
+        local ok, frame = pcall(body_frame, unit, Managers.time and Managers.time:time("main"))
         return ok and frame or api.frame
     end
     local hand_zones, no_zones = {}, {}
@@ -356,7 +363,7 @@ function Holsters.install(mod, presentation, observation)
             api.reset(); owner_hand = nil; haptic_zone = {}; api.frame = nil; api.body_active = false
             return nil
         end
-        local frame = body_frame(unit)
+        local frame = body_frame(unit, t)
         -- For holster counts: the zones' frame this frame.
         api.frame = frame
         -- Probe (worn, 15 September evening: on the Psyker the body holsters
