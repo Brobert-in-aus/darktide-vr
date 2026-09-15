@@ -16,17 +16,27 @@ Wrist.OUT = 0.07
 Wrist.HEALTH_COLOR = {255, 255, 255}
 Wrist.TOUGHNESS_COLOR = {108, 187, 196}
 Wrist.STAMINA_COLOR = {230, 220, 160}
--- 1.5 times the first size (worn, 15 September evening: "a little bigger").
-Wrist.BAR_WIDTH = 0.12
-Wrist.BAR_HEIGHT = 0.012
-Wrist.BAR_GAP = 0.021
-Wrist.TEXT_SIZE = 0.0165
--- Overlay panel scale: metres per panel pixel.
--- The bars and their numbers fit one overlay cell: at 0.00025 the numbers
--- fell outside it and showed as a dash (worn, 15 September evening).
-Wrist.PIXEL_METRES = 0.00035
+-- At 100 % size. 1.5 times the first size, then 25 % smaller (worn, 15
+-- September evening: "a little bigger", then "too big").
+Wrist.BAR_WIDTH = 0.09
+Wrist.BAR_HEIGHT = 0.009
+Wrist.BAR_GAP = 0.01575
+Wrist.TEXT_SIZE = 0.012375
+Wrist.TEXT_GAP = 0.003
+-- Overlay panel scale: metres per panel pixel, scaled with the size so the
+-- bars and numbers keep their pixel layout inside one overlay cell (at a
+-- finer scale the numbers fell outside it and showed as a dash).
+Wrist.PIXEL_METRES = 0.0002625
 -- The bars sit left of the anchor so the numbers to their right stay inside.
-Wrist.BARS_LEFT = 0.025
+Wrist.BARS_LEFT = 0.01875
+
+-- The size factor from the "vr_wrist_display_scale" percentage (50-200,
+-- default 100). Pure.
+function Wrist.size(percent)
+    percent = tonumber(percent)
+    if not percent or percent ~= percent then return 1 end
+    return math.max(50, math.min(200, percent)) / 100
+end
 Wrist.TEST_FLAG = "./../mods/darktidevr/darktidevr_wrist_display_test.flag"
 
 local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
@@ -121,20 +131,22 @@ function Wrist.install(mod, presentation, observation)
         -- anchor (darktidevr_hand_overlay), in metres, x to the viewer's right.
         world = game_world
         local overlay = presentation.hand_overlay
-        local canvas = overlay and overlay.canvas(game_world, "wrist_display", anchor, Wrist.PIXEL_METRES)
+        local k = Wrist.size(mod:get("vr_wrist_display_scale"))
+        local canvas = overlay and overlay.canvas(game_world, "wrist_display", anchor, Wrist.PIXEL_METRES * k)
         if not canvas then hide(); return end
-        local top = (#bars - 1) * Wrist.BAR_GAP * 0.5
+        local width, height, gap = Wrist.BAR_WIDTH * k, Wrist.BAR_HEIGHT * k, Wrist.BAR_GAP * k
+        local top = (#bars - 1) * gap * 0.5
         for i, bar in ipairs(bars) do
-            local y = top - (i - 1) * Wrist.BAR_GAP
+            local y = top - (i - 1) * gap
             local c = bar.color
-            local x = -Wrist.BARS_LEFT
-            canvas.rect(x, y, Wrist.BAR_WIDTH, Wrist.BAR_HEIGHT, {110, 20, 20, 20})
-            local filled = Wrist.BAR_WIDTH * bar.fraction
+            local x = -Wrist.BARS_LEFT * k
+            canvas.rect(x, y, width, height, {110, 20, 20, 20})
+            local filled = width * bar.fraction
             if filled > 0 then
-                canvas.rect(x - Wrist.BAR_WIDTH * 0.5 + filled * 0.5, y, filled, Wrist.BAR_HEIGHT, {230, c[1], c[2], c[3]})
+                canvas.rect(x - width * 0.5 + filled * 0.5, y, filled, height, {230, c[1], c[2], c[3]})
             end
             if bar.text then
-                canvas.text(bar.text, Wrist.TEXT_SIZE / Wrist.PIXEL_METRES, x + Wrist.BAR_WIDTH * 0.5 + 0.004, y,
+                canvas.text(bar.text, Wrist.TEXT_SIZE / Wrist.PIXEL_METRES, x + width * 0.5 + Wrist.TEXT_GAP * k, y,
                     {235, c[1], c[2], c[3]}, "left")
             end
         end

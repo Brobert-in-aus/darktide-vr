@@ -16,4 +16,6 @@ assert(Wrist.visible==nil,'always shown: no facing gate')
 local tb=Wrist.bars({toughness=.5,toughness_value=74.6})
 assert(tb[1].id=='toughness' and tb[1].text=='75','toughness number')
 assert(Wrist.bars({toughness=.5})[1].text==nil,'no number without a value')
-print('wrist_display=pass bars clamp missing colours always_shown')
+-- Size slider: percent, clamped to 50-200, 100 when unset.
+assert(Wrist.size(nil)==1 and Wrist.size(75)==.75 and Wrist.size(10)==.5 and Wrist.size(500)==2 and Wrist.size(0/0)==1)
+print('wrist_display=pass bars clamp missing colours always_shown size')

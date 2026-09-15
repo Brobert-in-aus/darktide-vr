@@ -55,9 +55,7 @@ assert(u[1]==1,'vertical forearm uses the fallback')
 local side=Forearm.billboard_side({0,1,1},{0,0,1.6})
 near(side[3],0,'horizontal'); near(side[1]*0+side[2]*-1,0,'perpendicular to the eye direction'); near(math.abs(side[1]),1)
 assert(Forearm.billboard_side({0,0,0},{0,0,2})==nil,'eye straight above')
--- Hidden in the aim line: nearer than the reticle and close to the line to it.
-assert(Forearm.in_aim_line({0,.5,0},{0,0,0},{0,10,0},12),'on the line')
-assert(Forearm.in_aim_line({.05,.5,0},{0,0,0},{0,10,0},12),'within 12 degrees')
-assert(not Forearm.in_aim_line({.3,.5,0},{0,0,0},{0,10,0},12),'well off the line')
-assert(not Forearm.in_aim_line({0,12,0},{0,0,0},{0,10,0},12),'beyond the reticle')
-print('forearm_holsters=pass assignment centres layout fit hover stable_up billboard aim_line zone_override request empty')
+-- Hidden while two-handing or aiming down sights.
+assert(Forearm.hidden_for_aim(true,false) and Forearm.hidden_for_aim(false,true) and Forearm.hidden_for_aim(true,true))
+assert(not Forearm.hidden_for_aim(false,false) and not Forearm.hidden_for_aim(nil,nil))
+print('forearm_holsters=pass assignment centres layout fit hover stable_up billboard hidden_for_aim zone_override request empty')

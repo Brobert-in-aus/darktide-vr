@@ -238,3 +238,15 @@ the part of the hands refactor that runs for everyone.
 21. **Maul miniature centred** (`bd2d3a5`). On the forearm holster, the power
     maul should now sit centred in its grab zone at the same height as the
     gun, not about 6 cm above it. Needs a game restart to load.
+22. **Gun-relative ammo counter, steady forearm holsters, smaller wrist
+    display** (restart the game to load).
+    - The ammo counter is placed relative to the gun (beside the receiver,
+      just ahead of the hand, toward your midline). It should roll and pitch
+      with the gun and stay put on it. Melee charges and staff peril still sit
+      beside the hand.
+    - The forearm holsters anchor to the controller grip. They should no
+      longer move when switching between the gun and other items, or turn and
+      flicker while strafing. They hide while two-handing or in ADS (the
+      aim-line hide is gone).
+    - The wrist display is 25% smaller. New mod option: "Wrist display size
+      (%)", 50-200, updates live.

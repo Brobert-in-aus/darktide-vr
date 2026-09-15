@@ -16,7 +16,8 @@ end
 Quaternion={multiply=mul,inverse=function(a) return {-a[1],-a[2],-a[3],a[4]} end,
     from_elements=function(...) return {...} end,
     to_elements=function(a) return unpack(a) end}
-QuaternionBox=function(a) local copy={unpack(a)}; return {unbox=function() return copy end} end
+QuaternionBox=function(a) local copy={unpack(a)}
+    return {unbox=function() return copy end,store=function(_,v) copy={unpack(v)} end} end
 Vector3Box=QuaternionBox
 local function rotate(r,v)
     local out=mul(mul(r,{v[1],v[2],v[3],0}),Quaternion.inverse(r))

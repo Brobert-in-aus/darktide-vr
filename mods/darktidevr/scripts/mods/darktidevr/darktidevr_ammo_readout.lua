@@ -16,6 +16,15 @@ Readout.OFFSET_INWARD = 0.08
 -- view while aiming; staying visible is a rendering matter, not position).
 Readout.OFFSET_FORWARD = 0.05
 Readout.AWAY_FROM_EYE = 0.06
+-- Relative to the gun (user, 15 September evening), not the hand: in the
+-- gun's frame from its attach node at the controller grip, along the barrel,
+-- toward the body's midline and along the gun's up. Starting from where the
+-- hand-relative placement showed it (worn screenshot 19:04): beside the
+-- receiver, just ahead of the hand. The hand drawn from the hidden
+-- character's animation moved with the weapon and while strafing.
+Readout.GUN_FORWARD = 0.08
+Readout.GUN_SIDE = 0.04
+Readout.GUN_UP = 0.0
 Readout.PIXEL_METRES = 0.0011   -- world size of one font pixel (layout unit)
 -- The overlay panel draws several panel pixels per layout pixel, for sharp
 -- text at hand distance.
@@ -336,7 +345,15 @@ function Readout.install(mod, presentation, observation)
         local anchor
         if test then
             anchor = eye + Quaternion.forward(eye_rotation) * 0.5
+        elseif presentation.gun_aim and presentation.gun_aim.gun_pose and presentation.gun_aim.gun_pose() then
+            local side = presentation.weapon_hand_roles.physical("dominant")
+            local gun_position, gun_rotation = presentation.gun_aim.gun_pose()
+            local right = Quaternion.right(gun_rotation)
+            local midline = side == "left" and right or -right
+            anchor = gun_position + Quaternion.forward(gun_rotation) * Readout.GUN_FORWARD +
+                midline * Readout.GUN_SIDE + Quaternion.up(gun_rotation) * Readout.GUN_UP
         else
+            -- No gun placed (melee charges, staff peril): beside the hand.
             local side = presentation.weapon_hand_roles.physical("dominant")
             -- The grip as drawn (see presentation.visible_grip_target).
             local grip = (presentation.visible_grip_target or presentation.weapon_grip_target)("dominant")

@@ -33,9 +33,6 @@ Forearm.SPAWN_SCALE = 0.2
 Forearm.FALLBACK_SCALE = 0.12
 Forearm.FIT_TIMEOUT = 3
 Forearm.TEST_FLAG = "./../mods/darktidevr/darktidevr_forearm_holsters_test.flag"
--- Hidden while this close (degrees, from the eye) to the line to the reticle
--- and nearer than it: they must not block aiming (worn, 15 September evening).
-Forearm.AIM_CLEAR_DEGREES = 12
 -- Labels: the weapon's name above a hovered weapon miniature (with holster
 -- labels on), the gun's ammo always below it; metres per overlay pixel.
 Forearm.LABEL_GAP = 0.012
@@ -106,16 +103,11 @@ function Forearm.billboard_side(position, eye)
     return {fy, -fx, 0}
 end
 
--- Whether an item sits roughly between the eye and the target: nearer than
--- the target and within degrees of the line to it. 3-arrays. Pure.
-function Forearm.in_aim_line(item, eye, target, degrees)
-    local a = {item[1] - eye[1], item[2] - eye[2], item[3] - eye[3]}
-    local b = {target[1] - eye[1], target[2] - eye[2], target[3] - eye[3]}
-    local la = math.sqrt(a[1] ^ 2 + a[2] ^ 2 + a[3] ^ 2)
-    local lb = math.sqrt(b[1] ^ 2 + b[2] ^ 2 + b[3] ^ 2)
-    if la < 1e-4 or lb < 1e-4 or la >= lb then return false end
-    local cosine = (a[1] * b[1] + a[2] * b[2] + a[3] * b[3]) / (la * lb)
-    return cosine >= math.cos(math.rad(degrees))
+-- Hidden while two-handing or aiming down sights, so they never block
+-- aiming (user, 15 September evening; they first hid only in line with the
+-- reticle). Pure.
+function Forearm.hidden_for_aim(two_hand_held, ads_active)
+    return two_hand_held == true or ads_active == true
 end
 
 -- A forearm point in world space from the gun hand's grip position and the
@@ -160,22 +152,25 @@ function Forearm.install(mod, presentation)
         return position, rotation
     end
 
-    -- The gun hand's grip as drawn (presentation.visible_grip_target: the
-    -- glove after gun alignment, which follows the walking avatar's gun), the
-    -- aim's forward and the roll-free up, or nil. Anchoring to the raw
-    -- controller flickered while the character moved (worn, 15 September).
+    -- The gun hand's controller grip (where the gun's attach node is placed,
+    -- darktidevr_gun_aim), the aim's forward at the common weapon pitch and
+    -- the roll-free up, or nil. Not the drawn wrist: it comes from the hidden
+    -- character's animation, so the holsters moved with the wielded item and
+    -- turned and flickered while strafing (worn, 15 September evening). Not
+    -- the two-hand aim either (hidden then).
     local function hand_basis()
-        local position, grip_rotation
-        if presentation.visible_grip_target then
-            position, grip_rotation = presentation.visible_grip_target("dominant")
-        else
-            position, grip_rotation = presentation.weapon_grip_target("dominant")
-        end
+        local position, grip_rotation = presentation.weapon_grip_target("dominant")
         if not position then return nil end
-        local aim
-        if presentation.weapon_aim_target then
-            local _, rotation = presentation.weapon_aim_target("dominant")
-            aim = rotation
+        local side = presentation.weapon_hand_roles.physical("dominant")
+        local _, aim
+        if side == "left" and presentation.left_controller_aim_target then
+            _, aim = presentation.left_controller_aim_target()
+        elseif side == "right" and presentation.controller_aim_target then
+            _, aim = presentation.controller_aim_target()
+        end
+        if aim and presentation.gun_aim and presentation.gun_aim.base_aim then
+            local player = Managers and Managers.player and Managers.player:local_player(1)
+            aim = presentation.gun_aim.base_aim(player and player.player_unit, aim)
         end
         local rotation = aim or grip_rotation
         if not rotation then return nil end
@@ -319,9 +314,8 @@ function Forearm.install(mod, presentation)
         hovered_id = hover_id
         local eye = eye_of(unit)
         local eye_array = eye and array(eye)
-        local aim_state = presentation.controller_aim
-        local reticle = aim_state and aim_state.reticle_point_owner == unit and aim_state.reticle_world_point
-        local target = reticle and array(reticle:unbox())
+        local aiming = Forearm.hidden_for_aim(presentation.two_hand and presentation.two_hand.held,
+            presentation.ads_active)
         local names_on = mod.get and mod:get("vr_holster_counts") == true
         local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
         local inventory = unit_data and unit_data:read_component("inventory")
@@ -386,9 +380,7 @@ function Forearm.install(mod, presentation)
                     Unit.set_local_position(data.link_unit, 1, centre - offset)
                     Unit.set_local_rotation(data.link_unit, 1, rotation)
                     Unit.set_local_scale(data.link_unit, 1, Vector3(scale, scale, scale))
-                    local in_line = eye_array and target and Forearm.in_aim_line(zone.world, eye_array, target,
-                        Forearm.AIM_CLEAR_DEGREES) or false
-                    local shown = preview.base_scale ~= nil and not api.debug_hide and not in_line
+                    local shown = preview.base_scale ~= nil and not api.debug_hide and not aiming
                     -- Every frame: the spawner shows the unit once streaming completes.
                     Unit.set_unit_visibility(data.item_unit_3p, shown, true)
                     -- The world has already updated this frame: without this the

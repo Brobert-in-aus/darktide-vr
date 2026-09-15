@@ -40,6 +40,14 @@ function Alignment.install(mod,presentation)
         if presentation.two_hand then return presentation.two_hand.resolve(unit,rotation) end
         return rotation
     end
+    -- The gun as placed this frame: its attach node (at the controller grip)
+    -- and the drawn aim, for displays placed relative to the gun (the ammo
+    -- counter). Nil unless a gun was aligned at the current main time.
+    function instance.gun_pose()
+        local now=Managers and Managers.time and Managers.time:time('main')
+        if not now or instance.pose_t~=now or not instance.pose_position then return nil end
+        return instance.pose_position:unbox(),instance.pose_rotation:unbox()
+    end
     local saved
     local function restore(world)
         if saved and saved.world==world and Unit.alive(saved.unit) then
@@ -107,6 +115,12 @@ function Alignment.install(mod,presentation)
         Unit.set_local_rotation(unit,attach,desired)
         Unit.set_local_position(unit,attach,desired_position)
         World.update_unit_and_children(world,unit)
+        if instance.pose_position then
+            instance.pose_position:store(Unit.world_position(unit,attach)); instance.pose_rotation:store(aim)
+        else
+            instance.pose_position=Vector3Box(Unit.world_position(unit,attach)); instance.pose_rotation=QuaternionBox(aim)
+        end
+        instance.pose_t=Managers and Managers.time and Managers.time:time('main')
         if presentation.body_proxy and presentation.body_proxy.align_gun_hand then
             local aligned=presentation.body_proxy.align_gun_hand(world,unit,old_attach_position,old_attach_rotation,
                 Unit.world_position(unit,attach),Unit.world_rotation(unit,attach),dominant)

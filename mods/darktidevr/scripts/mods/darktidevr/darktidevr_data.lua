@@ -202,6 +202,10 @@ return {
                         default_value = false,
                     },
                     {
+                        setting_id = "vr_wrist_display_scale", type = "numeric",
+                        default_value = 100, range = {50, 200}, decimals_number = 0, step_size_value = 5,
+                    },
+                    {
                         setting_id = "vr_teammate_status",
                         type = "checkbox",
                         default_value = false,
