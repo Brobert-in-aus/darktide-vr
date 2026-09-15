@@ -180,7 +180,12 @@ function Mirror.install(mod, presentation)
         World.update_unit(world, unit)
         local hint = Unit.world_position(unit, arm.forearm) - Vector3(0, 0, Mirror.ELBOW_HINT_DOWN)
         local shoulder = Unit.world_position(unit, arm.arm)
-        local elbow, hand, reachable = Mirror.elbow(array(shoulder), array(hint), array(target), arm.upper, arm.lower)
+        -- World bone lengths: the character root carries a visual scale
+        -- (overlay3: 0.294 m world against a 0.275 m local forearm).
+        local upper = Vector3.length(Unit.world_position(unit, arm.forearm) - shoulder)
+        local lower = Vector3.length(Unit.world_position(unit, arm.hand) - Unit.world_position(unit, arm.forearm))
+        arm.world_upper, arm.world_lower = upper, lower
+        local elbow, hand, reachable = Mirror.elbow(array(shoulder), array(hint), array(target), upper, lower)
         if not elbow then return end
         aim_joint(world, unit, arm.arm, arm.forearm, vector(elbow))
         aim_joint(world, unit, arm.forearm, arm.hand, vector(hand))
@@ -286,8 +291,8 @@ function Mirror.install(mod, presentation)
                 tostring(mode_name), state.frames, hand, world_hand, stretch)
             if Mirror.MODES[mode_name].solve_arms then
                 for _, arm in ipairs(state.arms) do
-                    mod:info("DARKTIDEVR_BODY_MIRROR arm side=%s upper_m=%.4f lower_m=%.4f shoulder_to_target_m=%.4f hand_error_m=%.4f unreachable_frames=%d",
-                        arm.side, arm.upper, arm.lower, arm.distance or -1, arm.error or -1, arm.unreachable)
+                    mod:info("DARKTIDEVR_BODY_MIRROR arm side=%s upper_m=%.4f lower_m=%.4f world_upper_m=%.4f world_lower_m=%.4f shoulder_to_target_m=%.4f hand_error_m=%.4f unreachable_frames=%d",
+                        arm.side, arm.upper, arm.lower, arm.world_upper or -1, arm.world_lower or -1, arm.distance or -1, arm.error or -1, arm.unreachable)
                 end
             end
         end
