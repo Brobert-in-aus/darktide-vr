@@ -4913,11 +4913,37 @@ function presentation.body_stable_eye_anchor(unit)
         needs_capture
 end
 
--- The visible body root yaws underneath the tracked viewer. Deriving the
--- camera from that root's off-centre eye landmark makes the HMD orbit whenever
--- the shoulders catch up to head yaw. Preserve the one-time model-eye versus
--- authoritative first-person offset in the immutable scene basis instead.
--- Body/shoulder rotation can then alter only the avatar, never either camera.
+-- The model eye sits a little forward of and above the authoritative
+-- first-person position. That offset is anatomical, so it must be measured in
+-- the avatar's own aim frame and only then expressed in the recenter basis,
+-- which is where it belongs: the anchor is the neutral eye origin, the one the
+-- tracked head pose is added to, and at recenter the aim looks along the basis.
+-- Measuring it in the basis directly (as this did) only holds while the avatar
+-- happens to face along it. Entering a scene turned 90 degrees away put the
+-- eye's forward depth on the basis' lateral axis, which is then zeroed, so the
+-- depth was lost; the 8.52 cm lateral offset once measured in the Psykhanium
+-- was that depth, not an anatomical sideways shift.
+-- Animation audit item K (docs/phase1/animation-audit-2026-09-16.md): reading
+-- the aim rather than the 3p root also keeps the capture clear of the root's
+-- turn-to-run-at-an-angle, and a pitched aim defers it rather than baking a
+-- look-down into the height.
+presentation.MAX_EYE_CAPTURE_PITCH = math.rad(15)
+
+-- The lateral-free eye offset for an aim rotation, in that aim's yaw frame, so
+-- it can be applied in the recenter basis. A cyclopean camera has no
+-- anatomical lateral offset, so only depth and height are kept. nil with a
+-- reason when the aim is pitched too far to measure from.
+function presentation.cyclopean_eye_offset(aim_rotation, offset)
+    if not aim_rotation or not offset then return nil, "aim_unavailable" end
+    local ok, pitch = pcall(Quaternion.pitch, aim_rotation)
+    if not ok or type(pitch) ~= "number" or pitch ~= pitch then return nil, "aim_unavailable" end
+    if math.abs(pitch) > presentation.MAX_EYE_CAPTURE_PITCH then return nil, "aim_pitched" end
+    local yaw_only = Quaternion.from_yaw_pitch_roll(Quaternion.yaw(aim_rotation), 0, 0)
+    local local_offset = presentation.rotate_vector(
+        presentation.inverse_quaternion(yaw_only), offset)
+    return Vector3(0, Vector3.y(local_offset), Vector3.z(local_offset))
+end
+
 function presentation.body_camera_anchor(unit)
     if not unit or not Unit.alive(unit) then
         return nil, "unit_unavailable"
@@ -4957,19 +4983,17 @@ function presentation.body_camera_anchor(unit)
                 "DARKTIDEVR_STEREO reverse_eye_order=%s source=test_flag",
                 tostring(reverse_order_enabled))
         end
-        local basis = active_base_rotation:unbox()
-        local local_offset = presentation.rotate_vector(
-            presentation.inverse_quaternion(basis),
-            model_eye - head_position)
+        -- Measured in the aim's own yaw frame, so the avatar's facing (and
+        -- the root's turn to run at an angle) leaves the constant alone.
+        local local_offset, refused = presentation.cyclopean_eye_offset(
+            component.rotation, model_eye - head_position)
+        if not local_offset then
+            return head_position + Vector3.up() * 0.05,
+                refused == "aim_pitched" and "aim_pitched" or "first_person_fallback",
+                left_eye, right_eye, captured
+        end
         observation.body_camera_eye_offset_unit = unit
-        -- The animated eye midpoint supplies useful anatomical height/depth,
-        -- but this avatar can enter a gameplay scene facing across the XR
-        -- recenter basis.  Its model-eye depth then projects onto XR-local X
-        -- (8.52 cm in the measured Psykhanium pose), putting the viewer left
-        -- of the root, head, and shoulder sagittal plane.  A cyclopean camera
-        -- has no anatomical lateral offset: retain the measured height/depth
-        -- components and explicitly centre its lateral component.
-        observation.body_camera_eye_offset_x = 0
+        observation.body_camera_eye_offset_x = Vector3.x(local_offset)
         observation.body_camera_eye_offset_y = Vector3.y(local_offset)
         observation.body_camera_eye_offset_z = Vector3.z(local_offset)
     end

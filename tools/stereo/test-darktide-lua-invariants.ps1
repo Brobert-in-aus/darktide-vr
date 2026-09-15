@@ -1035,9 +1035,14 @@ if (-not $source.Contains(
     throw 'Collision/body-follow transfer must use the same immutable XR scene basis as camera translation.'
 }
 
+# The lateral term is zeroed inside presentation.cyclopean_eye_offset, which
+# measures in the avatar's own aim yaw frame so the eye's forward depth is not
+# lost when the avatar faces across the recenter basis (animation audit K).
 if (-not $source.Contains(
-        'observation.body_camera_eye_offset_x = 0')) {
-    throw 'The cyclopean body camera must remain on the avatar sagittal plane.'
+        'return Vector3(0, Vector3.y(local_offset), Vector3.z(local_offset))') -or
+        -not $source.Contains('presentation.cyclopean_eye_offset(') -or
+        -not $source.Contains('presentation.inverse_quaternion(yaw_only), offset)')) {
+    throw 'The cyclopean body camera must remain on the avatar sagittal plane, measured in the aim yaw frame.'
 }
 if ($controllerAimSource.Contains('component.position = position') -or
         $controllerAimSource.Contains('component.rotation = rotation') -or
