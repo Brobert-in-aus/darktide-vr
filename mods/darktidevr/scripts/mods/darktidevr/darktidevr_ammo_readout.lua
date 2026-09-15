@@ -8,7 +8,9 @@ local Readout = {}
 -- Just above the hand, level with the gun, now it draws in front of the
 -- scene (worn, 15 September evening; it was 9 cm up to clear the gun).
 Readout.OFFSET_UP = 0.03        -- metres above the grip
-Readout.OFFSET_INWARD = 0.05    -- towards the body's midline
+-- Towards the body's midline, away from the gun (3 cm more, worn, 15
+-- September evening).
+Readout.OFFSET_INWARD = 0.08
 -- Worn, 15 September evening: 5 cm further toward the end of the hand (along
 -- the aim), then 6 cm away from the eye (drawn toward the eye it filled the
 -- view while aiming; staying visible is a rendering matter, not position).

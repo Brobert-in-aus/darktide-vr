@@ -197,6 +197,7 @@ function Forearm.install(mod, presentation)
     local UIWeaponSpawner, UIUnitSpawner
     local previews, preview_world, failed = {}, nil, false
     local hovered_id
+    local logged_boxes = {}
     local function destroy_preview(preview)
         if preview.spawner then pcall(preview.spawner.destroy, preview.spawner) end
         if preview.unit_spawner then pcall(preview.unit_spawner.destroy, preview.unit_spawner) end
@@ -222,7 +223,8 @@ function Forearm.install(mod, presentation)
     -- The item's meshes in the link unit's unscaled frame: the largest
     -- dimension, the box count and the bounds' centre, or nil while no mesh
     -- reports a size.
-    local function model_extent(data)
+    -- log_boxes: an item name, to log every box once (bounds investigation).
+    local function model_extent(data, log_boxes)
         local link = data.link_unit
         local inverse = Matrix4x4.inverse(Unit.world_pose(link, 1))
         local low, high = {math.huge, math.huge, math.huge}, {-math.huge, -math.huge, -math.huge}
@@ -235,6 +237,13 @@ function Forearm.install(mod, presentation)
                     local ok, pose, half = pcall(Mesh.box, Unit.mesh(candidate, mesh_index))
                     if ok and pose and half and Vector3.length(half) > 1e-4 then
                         boxes = boxes + 1
+                        if log_boxes then
+                            local mid = Matrix4x4.transform(inverse, Matrix4x4.translation(pose))
+                            mod:info("DARKTIDEVR_FOREARM_HOLSTERS box item=%s unit=%s mesh=%d centre=%.3f,%.3f,%.3f half=%.3f,%.3f,%.3f",
+                                tostring(log_boxes), tostring(candidate == data.item_unit_3p and "item" or "attachment"),
+                                mesh_index, Vector3.x(mid), Vector3.y(mid), Vector3.z(mid),
+                                Vector3.x(half), Vector3.y(half), Vector3.z(half))
+                        end
                         local hx, hy, hz = Vector3.x(half), Vector3.y(half), Vector3.z(half)
                         for sx = -1, 1, 2 do for sy = -1, 1, 2 do for sz = -1, 1, 2 do
                             local world = Matrix4x4.transform(pose, Vector3(sx * hx, sy * hy, sz * hz))
@@ -330,6 +339,14 @@ function Forearm.install(mod, presentation)
                         data.item_unit_3p and Unit.alive(data.item_unit_3p) then
                     if not preview.base_scale then
                         local extent, boxes, middle = model_extent(data)
+                        if extent and not logged_boxes[item.name] then
+                            logged_boxes[item.name] = true
+                            model_extent(data, item.name)
+                            if middle then
+                                mod:info("DARKTIDEVR_FOREARM_HOLSTERS bounds item=%s middle=%.3f,%.3f,%.3f extent_m=%.3f",
+                                    tostring(item.name), middle[1], middle[2], middle[3], extent)
+                            end
+                        end
                         local fitted = Forearm.fit_scale(extent)
                         if fitted or t - (preview.started_t or t) > Forearm.FIT_TIMEOUT then
                             preview.base_scale = fitted or Forearm.FALLBACK_SCALE
