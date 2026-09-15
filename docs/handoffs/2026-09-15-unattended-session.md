@@ -608,3 +608,46 @@ installed as it landed.
     isolated (`stray-bullet-20260915/parts1`). Receiver candidates:
     - meshes 59-62, a 6 x 1.2 cm cylinder between the hidden round groups;
     - meshes 23-26, an upright 3 x 3 x 6 cm piece by the drum.
+
+## While the user was at dinner (15 September evening)
+
+- **Ammo counter squish, measured** (`hand-overlay-20260915/ring1`). In the
+  eye render the reload ring is 133 x 130 px and draws over the glove, so
+  the panel is not squashed.
+- **Sight axis, measured in the user's sessions.** The stock ADS camera looks
+  0.37 degrees right and 0.38 degrees up of the galvanic rifle's muzzle
+  (07:38 and 07:55, identical within 0.01 degrees). `7e2fd90` zeroes along
+  that axis; a worn check is pending.
+- **Galvanic rifle clip and case** (`6c06ea5`). Eye renders by elimination
+  (`stray-bullet-20260915/parts1`, yaw 60), receiver meshes:
+  - 59-62 are the cartridge case above the grip;
+  - 23-26 are the U-shaped clip by the drum.
+
+  Both are now hidden with the parked rounds, and shown during reloads. The
+  bounds came from the new per-mesh box log. The `parts2` verification run
+  was lost to the PC crash and not repeated (below).
+- **Exit crash.** It did not reproduce on the unattended quit (no
+  interaction prompt was used). The guard `0be5939` is in place. Lead:
+  stock texture passes create their material on whichever renderer first
+  draws them, and the mod draws stock widgets through other renderers.
+- **Teammate status above teammates** (`7acaec8`, option
+  `vr_teammate_status`, default off).
+  - Each teammate's name, toughness and health bars, plus DOWNED, NETTED
+    and similar, float 35 cm above the head.
+  - They draw on the hand overlay, in front of everything, at a constant
+    angular size (0.0006 m per pixel per metre, 1-40 m, hidden nearer than
+    0.8 m).
+  - Stock teammate panels (`HudElementTeamPlayerPanel`) are hidden while
+    it is on; the player's own panel stays.
+  - Unit tested only; a SoloPlay run with bots can check it.
+- **Third PC hard crash, 18:36.**
+  - Bugcheck 0x154 again, mid level load of the `parts2` unattended run.
+  - `user_settings.config` was zeroed (all NUL bytes). It was restored from
+    the newest launch backup (`user_settings.20260915-170143.config`); every
+    later launch logged `backup=unchanged`. The zeroed file is kept beside
+    the backups.
+  - Leftover request flags were deleted.
+  - Three crashes in about 22 hours, all during Darktide level loads, two of
+    them in unattended runs. The system-level suggestions stand (page file,
+    memory test with EXPO off, drive health). Further unattended launches
+    are kept to the ones that need the game.

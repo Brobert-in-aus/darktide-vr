@@ -213,4 +213,15 @@ the part of the hands refactor that runs for everyone.
         below the gun.
     - **Quitting** should no longer leave a crash dump. The console says
       `destroy_material_skipped` if the guard caught it.
+18. **Galvanic rifle clip and case gone** (`6c06ea5`). Hold the rifle
+    outside a reload:
+    - no cartridge case stands above the grip;
+    - no U-shaped clip shows by the drum;
+    - both may appear during a reload.
+19. **Teammate status above teammates** (`7acaec8`, option off by default).
+    In SoloPlay with bots, or a Psykhanium or hub session with others:
+    - names with toughness (blue) and health (white) bars float above each
+      teammate, readable near and far and through walls;
+    - DOWNED or NETTED shows when they need help;
+    - their panels leave the team HUD (yours stays).
 
