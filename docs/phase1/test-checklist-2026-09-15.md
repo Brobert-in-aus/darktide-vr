@@ -90,3 +90,19 @@ Yesterday's checklist items not reached are still open in
    This has only been unit tested; the synthetic hands never reached the
    eye. Say if it triggers too easily (while carrying the gun high), too
    late, or not at all, and which eye you aim with.
+10. **Holster labels** (`1873f49`, option default off; needs Virtual holsters
+    on). Rest a hand at each holster: belt shows blitz charges (for example
+    `2/3`), chest the stim or carried item, shoulder the rifle's ammo, hips
+    the weapon and device names, "empty" where nothing is kept. Say if the
+    labels are in the way or unreadable.
+11. **Weapon hand holsters** (`58d37d2`, option default off). Gun out:
+    - bring your off hand up over the gun hand's forearm: small models of
+      your other weapon, stim, carried item and device appear along it
+      (only for items you have);
+    - put the off hand on one and press grip: that item is equipped (the
+      first holster swaps to the other weapon, ranged or melee);
+    - move the off hand away: the models disappear.
+
+    Say where the holsters should sit (they start 20 cm behind the grip and
+    10 cm above the forearm, 5.5 cm apart), whether the models are too small
+    or big, and whether reaching for one ever grabs the wrong one.

@@ -285,6 +285,63 @@ Commit `b2ca404`, deployed, option default off (evening item 9).
     the unworn headset is not at the recenter origin. **Engagement and the
     injected ADS input have not been seen in game**, only in the unit test.
 
+## Holster labels (diegetic HUD backlog)
+
+Commit `1873f49`, deployed, option default off (evening item 10).
+- **What.** While a hand rests in a body holster zone, a small world label at
+  the zone shows what it holds: blitz charges at the belt, the stim or
+  carried item's name at the chest, ranged ammo at the shoulder, the melee
+  weapon and device names at the hips, and "empty" for an empty slot.
+  Holsters must be on.
+- **Test:** `holster_counts`.
+- **Evidence (`counts1`):** `first_draw zone=shoulder_right label=8 / 49` and
+  `zone=hip_left label=Brutus Arc Maul`; no script errors.
+
+## Weapon hand holsters (user request, afternoon)
+
+Commits `4fffc5d` to `58d37d2`, deployed, option default off (evening item 11).
+- **Request (user).** "a 'weapon hand holsters' option - the gun hand has
+  small holsters along its forearm that the off-hand can reach into and
+  press a button to equip that item - we can also show a small preview of
+  the equipment in that slot".
+- **Layout.** Four zones in the gun hand's grip frame, starting values to
+  tune worn:
+  - 20 cm behind the grip, 5.5 cm apart, 10 cm above the forearm line,
+    3.5 cm radius;
+  - from the wrist: the other weapon (melee while the gun is out, and back),
+    stim, carried item, device.
+- **Equip.** The zones join the off hand's holster zones, so pressing grip
+  there wields the item through the existing holster grip request (dwell,
+  zone haptic, claim). Works with or without the body holsters.
+- **Preview.** Each occupied zone shows a miniature of the actual item (the
+  stock `UIWeaponSpawner` in the game world), laid across the forearm. It
+  shows only while the off hand is within 30 cm.
+  - Scale: 0.07 for weapons, 0.25 for other items.
+  - Part boxes were unreliable right after spawning, so fitting by
+    measurement was dropped.
+- **Tests:** `forearm_holsters` covers slot assignment, zone centres and
+  spacing, the per-hand zone override, the grip request and an empty holster.
+- **Evidence** (`artifacts/unattended/stray-bullet-20260915/forearm1`..`forearm14`,
+  view mode `left=N press=1 lowleft=1 far=1`):
+  - `forearm1`: the off hand armed `forearm_weapon` and the press wielded the
+    melee weapon (`wield hand=left selector=melee`, then
+    `wielded_slot=slot_primary`).
+  - `forearm6` (`front` test mode): a miniature power maul renders 50 cm
+    ahead of the eye.
+  - `forearm11`: the preview sat exactly at its zone (logged every 2 s).
+  - `forearm12` (`big`): it rendered there but was buried in the gun hand
+    glove's large gauntlet cuff, so the zones moved up and back.
+  - `forearm14`: at normal scale the maul miniature shows above the cuff (seen
+    end-on from the synthetic camera). No script errors in any run.
+- **Not shown:**
+  - how it feels and reads worn;
+  - previews of stims, carried items and devices (this character carried
+    none);
+  - whether the zones fit a real forearm.
+- **Incident.** A capture was stopped before launch. Its request flags
+  stayed in the installed mod folder and were deleted by hand; only the
+  mod's own `darktidevr_crosshair_scale.flag` remains.
+
 Note: `run2` died because I piped the capture script through
 `Select-Object -First 1`, which stopped the script and so the runner's job
 (the runner force-stopped the game). The game did not fault.
