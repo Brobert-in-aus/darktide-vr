@@ -20,6 +20,7 @@ RigScan.JOINTS = {
     "j_hips_handle", "j_lefteye", "j_righteye",
 }
 RigScan.SECOND_SAMPLE_FRAMES = 30
+RigScan.THIRD_SAMPLE_FRAMES = 60
 
 -- The nearest mapped ancestor of each joint, by name, from a parent lookup
 -- (index -> parent index) and name lookup (index -> joint name). Pure.
@@ -121,12 +122,20 @@ function RigScan.install(mod, presentation)
                         if subject.unit then
                             log_rig(subject, "first_ready")
                             subject.frames = 0
+                            -- Milestone 2 question: does stopping the unit's own
+                            -- animation state machine freeze the pose? Samples at 30
+                            -- and 60 frames compare the frozen pose with itself.
+                            local ok, err = pcall(Unit.disable_animation_state_machine, subject.unit)
+                            mod:info("DARKTIDEVR_RIG_SCAN subject=%s disable_animation_state_machine=%s %s",
+                                subject.name, tostring(ok), ok and "" or tostring(err))
                         end
                     end
                 else
                     subject.frames = subject.frames + 1
-                    if subject.frames >= RigScan.SECOND_SAMPLE_FRAMES and Unit.alive(subject.unit) then
-                        log_rig(subject, "after_30_frames_no_update")
+                    if subject.frames == RigScan.SECOND_SAMPLE_FRAMES and Unit.alive(subject.unit) then
+                        log_rig(subject, "after_30_frames_asm_off")
+                    elseif subject.frames >= RigScan.THIRD_SAMPLE_FRAMES and Unit.alive(subject.unit) then
+                        log_rig(subject, "after_60_frames_asm_off")
                         subject.logged_second = true
                     end
                 end
