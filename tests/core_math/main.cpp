@@ -129,6 +129,21 @@ int main() {
                 0.0001F, "lower FOV maps to clip edge");
 
     const Fov runtime_eye{-0.942478F, 0.698132F, 0.767945F, -0.959931F};
+    if (!fov_usable(runtime_eye) || fov_usable(Fov{}) ||
+        fov_usable(Fov{0.5F, -0.5F, 0.5F, -0.5F}) ||
+        fov_usable(Fov{-0.5F, 0.5F, -0.5F, 0.5F}) ||
+        fov_usable(Fov{-0.5F, std::numeric_limits<float>::quiet_NaN(), 0.5F, -0.5F})) {
+      throw std::runtime_error("fov_usable accepted an unusable frustum or rejected a real one");
+    }
+    bool zero_fov_threw = false;
+    try {
+      static_cast<void>(recentered_symmetric_projection(Fov{}, 1.0F));
+    } catch (const std::invalid_argument&) {
+      zero_fov_threw = true;
+    }
+    if (!zero_fov_threw) {
+      throw std::runtime_error("recentered projection accepted a zero field of view");
+    }
     const auto recentered_projection =
         recentered_symmetric_projection(runtime_eye, 2112.0F / 2304.0F);
     expect_near(recentered_projection.symmetric_fov.angle_left,

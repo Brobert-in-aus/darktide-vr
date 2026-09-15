@@ -241,15 +241,19 @@ float eye_offset_engine_units(float ipd_metres, float engine_units_per_metre) {
   return metres_to_engine_units(ipd_metres, engine_units_per_metre) * 0.5F;
 }
 
+bool fov_usable(Fov runtime_fov) {
+  return std::isfinite(runtime_fov.angle_left) &&
+         std::isfinite(runtime_fov.angle_right) &&
+         std::isfinite(runtime_fov.angle_up) &&
+         std::isfinite(runtime_fov.angle_down) &&
+         runtime_fov.angle_left < runtime_fov.angle_right &&
+         runtime_fov.angle_down < runtime_fov.angle_up;
+}
+
 RecenteredProjection recentered_symmetric_projection(
     Fov runtime_fov, float render_aspect) {
   if (!(render_aspect > 0.0F) || !std::isfinite(render_aspect) ||
-      !std::isfinite(runtime_fov.angle_left) ||
-      !std::isfinite(runtime_fov.angle_right) ||
-      !std::isfinite(runtime_fov.angle_up) ||
-      !std::isfinite(runtime_fov.angle_down) ||
-      runtime_fov.angle_left >= runtime_fov.angle_right ||
-      runtime_fov.angle_down >= runtime_fov.angle_up) {
+      !fov_usable(runtime_fov)) {
     throw std::invalid_argument("Invalid recentered projection inputs");
   }
 

@@ -474,6 +474,18 @@ class OpenXrProbe {
     std::cout << "openxr.lifecycle=running\n";
 
     std::vector<XrView> located_views(views_.size(), {XR_TYPE_VIEW});
+    // Views with valid pose flags can still carry an unusable (all-zero) field
+    // of view while the runtime is not streaming; such a frame submits no
+    // projection layer instead of stopping the viewer.
+    const auto located_views_have_usable_fov = [&located_views]() {
+      for (const auto& view : located_views) {
+        if (!darktidevr::math::fov_usable({view.fov.angleLeft, view.fov.angleRight,
+                                           view.fov.angleUp, view.fov.angleDown})) {
+          return false;
+        }
+      }
+      return true;
+    };
     std::vector<XrCompositionLayerProjectionView> projection_views(
         views_.size(), {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW});
     std::uint32_t submitted_frames{};
@@ -517,7 +529,8 @@ class OpenXrProbe {
         const auto valid_flags = XR_VIEW_STATE_POSITION_VALID_BIT |
                                  XR_VIEW_STATE_ORIENTATION_VALID_BIT;
         submit_layer = located_count == located_views.size() &&
-                       (view_state.viewStateFlags & valid_flags) == valid_flags;
+                       (view_state.viewStateFlags & valid_flags) == valid_flags &&
+                       located_views_have_usable_fov();
         if (submit_layer && synthetic_billboard_sweep) {
           const auto synthetic =
               darktidevr::harness::synthetic_head_path_sample(frame, {});
@@ -1236,6 +1249,18 @@ class OpenXrProbe {
                                {0.0F, 0.0F, -2.0F}};
     bool flat_fallback_pose_valid{};
     std::vector<XrView> located_views(views_.size(), {XR_TYPE_VIEW});
+    // Views with valid pose flags can still carry an unusable (all-zero) field
+    // of view while the runtime is not streaming; such a frame submits no
+    // projection layer instead of stopping the viewer.
+    const auto located_views_have_usable_fov = [&located_views]() {
+      for (const auto& view : located_views) {
+        if (!darktidevr::math::fov_usable({view.fov.angleLeft, view.fov.angleRight,
+                                           view.fov.angleUp, view.fov.angleDown})) {
+          return false;
+        }
+      }
+      return true;
+    };
     std::vector<XrCompositionLayerProjectionView> projection_views(
         views_.size(), {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW});
     bool stereo_fov_logged{};
@@ -1491,7 +1516,8 @@ class OpenXrProbe {
         const auto valid_flags = XR_VIEW_STATE_POSITION_VALID_BIT |
                                  XR_VIEW_STATE_ORIENTATION_VALID_BIT;
         submit_layer = located_count == located_views.size() &&
-                       (view_state.viewStateFlags & valid_flags) == valid_flags;
+                       (view_state.viewStateFlags & valid_flags) == valid_flags &&
+                       located_views_have_usable_fov();
         if (submit_layer) {
           const float average_vertical_span =
               ((located_views[0].fov.angleUp -

@@ -79,6 +79,13 @@ float metres_to_engine_units(float metres, float engine_units_per_metre);
 float engine_units_to_metres(float units, float engine_units_per_metre);
 float eye_offset_engine_units(float ipd_metres, float engine_units_per_metre);
 
+// Whether a runtime view frustum can be projected: finite angles with
+// left < right and down < up. Virtual Desktop has reported views with valid
+// pose flags and an all-zero field of view while the headset was not
+// streaming (16 September unattended runs), which made the projection throw
+// and the viewer exit.
+bool fov_usable(Fov runtime_fov);
+
 // Converts an off-axis runtime frustum into a symmetric render frustum plus a
 // local camera rotation. The returned FOV is constrained to render_aspect so
 // an engine with only vertical-FOV control and the OpenXR compositor consume
