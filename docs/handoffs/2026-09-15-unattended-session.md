@@ -429,6 +429,23 @@ are recorded in the
     killed two capture jobs. One force-stopped the game; the other left it
     orphaned, and it was quit by flag with its request flags deleted.
     Recorded in memory.
+- **Body overlay looking down (overlay5 to overlay14, `e93d213` to
+  `a2b3cfa`, dev flag only).**
+  - The look-down render gap was the synthetic Menu press, not the head
+    pose; fixed by also passing the holster-once path.
+  - The rigid gloves are hidden while the copy's own hands are drawn
+    (user: one pair of hands).
+  - Hooded Skitarius torso: the collar, hood and cowl are one spine-skinned
+    torso mesh. Mesh hiding and head or neck joint collapse don't remove
+    them.
+  - The readable recipe: scale the copy up to the eye's neck height and
+    place its neck 22 cm behind the eye. Both arms, gloves and the gun are
+    then in view, with the cowl edge at the bottom (`overlay14/sheet.png`).
+  - Full table in the full-body design.
+- **Windows crashed again at 13:22** during a Psykhanium level load (overlay10's first attempt, before the mirror had spawned).
+  - Same bugcheck as 14 September: 0x154 UNEXPECTED_STORE_EXCEPTION (event 41, BugcheckCode 340), no dump.
+  - The settings file survived intact. Leftover request flags were deleted after the reboot, and the run was repeated.
+  - 0x154 points at the memory manager's store (RAM, page file or storage), not at mod code. Suggested, not done: a system-managed or larger page file (currently 4 GB fixed), a memory test with EXPO off, and a drive health check.
 
 ## Arc maul charges (user correction)
 

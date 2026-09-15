@@ -42,7 +42,7 @@ Seen working in unattended game runs:
 Unit tested only: 13.
 
 Also deployed, nothing to test: the full-body development work (body mirror
-and overlay, `3d3d788` to `4cfb3c4`) runs only with a dev flag file that
+and overlay, `3d3d788` to `a2b3cfa`) runs only with a dev flag file that
 players never have. The installed mod folder has no such flag.
 
 1. **Settings backup at launch** (`cd132ea`). Nothing to do in game.

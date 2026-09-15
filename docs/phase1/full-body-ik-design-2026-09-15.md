@@ -410,14 +410,55 @@ where the avatar already hides every body slot, with `slot_body_face` and
     (`overlay4/copy-vs-solve.png`). The cuff still fills a large part of the
     lower view when the gun hand is close to the eye. That is a milestone 4
     near-eye question, to judge worn.
-- **Tooling gap.** The look-down head pose (`--synthetic-body-inspection`)
-  starves the shared-eye pairs, so readback gets no frames: 59 fresh pairs
-  in overlay1, against 4,603 in a normal run. The torso and legs from above
-  are therefore not yet seen in a render. Next unattended step: find why
-  that pose drops the pairs, or add a debug camera behind the player.
-- **Not done.** Legs and pelvis are copied as they are (stock gait), with no
-  crouch from the head, no spine or neck solve, and no first-person
-  near-eye hiding.
+- **Look-down renders (tooling fixed, overlay5).** The look-down head pose
+  was never the problem. Without `--synthetic-holster-once`, the synthetic
+  controller's utility phase presses Menu, which opened the system menu 2 s
+  into the level (overlay1). With both flags, the 55° down renders work
+  (4,496 fresh pairs).
+
+### Looking down at the body (overlay5 to overlay14)
+
+Each run is 6 eye renders at 55° down, with a `sheet.png` contact sheet
+in its folder.
+
+| Run | Change (`overlay` flag unless named) | What the eye sees |
+| --- | --- | --- |
+| overlay5 | arms solved | Skitarius armour, both red sleeves reaching the weapon hands. The eye looks straight down into the empty collar ring where the hidden head was. |
+| overlay6 | near-eye mesh hiding by box centre | No change: 32 meshes, 0 hidden. The collar, hood and cowl are one torso mesh (4 LODs, half extent 0.33 m) that can't be hidden alone. The live camera sits about 21 cm above the copy's head. |
+| overlay7 | neck moved to the body frame neck | The copy lifts 27-48 cm to reach a camera taller than the model (about 1.9 m eye height on the synthetic path). The eye ends up inside the hood and cloak. |
+| overlay8 | neck follow sideways and down only | One pair of hands (rigid gloves hidden, `e93d213`, at the user's request). Arms, gun and support hand read well. The collar ring still shows below. |
+| overlay9 | neck joint scale collapsed | No change: the collar ring belongs to the chest armour. |
+| overlay10 | scaled up so the neck reaches the eye's neck height (ratio 1.17-1.30, feet on the floor) | Eye inside the hood and cloak again. |
+| overlay11, overlay12 | head, then neck, joint scale collapsed on the scaled copy | No change: the cowl is skinned to the spine. |
+| overlay13 | neck 15 cm further behind the eye | Broken: "back" came from the avatar root's facing, which doesn't follow the look, so the offset hit its 0.5 m cap. |
+| overlay14 (`a2b3cfa`) | same, with "back" from the flattened camera forward | **Readable.** Both arms, gloves, gun and open support hand are in view. The cowl's top edge and the robe stripes sit in the lower part of the view. |
+
+- **Current recipe (`overlay`).**
+  - Copy every joint and hide face and headgear.
+  - Scale up, never down, until the neck reaches the body frame neck height.
+  - Place the neck 22 cm behind the eye (the body frame's 7 cm plus 15),
+    moving sideways and down only.
+  - Solve both arms to the weapon hands with world bone lengths.
+  - Hide the rigid gloves.
+- **Limits.**
+  - The scale ratio (about 1.2) comes from the synthetic eye height.
+    Worn, the user's calibrated height decides it.
+  - The neck placed 22 cm behind the eye is a cosmetic workaround for
+    hooded torsos. A worn test should judge whether the body feels behind
+    you.
+  - The cowl edge still shows. Other torso cosmetics (no hood) may prefer
+    the body frame's own 7 cm, which is the `overlayscale` flag.
+  - Out-of-reach arms remain while the shoulders are stock.
+  - Legs are stock and scaled with the body. There is still no spine, neck
+    or body-yaw solve.
+- **Design consequence.** First-person hiding by slot and mesh is not
+  enough for hooded and high-collared torsos, and joint collapse does not
+  help because they are skinned to the spine. Milestone 4 should instead:
+  - place the body relative to the eye per cosmetic, starting from the
+    cowl offset above;
+  - consider a local-only swap to a hood-free variant of the same torso
+    set, if worn tests reject the offset. That changes the player's own
+    cosmetics in first person only, so it is a user decision.
 
 ## Changes from the 14 September design
 
