@@ -164,6 +164,15 @@ nothing comes into reach that you could not have used by looking at it. While
 nothing is in reach the grip keeps its own binding, and a holster or the gun's
 second grip always wants that hand first. Not in the hub.
 
+### Inspect by bringing the weapon up (experimental)
+
+Experimental features, "Inspect by bringing the weapon up". Hold your weapon
+up to your face and turn it side on, as if to look along it, and hold it there
+for about a third of a second: the game's own weapon inspection runs for as
+long as you keep it there, and stops when you bring the weapon down. Pointing
+it where you look is aiming, not inspecting, so this never starts while you aim
+down the sights. Not in the hub.
+
 ### Wrist display, teammate status (experimental)
 
 - "Wrist display": health (white), toughness (the HUD's blue) and stamina bars

@@ -366,6 +366,8 @@ function Bindings.install(mod)
             end
         end)
     end
+    -- Action mask a gesture holds this frame, over and above the bindings.
+    api.forced = 0
     function api.sample(enabled, physical, stick_x, stick_y, stick_usable, generation, mode, support, exclusive_stick)
         api.prepare_context(mode)
         local reset_grip=dirty or enabled~=true or not active or
@@ -524,6 +526,13 @@ function Bindings.install(mod)
             if grip_claim then
                 next_held=bit.bor(next_held,grip_claim.mask)
                 grip.held=true
+            end
+            -- A gesture may hold an action no control is bound to (inspect by
+            -- bringing the weapon to the face). Set api.forced before the
+            -- sample; its edges follow from the ordinary held comparison
+            -- below, so a gesture that ends releases the action like a button.
+            if type(api.forced)=='number' and api.forced~=0 then
+                next_held=bit.bor(next_held,api.forced)
             end
             -- A held-back press released before the hand arrived: its bound
             -- action for this frame only (released on the next).

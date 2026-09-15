@@ -131,3 +131,17 @@ tracked eye).
     - A pulse on the hand (with vibration on) when something comes into reach,
       the same one a foregrip or an armed holster gives.
     - Unit test `reach_interact` only; the feel is worn.
+
+11. **Inspect by bringing the weapon up** (restart; Experimental features,
+    "Inspect by bringing the weapon up", default off, new 16 September).
+    Hold the weapon up to your face, turned side on, for about a third of a
+    second: the stock inspect runs until you bring it down.
+    - Try it with a gun and with a melee weapon; check the animation starts and
+      that lowering the weapon ends it.
+    - It must not start while aiming down the sights (with "Sight to eye" on,
+      bring the sights to your eye and confirm nothing inspects).
+    - Swinging a weapon past your face must not inspect (the 0.35 s dwell).
+    - A pulse on the gun hand (with vibration on) when it starts;
+      `DARKTIDEVR_INSPECT enter` in the log.
+    - Unit test `weapon_inspect` only; the thresholds are worn judgements, so
+      say if it takes too much or too little to start.

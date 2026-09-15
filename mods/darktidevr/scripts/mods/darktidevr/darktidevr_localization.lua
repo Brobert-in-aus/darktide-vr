@@ -43,6 +43,8 @@ return {
     vr_forearm_holsters = {en = "Weapon hand holsters (experimental)"},
     vr_skull_throw = {en = "Grab and throw the servo skull (experimental)"},
     vr_reach_interact = {en = "Reach to interact (experimental)"},
+    vr_weapon_inspect = {en = "Inspect by bringing the weapon up (experimental)"},
+    vr_weapon_inspect_description = {en = "Hold your weapon up to your face and turn it side on to look at it: the game's inspect runs for as long as you keep it there. Pointing it where you look is aiming, not inspecting, so this never fires while you aim down the sights."},
     vr_reach_interact_description = {en = "Put a hand on a door control, a pickup or a downed team mate and press grip to interact with it, without looking at it. The game still chooses what can be reached and how far away it may be; your hand only says which direction to look in. While nothing is in reach, and whenever a holster or the gun's second grip wants that hand, the grip keeps its own binding."},
     vr_skull_throw_description = {en = "With the flamethrower servo skull talented, the skull hovers in view at your off-hand side. Grab it with your off hand to aim its flamethrower order, and let go to throw it: it flies from your hand to the target."},
     vr_forearm_holsters_description = {en = "Small holsters in a line above your gun hand's forearm, from the wrist: your other weapon, stim, carried item and device. Reach in with your other hand and press grip to equip. A small model of each item is always shown there; the one your hand is in grows and ticks (with Holster labels on, its name shows above it), the weapon shows its ammo or charges beneath it, and they hide while you two-hand the gun or aim down its sights."},
