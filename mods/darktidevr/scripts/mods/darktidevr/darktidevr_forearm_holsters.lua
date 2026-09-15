@@ -164,6 +164,15 @@ function Forearm.install(mod, presentation)
                         preview.fitted = true
                         mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview zone=%s item=%s scale=%.3f",
                             zone.id, tostring(item.name), scale)
+                        local first_person = ScriptUnit.has_extension(unit, "first_person_system")
+                        local eye_unit = first_person and first_person:first_person_unit()
+                        if eye_unit then
+                            local eye_rotation = Unit.world_rotation(eye_unit, 1)
+                            local d = Vector3(zone.world[1], zone.world[2], zone.world[3]) - Unit.world_position(eye_unit, 1)
+                            mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_in_eye zone=%s right_m=%.3f up_m=%.3f forward_m=%.3f near=%s",
+                                zone.id, Vector3.dot(d, Quaternion.right(eye_rotation)), Vector3.dot(d, Quaternion.up(eye_rotation)),
+                                Vector3.dot(d, Quaternion.forward(eye_rotation)), tostring(near))
+                        end
                     end
                     if api.test_front then
                         local first_person = ScriptUnit.has_extension(unit, "first_person_system")
