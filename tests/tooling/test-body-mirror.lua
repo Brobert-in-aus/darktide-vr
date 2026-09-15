@@ -96,5 +96,12 @@ do
     assert(Mirror.MODES.overlayspine.spine_bend and not Mirror.MODES.overlay.spine_bend)
     assert(near(Mirror.MODES.overlayreach.clavicle_max,math.rad(45)) and Mirror.MODES.overlay.clavicle_max==nil,'reach A/B cap')
     assert(Mirror.MODES.overlayarmlength.arm_length and not Mirror.MODES.overlay.arm_length,'arm length A/B mode')
+    -- Protraction: none below 0.9 of arm length, 8 % of it by 1.1.
+    assert(Mirror.protraction(0.5,0.6)==0,'well within reach')
+    assert(near(Mirror.protraction(0.6,0.6),0.5*0.08*0.6),'halfway up the ramp at 1.0 of arm length')
+    assert(near(Mirror.protraction(0.66,0.6),0.08*0.6),'full at 1.1')
+    assert(near(Mirror.protraction(0.9,0.6),0.08*0.6),'full')
+    assert(Mirror.protraction(0.5,0)==0 and Mirror.protraction(0/0,0.6)==0)
+    assert(Mirror.MODES.overlayprotract.protract and not Mirror.MODES.overlayprotract.clavicles)
 end
 print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles')

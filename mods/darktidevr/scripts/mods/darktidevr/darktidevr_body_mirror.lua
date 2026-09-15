@@ -85,6 +85,11 @@ Mirror.MODES = {
     overlayarmlength = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true, body_yaw = true,
         arm_length = {min = 0.70, max = 1.15}},
+    -- Arm length design step 4: "overlay" with the clavicle swing toward the
+    -- estimated shoulders replaced by FRIK-style protraction toward the hand
+    -- near full reach.
+    overlayprotract = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
+        hand_rig = true, follow_neck = true, scale_to_neck = true, body_yaw = true, protract = true},
     -- "overlay" with clavicles but the avatar's root yaw, for A/B of the body yaw.
     overlayrootyaw = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true},
@@ -98,6 +103,10 @@ Mirror.MODES = {
 -- solve. rig1 showed the stock animated shoulders leave the support arm up to
 -- 0.31 m short.
 Mirror.CLAVICLE_MAX = math.rad(30)
+-- Protraction (arm length design, step 4; FRIK moves the shoulder up to 8 % of
+-- arm length toward the hand): none below PROTRACT_START of the arm's length
+-- from shoulder to hand, rising to PROTRACT_SHARE of it by PROTRACT_FULL.
+Mirror.PROTRACT_START, Mirror.PROTRACT_FULL, Mirror.PROTRACT_SHARE = 0.9, 1.1, 0.08
 -- The spine chain bent toward the body frame's neck, lowest joint first, with
 -- the design's share of the bend per joint and a per-joint cap.
 Mirror.SPINE = {{"j_spine", 0.2}, {"j_spine1", 0.3}, {"j_spine2", 0.5}}
@@ -207,6 +216,14 @@ function Mirror.clavicle_swing(clavicle, arm, target, max_angle)
     if sine < 1e-7 then return nil end
     local angle = math.atan2(sine, dot(from, to))
     return scale(axis, 1 / sine), math.min(angle, max_angle or Mirror.CLAVICLE_MAX)
+end
+
+-- How far the shoulder moves toward the hand, metres, for the shoulder-to-hand
+-- distance and the arm's length. Pure.
+function Mirror.protraction(distance, arm_length)
+    if not (arm_length > 1e-4) or not (distance == distance) then return 0 end
+    local t = (distance / arm_length - Mirror.PROTRACT_START) / (Mirror.PROTRACT_FULL - Mirror.PROTRACT_START)
+    return math.max(0, math.min(1, t)) * Mirror.PROTRACT_SHARE * arm_length
 end
 
 -- The fraction of the remaining swing each joint of a chain takes, lowest
@@ -364,7 +381,8 @@ function Mirror.install(mod, presentation)
             local names = {"j_" .. side .. "arm", "j_" .. side .. "forearm", "j_" .. side .. "hand"}
             if Unit.has_node(unit, names[1]) and Unit.has_node(unit, names[2]) and Unit.has_node(unit, names[3]) then
                 local arm = {side = side, arm = Unit.node(unit, names[1]), forearm = Unit.node(unit, names[2]),
-                    hand = Unit.node(unit, names[3]), unreachable = 0}
+                    hand = Unit.node(unit, names[3]), unreachable = 0,
+                    clavicle = Unit.has_node(unit, "j_" .. side .. "shoulder") and Unit.node(unit, "j_" .. side .. "shoulder") or nil}
                 arm.rest_forearm = Vector3Box(Unit.local_position(unit, arm.forearm))
                 arm.rest_hand = Vector3Box(Unit.local_position(unit, arm.hand))
                 arm.upper = Vector3.length(arm.rest_forearm:unbox())
@@ -399,6 +417,27 @@ function Mirror.install(mod, presentation)
             Unit.set_local_position(unit, arm.forearm, arm.rest_forearm:unbox() * arm.length_ratio_upper)
             Unit.set_local_position(unit, arm.hand, arm.rest_hand:unbox() * arm.length_ratio_lower)
             World.update_unit(world, unit)
+        end
+        if Mirror.MODES[mode_name].protract and arm.clavicle then
+            local shoulder_position = Unit.world_position(unit, arm.arm)
+            local forearm_position = Unit.world_position(unit, arm.forearm)
+            local length = Vector3.length(forearm_position - shoulder_position) +
+                Vector3.length(Unit.world_position(unit, arm.hand) - forearm_position)
+            local to_target = target - shoulder_position
+            local distance = Vector3.length(to_target)
+            local amount = Mirror.protraction(distance, length)
+            arm.protraction = amount
+            if amount > 1e-4 and distance > 1e-4 then
+                local desired = shoulder_position + to_target * (amount / distance)
+                local axis, angle = Mirror.clavicle_swing(array(Unit.world_position(unit, arm.clavicle)),
+                    array(shoulder_position), array(desired), math.huge)
+                if axis then
+                    set_world_rotation(unit, arm.clavicle, Quaternion.multiply(Quaternion(vector(axis), angle),
+                        Unit.world_rotation(unit, arm.clavicle)))
+                    World.update_unit(world, unit)
+                end
+                arm.max_protraction = math.max(arm.max_protraction or 0, amount)
+            end
         end
         local hint = Unit.world_position(unit, arm.forearm) - Vector3(0, 0, Mirror.ELBOW_HINT_DOWN)
         local shoulder = Unit.world_position(unit, arm.arm)
@@ -639,8 +678,9 @@ function Mirror.install(mod, presentation)
                         state.arms[2] and state.arms[2].length_ratio_upper or -1, state.arms[2] and state.arms[2].length_ratio_lower or -1)
                 end
                 for _, arm in ipairs(state.arms) do
-                    mod:info("DARKTIDEVR_BODY_MIRROR arm side=%s upper_m=%.4f lower_m=%.4f world_upper_m=%.4f world_lower_m=%.4f shoulder_to_target_m=%.4f hand_error_m=%.4f unreachable_frames=%d max_stretch_m=%.4f",
-                        arm.side, arm.upper, arm.lower, arm.world_upper or -1, arm.world_lower or -1, arm.distance or -1, arm.error or -1, arm.unreachable, arm.max_stretch or 0)
+                    mod:info("DARKTIDEVR_BODY_MIRROR arm side=%s upper_m=%.4f lower_m=%.4f world_upper_m=%.4f world_lower_m=%.4f shoulder_to_target_m=%.4f hand_error_m=%.4f unreachable_frames=%d max_stretch_m=%.4f max_protraction_m=%.4f",
+                        arm.side, arm.upper, arm.lower, arm.world_upper or -1, arm.world_lower or -1, arm.distance or -1, arm.error or -1, arm.unreachable, arm.max_stretch or 0,
+                        arm.max_protraction or 0)
                 end
             end
         end
