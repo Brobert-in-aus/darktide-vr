@@ -430,9 +430,18 @@ function Mirror.install(mod, presentation)
             if frame and frame.neck then
                 local target = frame.neck
                 local back = Mirror.MODES[mode_name].neck_back_extra
-                if back then
-                    local forward = Quaternion.forward(Unit.world_rotation(avatar, 1))
-                    target = {target[1] - Vector3.x(forward) * back, target[2] - Vector3.y(forward) * back, target[3]}
+                local first_person = back and ScriptUnit.has_extension(avatar, "first_person_system")
+                local camera = first_person and first_person:first_person_unit()
+                if camera then
+                    -- The look direction, flattened: overlay13 used the avatar
+                    -- root's facing, which does not follow the look, and
+                    -- pushed the body 0.5 m sideways.
+                    local forward = Quaternion.forward(Unit.world_rotation(camera, 1))
+                    local x, y = Vector3.x(forward), Vector3.y(forward)
+                    local flat = math.sqrt(x * x + y * y)
+                    if flat > 0.1 then
+                        target = {target[1] - x / flat * back, target[2] - y / flat * back, target[3]}
+                    end
                 end
                 local offset, length = Mirror.neck_offset(array(Unit.world_position(unit, Unit.node(unit, "j_neck"))), target)
                 Unit.set_local_position(unit, 1, Unit.local_position(unit, 1) + vector(offset))
