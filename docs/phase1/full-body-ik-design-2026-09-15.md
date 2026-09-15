@@ -523,6 +523,32 @@ for the future handedness toggle.
     the downward view.
   - Next: milestone 3 shoulders and body yaw from the body frame.
 
+## Milestone 3 start: clavicles (16 September)
+
+- `ea302f8`: in `overlay`, each clavicle (`j_leftshoulder`,
+  `j_rightshoulder`) swings its upper arm root toward the body frame's
+  shoulder by at most 30 degrees before the arm solve (`Mirror.clavicle_swing`,
+  test `body_mirror`). `overlaystock` is the same without the swing.
+- A/B, two unattended Psykhanium runs on the synthetic controller path,
+  identical except the flag (`artifacts/unattended/body-mirror-20260916/clav1`
+  and `stock1`, 5,400 frames each, no script errors):
+
+  | Arm | `overlaystock` unreachable frames | `overlay` (clavicles) |
+  | --- | ---: | ---: |
+  | left | 1,411 | 1,344 |
+  | right | 3,043 | 70 |
+
+- Shoulder gap (arm root to the estimated shoulder), sampled every 900
+  frames: left 0.23-0.24 m before the swing and 0.13-0.14 m after (the 30
+  degree cap binds), right 0.10-0.15 m before and 0.06-0.08 m after.
+- The left hand on the synthetic path sweeps to 0.85 m from the shoulder
+  against about 0.69 m of arm, so part of its unreachable count is the path
+  itself. Next: whether the left cap should rise (the gap stays 13 cm) or
+  shoulder protraction should close it; then body yaw, spine and neck from
+  the body frame (steps 1, 3 and 4 of "Solve per frame").
+- Limits: numeric trace from a synthetic path, no eye render and no worn
+  look.
+
 ## Changes from the 14 September design
 
 - **Legs.** Copied from the stock avatar (hybrid) instead of procedural first.
