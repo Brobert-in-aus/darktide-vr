@@ -106,3 +106,8 @@ Yesterday's checklist items not reached are still open in
     Say where the holsters should sit (they start 20 cm behind the grip and
     10 cm above the forearm, 5.5 cm apart), whether the models are too small
     or big, and whether reaching for one ever grabs the wrong one.
+12. **Wrist display** (`661d1b6`, option default off). Turn the back of your
+    off-hand wrist toward your face as if checking a watch: health (with the
+    number), toughness and stamina bars appear there and go away when you
+    turn the wrist back. Say if it appears on the wrong side of the hand
+    (the facing direction is an assumption), too easily, or too late.

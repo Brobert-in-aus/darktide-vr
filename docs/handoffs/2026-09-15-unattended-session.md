@@ -342,6 +342,22 @@ Commits `4fffc5d` to `58d37d2`, deployed, option default off (evening item 11).
   stayed in the installed mod folder and were deleted by hand; only the
   mod's own `darktidevr_crosshair_scale.flag` remains.
 
+## Wrist display (diegetic HUD backlog)
+
+Commit `661d1b6`, deployed, option default off (evening item 12).
+- **What.** Turning the back of the off-hand wrist toward the face, within
+  70 cm, shows health (with its number), toughness and stamina bars at the
+  wrist. It shows at a facing of 0.75 and hides below 0.6.
+- **Assumption:** holding a controller, the back of the hand faces the grip
+  frame's outward side (left hand −right, right hand +right).
+- **Not included yet:** the mission objective and the tactical overlay on a
+  held look, which the backlog item also mentions.
+- **Test:** `wrist_display` covers visibility with hysteresis, reach, the bars,
+  clamping and missing values.
+- **Evidence (`wrist1`, test flag `front`):** the three bars and "150" render
+  45 cm ahead of the eye (eye render); `first_draw bars=3`; no script errors.
+  The real wrist gesture has not been seen.
+
 Note: `run2` died because I piped the capture script through
 `Select-Object -First 1`, which stopped the script and so the runner's job
 (the runner force-stopped the game). The game did not fault.
