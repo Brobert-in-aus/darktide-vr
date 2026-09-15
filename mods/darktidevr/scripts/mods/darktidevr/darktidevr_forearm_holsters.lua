@@ -276,6 +276,10 @@ function Forearm.install(mod, presentation)
                     end
                     -- Every frame: the spawner shows the unit once streaming completes.
                     Unit.set_unit_visibility(data.item_unit_3p, shown, true)
+                    -- The world has already updated this frame: without this the
+                    -- miniature draws at last frame's pose and jitters behind a
+                    -- moving hand (worn, 15 September evening).
+                    World.update_unit_and_children(world, data.link_unit)
                 end
             end
         end

@@ -83,7 +83,10 @@ function Wrist.install(mod, presentation, observation)
     local function array(v) return {Vector3.x(v), Vector3.y(v), Vector3.z(v)} end
     local function draw(game_world, unit)
         local test = test_flag()
-        if not unit or not (test or mod:get("vr_wrist_display")) or presentation.mode ~= 1 or
+        -- Not in the hub (worn, 15 September evening: shown there once it
+        -- stopped needing the wrist turned toward the face).
+        local in_hub = presentation.current_game_mode_name and presentation.current_game_mode_name() == "hub"
+        if not unit or not (test or mod:get("vr_wrist_display")) or presentation.mode ~= 1 or in_hub or
                 presentation.gameplay_context.ui_blocks_gameplay(Managers.ui) then
             hide(); return
         end
