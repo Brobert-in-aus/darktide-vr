@@ -103,5 +103,10 @@ do
     assert(near(Mirror.protraction(0.9,0.6),0.08*0.6),'full')
     assert(Mirror.protraction(0.5,0)==0 and Mirror.protraction(0/0,0.6)==0)
     assert(Mirror.MODES.overlayprotract.protract and not Mirror.MODES.overlayprotract.clavicles)
+    -- Soft stretch: none within reach, proportional past it, capped.
+    assert(Mirror.stretch_ratio(0.5,0.3,0.3)==1,'within reach')
+    assert(near(Mirror.stretch_ratio(0.66,0.3,0.3),1.1),'10 percent past reach')
+    assert(near(Mirror.stretch_ratio(1.0,0.3,0.3),1+Mirror.STRETCH_SHARE),'capped')
+    assert(Mirror.stretch_ratio(0.5,0,0)==1 and Mirror.MODES.overlayprotract.stretch)
 end
 print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles')

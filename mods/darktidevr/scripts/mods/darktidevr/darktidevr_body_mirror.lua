@@ -89,7 +89,7 @@ Mirror.MODES = {
     -- estimated shoulders replaced by FRIK-style protraction toward the hand
     -- near full reach.
     overlayprotract = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
-        hand_rig = true, follow_neck = true, scale_to_neck = true, body_yaw = true, protract = true},
+        hand_rig = true, follow_neck = true, scale_to_neck = true, body_yaw = true, protract = true, stretch = true},
     -- "overlay" with clavicles but the avatar's root yaw, for A/B of the body yaw.
     overlayrootyaw = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true},
@@ -107,6 +107,10 @@ Mirror.CLAVICLE_MAX = math.rad(30)
 -- arm length toward the hand): none below PROTRACT_START of the arm's length
 -- from shoulder to hand, rising to PROTRACT_SHARE of it by PROTRACT_FULL.
 Mirror.PROTRACT_START, Mirror.PROTRACT_FULL, Mirror.PROTRACT_SHARE = 0.9, 1.1, 0.08
+-- Soft stretch (arm length design, step 4; FRIK and VRIK stretch, CHI 2024):
+-- past full reach both segments lengthen in proportion, by at most
+-- STRETCH_SHARE of the arm's length; the wrist takes the rest.
+Mirror.STRETCH_SHARE = 0.20
 -- The spine chain bent toward the body frame's neck, lowest joint first, with
 -- the design's share of the bend per joint and a per-joint cap.
 Mirror.SPINE = {{"j_spine", 0.2}, {"j_spine1", 0.3}, {"j_spine2", 0.5}}
@@ -224,6 +228,15 @@ function Mirror.protraction(distance, arm_length)
     if not (arm_length > 1e-4) or not (distance == distance) then return 0 end
     local t = (distance / arm_length - Mirror.PROTRACT_START) / (Mirror.PROTRACT_FULL - Mirror.PROTRACT_START)
     return math.max(0, math.min(1, t)) * Mirror.PROTRACT_SHARE * arm_length
+end
+
+-- The upper and lower segment ratios that stretch an arm toward a target
+-- distance: 1 within reach, otherwise both scaled by the same factor, capped
+-- at 1 + STRETCH_SHARE. Pure.
+function Mirror.stretch_ratio(distance, upper, lower)
+    local length = upper + lower
+    if not (length > 1e-4) or not (distance == distance) or distance <= length then return 1 end
+    return math.min(1 + Mirror.STRETCH_SHARE, distance / length)
 end
 
 -- The fraction of the remaining swing each joint of a chain takes, lowest
@@ -446,6 +459,18 @@ function Mirror.install(mod, presentation)
         local upper = Vector3.length(Unit.world_position(unit, arm.forearm) - shoulder)
         local lower = Vector3.length(Unit.world_position(unit, arm.hand) - Unit.world_position(unit, arm.forearm))
         arm.world_upper, arm.world_lower = upper, lower
+        if Mirror.MODES[mode_name].stretch then
+            local ratio = Mirror.stretch_ratio(Vector3.length(target - shoulder), upper, lower)
+            if ratio > 1 then
+                -- The drawn segments lengthen too (joint offsets along their bones),
+                -- not only the solve's lengths.
+                Unit.set_local_position(unit, arm.forearm, Unit.local_position(unit, arm.forearm) * ratio)
+                Unit.set_local_position(unit, arm.hand, Unit.local_position(unit, arm.hand) * ratio)
+                World.update_unit(world, unit)
+                upper, lower = upper * ratio, lower * ratio
+                arm.max_stretch_ratio = math.max(arm.max_stretch_ratio or 1, ratio)
+            end
+        end
         local elbow, hand, reachable = Mirror.elbow(array(shoulder), array(hint), array(target), upper, lower)
         if not elbow then return end
         aim_joint(world, unit, arm.arm, arm.forearm, vector(elbow))
@@ -681,6 +706,9 @@ function Mirror.install(mod, presentation)
                     mod:info("DARKTIDEVR_BODY_MIRROR arm side=%s upper_m=%.4f lower_m=%.4f world_upper_m=%.4f world_lower_m=%.4f shoulder_to_target_m=%.4f hand_error_m=%.4f unreachable_frames=%d max_stretch_m=%.4f max_protraction_m=%.4f",
                         arm.side, arm.upper, arm.lower, arm.world_upper or -1, arm.world_lower or -1, arm.distance or -1, arm.error or -1, arm.unreachable, arm.max_stretch or 0,
                         arm.max_protraction or 0)
+                    if arm.max_stretch_ratio then
+                        mod:info("DARKTIDEVR_BODY_MIRROR arm side=%s max_stretch_ratio=%.3f", arm.side, arm.max_stretch_ratio)
+                    end
                 end
             end
         end
