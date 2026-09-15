@@ -404,6 +404,9 @@ are recorded in the
 - proportions differ by up to 3.5× by segment;
 - the spawner's first frame is not a stable rest pose: joints move 4-5 cm
   in 30 frames with no spawner update.
+- disabling the unit's animation state machine freezes it exactly (0.000 m
+  over 60 frames on both rigs, `scan2`, `344945e`). This gives milestone 2
+  a stable rest pose.
 
 ## Arc maul charges (user correction)
 

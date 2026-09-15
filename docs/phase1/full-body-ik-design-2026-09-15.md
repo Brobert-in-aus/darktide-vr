@@ -331,10 +331,18 @@ player's Skitarius (archetype `cryptic`) and the stock Ogryn bot profile
   - human: up to 3.7 cm at the right hand and 0.6 cm at the hips;
   - Ogryn: up to 5.3 cm at the left hand and 1.2 cm at the hips.
 
-  The spawned unit keeps animating on its own. Milestone 2 must either stop
-  its animation state machine or write every mapped joint every frame, and
-  the rest pose must not be the first frame. Candidates are the bind pose
-  from the unit resource, or a pose captured after the animation is stopped.
+  The spawned unit keeps animating on its own.
+- **Stopping the animation freezes it (`scan2`, `344945e`).** Calling
+  `Unit.disable_animation_state_machine` on the first ready frame kept every
+  mapped joint of both rigs exactly still (0.000 m from the first frame to 60
+  frames later).
+  - *Plan for milestone 2:* spawn the full profile, disable the state machine
+    at once, and capture the rest pose (bone lengths, neutral local
+    rotations) from that frame.
+  - *Caveat:* that frame is the spawn pose, possibly an idle frame rather
+    than the true bind pose. It is stable, which is what the solver needs;
+    neutral rotations may want a one-off correction if the arms are not
+    relaxed.
 - **IK handles** (`j_*_ik_handle`, `j_hips_handle`) sit at the root with no
   mapped parent and zero length on both rigs. `j_hips` hangs from
   `j_hips_handle`.
