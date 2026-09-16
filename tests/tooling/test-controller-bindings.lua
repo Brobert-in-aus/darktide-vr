@@ -621,3 +621,36 @@ do
     assert(hub_h==64,'hub used the grip layer: '..hub_h)
     print('controller_bindings_grip_layer=pass latched_press unset_inherits release_keeps holster_claim hub')
 end
+
+do
+    -- The forced-action channel the gestures use (inspect by bringing the
+    -- weapon up, push to talk at the mouth): an action mask no control is
+    -- bound to, ORed in before a sample and consumed by it. Its edges come
+    -- from the ordinary held comparison, so a gesture that stops contributing
+    -- lets go like a button.
+    local gestures = Bindings.install({get=function() end, on_setting_changed=function() end})
+    local function step(physical, forced, p, h, r)
+        gestures.forced = forced or 0
+        local ap, ah, ar = gestures.sample(true, physical)
+        assert(ap == p and ah == h and ar == r,
+            string.format('got %d,%d,%d expected %d,%d,%d', ap, ah, ar, p, h, r))
+        assert(gestures.forced == 0, 'the sample consumes the forced mask')
+    end
+    local INSPECT, TALK = 16384, 8388608
+    step(0, 0, 0, 0, 0)
+    step(0, INSPECT, INSPECT, INSPECT, 0)           -- the gesture takes hold
+    step(0, INSPECT, 0, INSPECT, 0)                 -- and keeps it without an edge
+    step(0, INSPECT + TALK, TALK, INSPECT + TALK, 0) -- two gestures at once
+    step(0, TALK, 0, TALK, INSPECT)                 -- one stops, and only it lets go
+    step(0, 0, 0, 0, TALK)
+    -- A forced action rides alongside the bound ones, and neither swallows the
+    -- other's release.
+    step(1, INSPECT, 1 + INSPECT, 1 + INSPECT, 0)   -- right trigger: primary
+    step(1, 0, 0, 1, INSPECT)
+    step(0, 0, 0, 0, 1)
+    -- Nothing is forced while the mapper is inactive.
+    gestures.forced = INSPECT
+    local ip, ih = gestures.sample(false, 0)
+    assert(ip == 0 and ih == 0, 'an inactive mapper forces nothing')
+    print('controller_bindings_forced=pass hold edges two_gestures alongside_bound inactive')
+end
