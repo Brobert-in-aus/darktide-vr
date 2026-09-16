@@ -6529,14 +6529,9 @@ function presentation.inject_gameplay_input(self, main_t, input)
         presentation.tag_gesture.apply(player_unit,
             controller_observation.gameplay_input_active and game_mode_name~="hub", main_t)
     end
-    local radial_stick=presentation.item_radial and presentation.item_radial.sample(
-        controller_observation.gameplay_input_active,
-        tonumber(controller_observation.gameplay_held[0]),game_mode_name)
     local exclusive_stick=presentation.communication_input.sample(self,player_unit,input,
         controller_observation.gameplay_input_active,
         tonumber(controller_observation.gameplay_held[0]),game_mode_name,active_world)
-    -- The radial owns the stick while it is open, as the comms wheel does.
-    if radial_stick then exclusive_stick=true end
     presentation.apply_controller_turning(main_t,exclusive_stick)
     local support_request=presentation.two_hand and presentation.two_hand.sample(
         player_unit,controller_observation.gameplay_input_active,main_t,self)
@@ -11863,9 +11858,7 @@ mod:hook_safe(
         end
         if presentation.wrist_display then
             presentation.wrist_display.draw(self._world, player_unit)
-        end
-        if presentation.item_radial then
-            presentation.item_radial.draw(self._world, player_unit)
+
         end
         if presentation.forearm_holsters then
             presentation.forearm_holsters.update_previews(self._world, player_unit, dt, t)
@@ -15575,9 +15568,12 @@ presentation.holsters = mod:io_dofile(
 presentation.reach_interact = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_reach_interact"
 ).install(mod, presentation)
-presentation.item_radial = mod:io_dofile(
-    "darktidevr/scripts/mods/darktidevr/darktidevr_item_radial"
-).install(mod, presentation, controller_observation)
+-- The item radial is built but deliberately not installed: the carried-items
+-- control wields on press, so the radial cycled an item before the player had
+-- chosen one, and its "Device" sector could never produce a press edge because
+-- that action's mask is a subset of the control's own. Both need the control's
+-- press suppressed, which needs the contextual claim generalised beyond the
+-- grips. See docs/phase1/item-radial-2026-09-16.md.
 presentation.weapon_inspect = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_weapon_inspect"
 ).install(mod, presentation)

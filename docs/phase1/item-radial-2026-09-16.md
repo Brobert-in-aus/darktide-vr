@@ -1,0 +1,80 @@
+# Item radial: built, reviewed, withdrawn (16 September 2026)
+
+The backlog item (todo-2026-09-14): "Holding the carried-items button shows a
+radial at the hand; flick the stick to pick scanner, stim or carried item."
+
+Built on 16 September as `darktidevr_item_radial.lua` with the test
+`item_radial`, then **withdrawn before the worn session**: a review found that
+the design cannot work against that control without a change to the bindings
+that is too invasive to make untested. The module and its tests stay in the
+tree; nothing installs or calls it, and it has no option, because an option
+that does nothing is worse than none.
+
+## Why it cannot work as written
+
+1. **The carried-items control wields on press.** Its action
+   (`pocketable_device`, mask 786432) is `device | cycle_pocketables`, both of
+   which have `pressed` entries, and `presentation.device_wield_precedence`
+   turns that press into a cycle step. So the moment the player holds the
+   control to *open* the radial, an item is already wielded. Picking a sector
+   then wields a second time: two swaps back to back, the first unasked for.
+   The premise that "releasing without a pick falls through to the stock cycle"
+   only appeared to hold because the cycle had already happened.
+2. **The Device sector can never fire.** Its mask (262144) is a subset of the
+   control's own 786432, which is in `api.held` for the whole hold, so
+   `pressed = next_held & ~api.held` is zero for it. The one sector a player
+   would reach for the scanner delivers nothing. Sectors 1 and 2 are outside
+   the mask and do work, which would have made this look like a random fault.
+
+Both have the same root: the control's own press is never suppressed.
+
+## What it would take
+
+- **Generalise the contextual claim beyond the grips.** The bindings already
+  block a control's bit and deliver a different action for one press, but only
+  for `left_grip` and `right_grip` (`request_bit` in
+  `darktidevr_controller_bindings.lua`). Mapping any control id to its bit is
+  small; the risk is that the same machinery carries the virtual holsters and
+  the two-hand grip, which are shipped and worn-tested. This is the change that
+  fixes both faults above: with the control's own mask blocked, `api.held` no
+  longer contains it, so the Device sector produces an edge again.
+- **Cancel rather than freeze.** `sample` returns before `Radial.step` when
+  gameplay input is inactive or the option is off, leaving `{open, index}` set
+  for ever. `api.destroy` has no call site, and the radial is in none of the
+  cancel paths the communication wheel uses. A pick made before the escape menu,
+  a downed state, a cutscene or a mission change fires on the first later frame
+  where input is active and the control is not held — a wield out of nowhere,
+  long after the cause. The comms gesture's rule is the one to copy:
+  ineligibility cancels.
+- **Require a fresh press and a neutral stick.** `Radial.step` opens on the
+  first held frame wherever the stick already is, and the first pick latches.
+  Tap the control mid snap-turn, with the stick hard over, and a sector is
+  chosen before the player has seen the radial. The comms gesture's
+  rearm/idle/holding phases exist for this.
+- **Exclude the hub**, as every sibling on those lines does. `physical_hold`
+  does not filter on the action's `hub` flag, so the radial opens in the
+  Mourningstar, claims the stick (blocking turning and the third-person orbit
+  pitch) and delivers a wield mask that bypasses the hub filtering `forced`
+  never sees.
+- **Handle the two item actions being bound apart.** `physical_hold` needs one
+  control to carry the whole mask, and `device` and `cycle_pocketables` are
+  separately bindable. A player who splits them keeps a working carried-items
+  button and gets a silently inert radial.
+- **Guard on the off hand's tracking**, as `darktidevr_wrist_display` does, or
+  the panel sits at the last-known grip pose while its sectors still respond.
+
+## What was sound, and worth keeping
+
+The stick claim works and cannot leave the player unable to turn: it is
+recomputed every frame, and `stick_rearm` only clears once the stick returns to
+neutral, so a release on a deflected stick leaks no binding. The ordering is
+right — the radial samples before `controller_bindings.sample`, and `forced` is
+consumed in that same call, so it can neither double-fire nor be lost. The
+sector geometry, the deadzone, the drawing coordinates and the canvas lifetime
+are all correct.
+
+## Assumption recorded
+
+This overlaps the virtual holsters, which put the same three items on the body.
+It is not redundant while body holsters are withheld from release, so the item
+stays open rather than being closed as superseded.

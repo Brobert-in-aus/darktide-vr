@@ -326,6 +326,27 @@ sitting: if items 1 to 14 behave, those are covered.
    flamethrower blitz talented), 15 September item 19 (teammate status).
 5. Last, because it needs a flag written and removed: 14 (the body overlay).
 
+## Suggested order
+
+Quickest first, then the ones that need a mission. Items 15 to 19 are all
+"nothing should look different" passes on refactors, so they need no separate
+sitting: if items 1 to 14 behave, those are covered.
+
+1. In the Psykhanium, from the menu: 8 (calibration T-pose guidance, worth a
+   fresh calibration first, since every arm length follows it), 11 (inspect),
+   12 (push to talk), 3 (melee swings), 4 (glove grip), 7 (body heading),
+   18 (fingers held).
+2. Still in the Psykhanium: 5 (melee charge count), 2 (strafe wobble),
+   9 (eye anchor: does the view sit where it did?), 19 (crosshair unchanged),
+   15 September item 30 (grab feedback along the gun), 32 (body holsters).
+3. With a force sword or shock maul: 20 (weapon charge at the weapon), which
+   is the A/B on whether the HUD panel's copy should hide.
+4. In a mission (SoloPlay is enough for most): 10 (reach to interact),
+   13 (tag by pointing), 16 (shooting still arms from the weapon hand),
+   17 (off-hand-relative movement), 1 (servo skull, Skitarius with the
+   flamethrower blitz talented), 15 September item 19 (teammate status).
+5. Last, because it needs a flag written and removed: 14 (the body overlay).
+
 21. **Item radial at your hand** (restart; Experimental features, "Item radial
     at your hand", default off, new 16 September). Hold the carried items
     control (Y by default): three labels appear at your off hand.
