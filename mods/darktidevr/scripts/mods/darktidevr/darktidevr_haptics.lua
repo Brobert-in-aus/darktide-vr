@@ -176,6 +176,23 @@ end
 -- while the reserve went down, so a pickup is not a reload) that fills the
 -- clip or empties the reserve, so a shell-by-shell reload pulses once when
 -- full; and clip plus reserve falling to LOW_AMMO_SHARE of their capacity.
+-- Step 4 (profile doc): the four event functions below used to build a
+-- fresh list and a closure on every call, and are called four times a frame
+-- with nothing to report almost every time. They now share one `number`, and
+-- push into a list that is only created on the first event; with none they
+-- return EMPTY_EVENTS, which callers only iterate and must not keep or change.
+local function number(v) return type(v) == "number" and v == v end
+local EMPTY_EVENTS = {}
+local function push(events, event)
+    if events == EMPTY_EVENTS then events = {} end
+    events[#events + 1] = event
+    return events
+end
+local function crossed(previous, current, field, share)
+    return number(previous[field]) and number(current[field]) and
+        previous[field] < share and current[field] >= share
+end
+
 function Haptics.ammo_events(previous, current)
     if type(previous) ~= "table" or type(current) ~= "table" or previous.weapon ~= current.weapon or
             type(previous.clip) ~= "number" or type(current.clip) ~= "number" then
@@ -202,44 +219,43 @@ end
 -- important first, each {kind, scale}. A reading taken as the player becomes
 -- disabled (a knocked-down health pool) reports only the disable.
 function Haptics.body_events(previous, current)
-    local events = {}
+    local events = EMPTY_EVENTS
     if type(previous) ~= "table" or type(current) ~= "table" then return events end
-    local function number(v) return type(v) == "number" and v == v end
     if current.disabled and not previous.disabled then
-        events[#events + 1] = {"disabled", 1}
+        events = push(events, {"disabled", 1})
         return events
     end
     local health_lost = number(previous.health) and number(current.health) and
         previous.disabled == current.disabled and previous.health - current.health or 0
     if health_lost > 0.5 then
         local quarter = number(current.max_health) and current.max_health > 0 and current.max_health * 0.25 or 50
-        events[#events + 1] = {"damage", math.max(0.4, math.min(1, health_lost / quarter))}
+        events = push(events, {"damage", math.max(0.4, math.min(1, health_lost / quarter))})
     end
     if number(previous.toughness) and number(current.toughness) then
         if previous.toughness > 0 and current.toughness <= 0 then
-            events[#events + 1] = {"toughness_broken", 1}
+            events = push(events, {"toughness_broken", 1})
         elseif health_lost <= 0.5 and previous.toughness - current.toughness > 0.01 then
-            events[#events + 1] = {"toughness_hit", math.max(0.4, math.min(1, (previous.toughness - current.toughness) / 0.25))}
+            events = push(events, {"toughness_hit", math.max(0.4, math.min(1, (previous.toughness - current.toughness) / 0.25))})
         end
     end
     if current.blocked and not previous.blocked then
-        events[#events + 1] = {current.perfect_block and "perfect_block" or "block", 1}
+        events = push(events, {current.perfect_block and "perfect_block" or "block", 1})
     end
     if number(previous.health) and number(current.health) and number(current.max_health) and current.max_health > 0 and
             previous.health / current.max_health > Haptics.LOW_HEALTH_SHARE and
             current.health / current.max_health <= Haptics.LOW_HEALTH_SHARE and not current.disabled then
-        events[#events + 1] = {"low_health", 1}
+        events = push(events, {"low_health", 1})
     end
     if number(previous.stamina) and number(current.stamina) and previous.stamina > 0.05 and current.stamina <= 0 then
-        events[#events + 1] = {"stamina_empty", 1}
+        events = push(events, {"stamina_empty", 1})
     end
     if number(previous.combat_charges) and number(current.combat_charges) then
-        if current.combat_charges < previous.combat_charges then events[#events + 1] = {"ability_used", 1}
-        elseif current.combat_charges > previous.combat_charges then events[#events + 1] = {"ability_ready", 1} end
+        if current.combat_charges < previous.combat_charges then events = push(events, {"ability_used", 1})
+        elseif current.combat_charges > previous.combat_charges then events = push(events, {"ability_ready", 1}) end
     end
     if number(previous.grenade_charges) and number(current.grenade_charges) and
             current.grenade_charges > previous.grenade_charges then
-        events[#events + 1] = {"blitz_ready", 1}
+        events = push(events, {"blitz_ready", 1})
     end
     return events
 end
@@ -248,23 +264,18 @@ end
 -- and peril as fractions). Returns the events of this frame, most important
 -- first, each {kind, scale, hands} where hands is "gun" or "both".
 function Haptics.gauge_events(previous, current)
-    local events = {}
+    local events = EMPTY_EVENTS
     if type(previous) ~= "table" or type(current) ~= "table" then return events end
-    local function number(v) return type(v) == "number" and v == v end
-    local function crossed(field, share)
-        return number(previous[field]) and number(current[field]) and
-            previous[field] < share and current[field] >= share
-    end
-    if crossed("heat", Haptics.CRITICAL_SHARE) then events[#events + 1] = {"heat_critical", 1, "gun"}
-    elseif crossed("heat", Haptics.WARNING_SHARE) then events[#events + 1] = {"heat_warning", 1, "gun"} end
-    if crossed("peril", Haptics.CRITICAL_SHARE) then events[#events + 1] = {"peril_critical", 1, "both"}
-    elseif crossed("peril", Haptics.WARNING_SHARE) then events[#events + 1] = {"peril_warning", 1, "both"} end
+    if crossed(previous, current, "heat", Haptics.CRITICAL_SHARE) then events = push(events, {"heat_critical", 1, "gun"})
+    elseif crossed(previous, current, "heat", Haptics.WARNING_SHARE) then events = push(events, {"heat_warning", 1, "gun"}) end
+    if crossed(previous, current, "peril", Haptics.CRITICAL_SHARE) then events = push(events, {"peril_critical", 1, "both"})
+    elseif crossed(previous, current, "peril", Haptics.WARNING_SHARE) then events = push(events, {"peril_warning", 1, "both"}) end
     local maximum = number(current.max_charge) and current.max_charge > 0 and current.max_charge or 1
     if number(previous.charge) and number(current.charge) and current.charge > previous.charge + 1e-4 then
         if current.charge >= maximum - 1e-3 then
-            events[#events + 1] = {"charge_full", 1, "gun"}
+            events = push(events, {"charge_full", 1, "gun"})
         else
-            events[#events + 1] = {"charging", math.max(0.4, math.min(1, current.charge / maximum)), "gun"}
+            events = push(events, {"charging", math.max(0.4, math.min(1, current.charge / maximum)), "gun"})
         end
     end
     return events
@@ -275,21 +286,20 @@ end
 -- otherwise) and heavy_time its heavy chain time after time scale; special is
 -- the wielded melee weapon's special state. Returns events like gauge_events.
 function Haptics.melee_events(previous, current)
-    local events = {}
+    local events = EMPTY_EVENTS
     if type(previous) ~= "table" or type(current) ~= "table" then return events end
-    local function number(v) return type(v) == "number" and v == v end
     if number(current.t) and number(current.windup_start) and number(current.heavy_time) and
             current.t - current.windup_start >= current.heavy_time then
         local was_ready = previous.windup_start == current.windup_start and number(previous.t) and
             previous.t - previous.windup_start >= current.heavy_time
-        if not was_ready then events[#events + 1] = {"heavy_ready", 1, "gun"} end
+        if not was_ready then events = push(events, {"heavy_ready", 1, "gun"}) end
     end
     if current.melee and current.special then
         if not (previous.melee and previous.special) then
-            events[#events + 1] = {"special_on", 1, "gun"}
+            events = push(events, {"special_on", 1, "gun"})
         elseif number(previous.t) and number(current.t) and
                 math.floor(current.t / Haptics.SPECIAL_HUM_INTERVAL) ~= math.floor(previous.t / Haptics.SPECIAL_HUM_INTERVAL) then
-            events[#events + 1] = {"special_hum", 1, "gun"}
+            events = push(events, {"special_hum", 1, "gun"})
         end
     end
     return events
@@ -300,21 +310,20 @@ end
 -- ends earlier was let go or cancelled. Instant interactions finish on exit.
 Haptics.FINISH_TOLERANCE = 0.15
 function Haptics.interaction_events(previous, current)
-    local events = {}
+    local events = EMPTY_EVENTS
     if type(previous) ~= "table" or type(current) ~= "table" then return events end
-    local function number(v) return type(v) == "number" and v == v end
     local was = previous.state == "is_interacting"
     local is = current.state == "is_interacting"
     if was and not is then
         local duration = number(previous.duration) and previous.duration or 0
         local elapsed = number(previous.t) and number(previous.start_time) and previous.t - previous.start_time or 0
         if duration <= 0 or elapsed >= duration - Haptics.FINISH_TOLERANCE then
-            events[#events + 1] = {"interaction_done", 1, "gun"}
+            events = push(events, {"interaction_done", 1, "gun"})
         end
     elseif was and is and number(current.duration) and current.duration > 0 and number(previous.t) and
             number(current.t) and math.floor(current.t / Haptics.SPECIAL_HUM_INTERVAL) ~=
             math.floor(previous.t / Haptics.SPECIAL_HUM_INTERVAL) then
-        events[#events + 1] = {"interaction_hum", 1, "gun"}
+        events = push(events, {"interaction_hum", 1, "gun"})
     end
     return events
 end
@@ -511,25 +520,33 @@ function Haptics.install(mod, presentation, send)
     local function interaction_events_of(previous_interaction, interaction)
         return Haptics.interaction_events(previous_interaction, interaction)
     end
-    local function read_body(unit, unit_data)
+    -- Fills `out`, one of two tables that alternate with `previous_body`, so
+    -- no table is built per frame (step 4). Every field is assigned, so
+    -- nothing stale survives from two frames ago; a nil assignment leaves the
+    -- key absent, as the constructor did.
+    local function read_body(unit, unit_data, out)
         local health = extension(unit, "health_system", "health")
         local toughness = extension(unit, "toughness_system", "toughness")
         local ability = extension(unit, "ability_system", "ability")
         local state = component_field(unit_data, "character_state", "state_name")
         local block = component(unit_data, "block")
-        return {
-            health = health and method_value(health, health.current_health),
-            max_health = health and method_value(health, health.max_health),
-            toughness = toughness and method_value(toughness, toughness.current_toughness_percent),
-            disabled = Haptics.DISABLED_STATES[state] == true or
-                component_field(unit_data, "disabled_character_state", "is_disabled") == true,
-            stamina = component_field(unit_data, "stamina", "current_fraction"),
-            blocked = field_of(block, "has_blocked") == true,
-            perfect_block = field_of(block, "is_perfect_blocking") == true,
-            combat_charges = ability and method_value(ability, ability.remaining_ability_charges, "combat_ability"),
-            grenade_charges = ability and method_value(ability, ability.remaining_ability_charges, "grenade_ability"),
-        }
+        out.health = health and method_value(health, health.current_health) or nil
+        out.max_health = health and method_value(health, health.max_health) or nil
+        out.toughness = toughness and method_value(toughness, toughness.current_toughness_percent) or nil
+        out.disabled = Haptics.DISABLED_STATES[state] == true or
+            component_field(unit_data, "disabled_character_state", "is_disabled") == true
+        out.stamina = component_field(unit_data, "stamina", "current_fraction")
+        out.blocked = field_of(block, "has_blocked") == true
+        out.perfect_block = field_of(block, "is_perfect_blocking") == true
+        out.combat_charges = ability and method_value(ability, ability.remaining_ability_charges, "combat_ability") or nil
+        out.grenade_charges = ability and method_value(ability, ability.remaining_ability_charges, "grenade_ability") or nil
+        return out
     end
+    -- The two buffers per reading. The one not holding `previous` is filled.
+    local body_a, body_b = {}, {}
+    local gauges_a, gauges_b = {}, {}
+    local reading_a, reading_b = {}, {}
+    local interaction_a, interaction_b = {}, {}
     local function read_melee(reading, unit, unit_data, wielded)
         reading.t = Managers.time:time("gameplay")
         local weapon = extension(unit, "weapon_system", "weapon")
@@ -573,7 +590,8 @@ function Haptics.install(mod, presentation, send)
         -- Once, for the gauges and the ammo step both.
         local inventory = unit_data and component(unit_data, "inventory")
         if unit_data then
-            local body = section("haptics.read_body", read_body, unit, unit_data)
+            local body = section("haptics.read_body", read_body, unit, unit_data,
+                previous_body == body_a and body_b or body_a)
             -- The first event this mode plays; the rest of the frame is one pulse.
             for _, event in ipairs(section("haptics.body_events", body_events_of, previous_body, body)) do
                 if Haptics.plays(event[1], mode) then
@@ -584,13 +602,12 @@ function Haptics.install(mod, presentation, send)
             previous_body = body
             local wielded = field_of(inventory, "wielded_slot")
             local charge_component = section("haptics.read_gauges", component, unit_data, "action_module_charge")
-            local gauges = {
-                heat = type(wielded) == "string" and wielded:match("^slot_") and
-                    guarded_field(unit_data, wielded, "overheat_current_percentage") or nil,
-                peril = component_field(unit_data, "warp_charge", "current_percentage"),
-                charge = field_of(charge_component, "charge_level"),
-                max_charge = field_of(charge_component, "max_charge"),
-            }
+            local gauges = previous_gauges == gauges_a and gauges_b or gauges_a
+            gauges.heat = type(wielded) == "string" and wielded:match("^slot_") and
+                guarded_field(unit_data, wielded, "overheat_current_percentage") or nil
+            gauges.peril = component_field(unit_data, "warp_charge", "current_percentage")
+            gauges.charge = field_of(charge_component, "charge_level")
+            gauges.max_charge = field_of(charge_component, "max_charge")
             for _, event in ipairs(section("haptics.gauge_events", gauge_events_of, previous_gauges, gauges)) do
                 if Haptics.plays(event[1], mode) then
                     local hands = event[3] == "both" and "both" or gun_hands()
@@ -599,7 +616,10 @@ function Haptics.install(mod, presentation, send)
                 end
             end
             previous_gauges = gauges
-            local reading = {melee = false}
+            local reading = previous_melee == reading_a and reading_b or reading_a
+            -- read_melee sets these only on some paths, so clear them first.
+            reading.melee, reading.special, reading.t, reading.windup_start, reading.heavy_time =
+                false, nil, nil, nil, nil
             section("haptics.read_melee", pcall, read_melee, reading, unit, unit_data, wielded)
             for _, event in ipairs(section("haptics.melee_events", melee_events_of, previous_melee, reading)) do
                 if Haptics.plays(event[1], mode) then
@@ -609,7 +629,8 @@ function Haptics.install(mod, presentation, send)
                 end
             end
             previous_melee = reading
-            local interaction = {t = reading.t}
+            local interaction = previous_interaction == interaction_a and interaction_b or interaction_a
+            interaction.t, interaction.state, interaction.start_time, interaction.duration = reading.t, nil, nil, nil
             section("haptics.read_interaction", read_interaction, interaction, unit_data)
             for _, event in ipairs(section("haptics.interaction_events", interaction_events_of,
                     previous_interaction, interaction)) do
