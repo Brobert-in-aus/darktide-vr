@@ -480,8 +480,14 @@ starved into dropping the viewer's frames. What the numbers cannot show
 is the headset: the runtime's compositing and the streamer's encoder are
 now outranked by the game, and whether that costs smoothness in the
 picture is the user's judgement, worn. Until then the flag stays opt-in.
-The `realtime` class is the next arm; it may need a privilege the process
-does not hold, and the status field says.
+The `realtime` class (`hub-gpuprio-realtime1`) applied without any
+privilege and is harmful: the game's loop held about 64 Hz and the pair's
+GPU came in at 20.4 ms, but the viewer's session-average submission rate
+fell from 119 to 82 a second, the pair period at the viewer stretched from
+23.5 to 61 ms and the run delivered 3,040 fresh pairs against 6,027 at
+`high`. The game took the GPU and starved the compositor into delivering
+half as much. So `high` is the value and `realtime` is not to be used; if
+`high` proves too aggressive worn, `above_normal` is the step down.
 
 ## Experiments for the user, with the same instruments
 
