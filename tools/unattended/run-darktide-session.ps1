@@ -68,6 +68,9 @@ $summary = [ordered]@{
 }
 $saved = @{}
 function Set-RequestFile([string] $Name, [string] $Value) {
+    # Every request the mod reads is a *.flag; a bare name would write a file
+    # nothing polls, and the run would silently measure nothing (16 September).
+    if ($Name -notlike '*.flag') { $Name += '.flag' }
     $path = Join-Path $modRoot $Name
     if (-not $saved.ContainsKey($path)) {
         $saved[$path] = if (Test-Path -LiteralPath $path -PathType Leaf) { [IO.File]::ReadAllBytes($path) } else { $null }
