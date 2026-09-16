@@ -365,3 +365,11 @@ sitting: if items 1 to 14 behave, those are covered.
     every player, the wrapper is one branch and a pass-through, and the calls
     return exactly what they did. If items 1 to 14 and 20 to 21 behave, this
     is covered.
+
+23. **Haptics sample without per-frame allocation** (restart; "Controller
+    vibration" on, as it is in your saved settings; the same "nothing should
+    look different" family). Every pulse should arrive exactly as it does now:
+    damage, toughness broken, block, stamina, downed, peril, charge, heavy
+    ready, the melee special, interactions, clip empty, reload, low ammo. A
+    24-frame scripted trace of both modes is locked in a test and reproduced
+    exactly; this is the worn confirmation of the same.

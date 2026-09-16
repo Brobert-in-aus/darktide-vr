@@ -448,23 +448,64 @@ function Haptics.install(mod, presentation, send)
         local ok, value = pcall(read)
         return ok and value or nil
     end
+    -- The same protected reads without a closure per call (16 September: the
+    -- frame profiler put sample at 57 us a frame, most of it the ten or so
+    -- closures and tables it built each frame). A failed read is nil, as with
+    -- field; an index on a missing component is protected the same way.
+    local function index(t, k) return t[k] end
+    local function component_field(unit_data, name, key)
+        local ok, component = pcall(unit_data.read_component, unit_data, name)
+        if not ok or component == nil then return nil end
+        local ok2, value = pcall(index, component, key)
+        return ok2 and value or nil
+    end
+    local function method_value(object, method, argument)
+        local ok, value = pcall(method, object, argument)
+        return ok and value or nil
+    end
+    local EMPTY = {}
     local function read_body(unit, unit_data)
         local health = ScriptUnit.has_extension(unit, "health_system")
         local toughness = ScriptUnit.has_extension(unit, "toughness_system")
         local ability = ScriptUnit.has_extension(unit, "ability_system")
-        local state = field(function() return unit_data:read_component("character_state").state_name end)
+        local state = component_field(unit_data, "character_state", "state_name")
         return {
-            health = health and field(function() return health:current_health() end),
-            max_health = health and field(function() return health:max_health() end),
-            toughness = toughness and field(function() return toughness:current_toughness_percent() end),
+            health = health and method_value(health, health.current_health),
+            max_health = health and method_value(health, health.max_health),
+            toughness = toughness and method_value(toughness, toughness.current_toughness_percent),
             disabled = Haptics.DISABLED_STATES[state] == true or
-                field(function() return unit_data:read_component("disabled_character_state").is_disabled end) == true,
-            stamina = field(function() return unit_data:read_component("stamina").current_fraction end),
-            blocked = field(function() return unit_data:read_component("block").has_blocked end) == true,
-            perfect_block = field(function() return unit_data:read_component("block").is_perfect_blocking end) == true,
-            combat_charges = ability and field(function() return ability:remaining_ability_charges("combat_ability") end),
-            grenade_charges = ability and field(function() return ability:remaining_ability_charges("grenade_ability") end),
+                component_field(unit_data, "disabled_character_state", "is_disabled") == true,
+            stamina = component_field(unit_data, "stamina", "current_fraction"),
+            blocked = component_field(unit_data, "block", "has_blocked") == true,
+            perfect_block = component_field(unit_data, "block", "is_perfect_blocking") == true,
+            combat_charges = ability and method_value(ability, ability.remaining_ability_charges, "combat_ability"),
+            grenade_charges = ability and method_value(ability, ability.remaining_ability_charges, "grenade_ability"),
         }
+    end
+    local function read_melee(reading, unit, unit_data, wielded)
+        reading.t = Managers.time:time("gameplay")
+        local weapon = ScriptUnit.has_extension(unit, "weapon_system")
+        local template = weapon and weapon:weapon_template()
+        local keywords = template and template.keywords
+        for _, keyword in ipairs(type(keywords) == "table" and keywords or EMPTY) do
+            if keyword == "melee" then reading.melee = true end
+        end
+        if reading.melee and type(wielded) == "string" and wielded:match("^slot_") then
+            reading.special = unit_data:read_component(wielded).special_active == true
+        end
+        local action = unit_data:read_component("weapon_action")
+        local settings = template and template.actions and template.actions[action.current_action_name]
+        local heavy = settings and settings.kind == "windup" and settings.allowed_chain_actions and
+            settings.allowed_chain_actions.heavy_attack
+        local scale = tonumber(action.time_scale) or 1
+        if heavy and type(heavy.chain_time) == "number" and scale > 0 then
+            reading.windup_start, reading.heavy_time = action.start_t, heavy.chain_time / scale
+        end
+    end
+    local function read_interaction(interaction, unit_data)
+        local component = unit_data:read_component("interaction")
+        interaction.state, interaction.start_time, interaction.duration =
+            component.state, component.start_time, component.duration
     end
     -- Once per gameplay frame, after input.
     function api.sample(unit)
@@ -484,13 +525,13 @@ function Haptics.install(mod, presentation, send)
                 end
             end
             previous_body = body
-            local wielded = field(function() return unit_data:read_component("inventory").wielded_slot end)
+            local wielded = component_field(unit_data, "inventory", "wielded_slot")
             local gauges = {
                 heat = type(wielded) == "string" and wielded:match("^slot_") and
-                    field(function() return unit_data:read_component(wielded).overheat_current_percentage end) or nil,
-                peril = field(function() return unit_data:read_component("warp_charge").current_percentage end),
-                charge = field(function() return unit_data:read_component("action_module_charge").charge_level end),
-                max_charge = field(function() return unit_data:read_component("action_module_charge").max_charge end),
+                    component_field(unit_data, wielded, "overheat_current_percentage") or nil,
+                peril = component_field(unit_data, "warp_charge", "current_percentage"),
+                charge = component_field(unit_data, "action_module_charge", "charge_level"),
+                max_charge = component_field(unit_data, "action_module_charge", "max_charge"),
             }
             for _, event in ipairs(Haptics.gauge_events(previous_gauges, gauges)) do
                 if Haptics.plays(event[1], mode) then
@@ -501,26 +542,7 @@ function Haptics.install(mod, presentation, send)
             end
             previous_gauges = gauges
             local reading = {melee = false}
-            pcall(function()
-                reading.t = Managers.time:time("gameplay")
-                local weapon = ScriptUnit.has_extension(unit, "weapon_system")
-                local template = weapon and weapon:weapon_template()
-                local keywords = template and template.keywords
-                for _, keyword in ipairs(type(keywords) == "table" and keywords or {}) do
-                    if keyword == "melee" then reading.melee = true end
-                end
-                if reading.melee and type(wielded) == "string" and wielded:match("^slot_") then
-                    reading.special = unit_data:read_component(wielded).special_active == true
-                end
-                local action = unit_data:read_component("weapon_action")
-                local settings = template and template.actions and template.actions[action.current_action_name]
-                local heavy = settings and settings.kind == "windup" and settings.allowed_chain_actions and
-                    settings.allowed_chain_actions.heavy_attack
-                local scale = tonumber(action.time_scale) or 1
-                if heavy and type(heavy.chain_time) == "number" and scale > 0 then
-                    reading.windup_start, reading.heavy_time = action.start_t, heavy.chain_time / scale
-                end
-            end)
+            pcall(read_melee, reading, unit, unit_data, wielded)
             for _, event in ipairs(Haptics.melee_events(previous_melee, reading)) do
                 if Haptics.plays(event[1], mode) then
                     local hands = gun_hands()
@@ -530,11 +552,7 @@ function Haptics.install(mod, presentation, send)
             end
             previous_melee = reading
             local interaction = {t = reading.t}
-            pcall(function()
-                local component = unit_data:read_component("interaction")
-                interaction.state, interaction.start_time, interaction.duration =
-                    component.state, component.start_time, component.duration
-            end)
+            pcall(read_interaction, interaction, unit_data)
             for _, event in ipairs(Haptics.interaction_events(previous_interaction, interaction)) do
                 if Haptics.plays(event[1], mode) then
                     local hands = melee_hands()
