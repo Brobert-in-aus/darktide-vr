@@ -243,7 +243,7 @@ haptics rewrites, by comparison, bought eight. This is the lesson of the day
 in one row: under an interpreter, look for work that should not be happening
 at all before making work that should be happening cheaper.
 
-The same pattern, milder, is in seven modules that poll a test flag every
+The same pattern, milder, is in eleven modules that poll a test flag every
 120 calls: a failed open every two seconds each, which is the shape of their
 spikes. Raised to 300 as well.
 

@@ -373,3 +373,13 @@ sitting: if items 1 to 14 behave, those are covered.
     ready, the melee special, interactions, clip empty, reload, low ammo. A
     24-frame scripted trace of both modes is locked in a test and reproduced
     exactly; this is the worn confirmation of the same.
+
+24. **Dev-flag polls throttled** (restart; no option, nothing should look
+    different; the same "still works" family). The input-manager hook no
+    longer tries to open a diagnostic flag file every frame, and the eleven
+    modules with a test flag poll it every five seconds instead of two. The
+    only visible effect is for the unattended tools: a flag written mid-run
+    is picked up within five seconds rather than two, and every runner writes
+    its flags before launch anyway. Measured in the Hub: the mod's Lua from
+    0.30 to 0.18 ms a frame, no errors. If items 1 to 23 behave, this is
+    covered; the one thing to notice is that nothing stutters that did not.
