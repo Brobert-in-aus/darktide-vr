@@ -275,6 +275,47 @@ The marker replay, 27 µs per widget per frame whenever a marker is in view,
 which in the Hub is most of the time, is the largest situational cost now
 and the next target.
 
+## The marker replay (`hub-marker1`): a wrong guess, two findings, one bug
+
+The guess: the atlas replayed every recorded material value of a marker, a
+pcall into Material.set_* each, on every primitive of every frame, so a
+revision-keyed skip should take a good part of the widget's 27 us. Measured,
+the replay is one microsecond and stops after three reports (the skip works
+and there was nothing worth skipping). It stays because it is exact and
+tested, but it bought nothing.
+
+The findings, from sectioning inside the module rather than around it:
+
+| per marker, us/frame | marker1 |
+| --- | ---: |
+| render.marker_widget (the routed draw) | 39 |
+| of which marker.atlas_call (the stock draw itself, on the atlas) | 24 |
+| render.marker_scope (the scope builder, never timed before) | 21 |
+
+So a marker in view costs about 60 us a frame, more than half of it the
+stock widget drawing itself into the atlas, which is the game's cost to
+draw a marker at all; and hub-marker1 had two in view for most of its run
+(552 widget draws per 276 frames against gates2's mix of one and two),
+which is why it looked dearer than gates2 before reading the calls column.
+The rest of the scope builder's 21 was the head's centre, axes and pixel
+tangent recomputed for every marker, and a closure built per call; those
+are now computed once per frame and phase and shared, and named.
+
+The bug: the report's total summed every section, nested ones included, so
+a sub-section counted twice. Every total with the haptics sub-sections in
+it was inflated by about 26 us, and marker1's 0.355 by the marker
+sub-sections too. Sections carry a depth now; nested ones keep their rows
+and leave the total. Totals from hub-marker2 on are comparable with each
+other; earlier ones are comparable with each other only after subtracting
+their nested rows.
+
+What would actually shrink a marker's cost is drawing its content into the
+atlas every other frame (the quad tracks the head every frame regardless;
+the atlas already tolerates cells 100 ms old). That halves the 60, but a
+fill or a count would update at half the frame rate, which a player can in
+principle see, so it is a change for the user to choose, not one to make
+unattended.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one

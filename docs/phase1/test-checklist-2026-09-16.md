@@ -401,3 +401,13 @@ sitting: if items 1 to 14 behave, those are covered.
     before). If a marker's frame ever looks stretched or a fill sticks at an
     old value, this is the item: the atlas skips replaying a material's
     values while their revision holds.
+
+27. **Marker head frame shared per frame** (restart; no option; the "still
+    works" family, worth a look with a marker in view). World markers, the
+    interaction prompt and the tag prompt sit on their planes exactly as
+    they did while you turn your head and walk: no lag of the plane behind
+    the head, no marker a frame behind another. The head's frame is computed
+    once per frame for all markers instead of once per marker, keyed on the
+    frame clock, so a stale key would show as the plane lagging the head by
+    a frame. The profiler's totals also stop double-counting nested
+    sections, which changes only log lines.
