@@ -572,11 +572,15 @@ table. Each arm is one Hub launch with the headset streaming:
 tools/unattended/run-darktide-session.ps1 -Scene Hub -HoldSeconds 100 -End Quit -SyntheticControllerPath -RequestFiles @{'darktidevr_frame_profile.flag'='enabled'; 'darktidevr_cpu_render_timing.flag'='enabled'; 'darktidevr_performance_profile.flag'='enabled'} -OutputDirectory artifacts/unattended/profile-<date>/<arm>
 ```
 
-Read three numbers from `console.log`: the last `DARKTIDEVR_GPU_PERF`
-line's `left_avg_ms`/`right_avg_ms` (the contended eye spans; 11.9/11.7
-today), the `frames=` of the `DARKTIDEVR_FRAME_PROFILE report=` lines
-divided by five (the loop rate; 54 today), and `fresh_pair_fps` at the end
-of `viewer.log` (32 today). The contention stretches the game's GPU work
+Then one command per set of arms:
+
+```
+python tools/stereo/summarize-hub-arms.py --root artifacts/unattended/profile-<date> <arm> [<arm> ...]
+```
+
+which prints GPU per pair (23 ms today), the loop rate (55 Hz), the pair
+period at the viewer (26 to 33 ms) and errors for each run. Repeat an arm
+that seems to move: the day's one 15.5 ms run did not survive two repeats. The contention stretches the game's GPU work
 about 3.3 times (7 to 23.5 ms), so a millisecond saved in the engine is
 worth three on the headset, and an arm that shortens the pipeline's own
 work shows in all three numbers at once.
@@ -602,7 +606,8 @@ work shows in all three numbers at once.
 | --- | --- |
 | the engine's two eyes, alone | at most 7 ms of GPU, 118 to 145 Hz |
 | the same two eyes with the headset pipeline | 23.5 ms of GPU, 54 Hz |
-| queue priority | tried, no effect |
+| queue priority, process class, visibility padding, frame generation | each measured; none moves the pipeline |
+| the pipeline's pinning | near 55 Hz from three players to nineteen |
 
 The mod's own cost was never the Hub's problem, and the day's Lua work was
 worth doing anyway for the sixty microseconds that should not have been
