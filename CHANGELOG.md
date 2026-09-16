@@ -11,7 +11,8 @@ runtime package records the exact source revision alongside the version.
   scheduling class for the game's process; `darktidevr_queue_priority.flag`
   asks for the game's D3D12 queues at high priority. Measured in the Hub on
   16 September: the process class at `high` took a third off the pair's GPU
-  time; queue priority did nothing. Neither changes anything without its flag.
+  time in one run and nothing in the repeat (unconfirmed); queue priority
+  did nothing. Neither changes anything without its flag.
 
 New, each an experimental option that is off until you turn it on:
 

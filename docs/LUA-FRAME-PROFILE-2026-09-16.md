@@ -456,7 +456,10 @@ viewer's layers are each measured, and none of them is where the Hub's
 frame goes. What remains is the pipeline's own GPU work, which the user's
 settings shape.
 
-## The process GPU scheduling class: the lever that moved (`hub-gpuprio-high1`)
+## The process GPU scheduling class: one run of two (`hub-gpuprio-high1`, `high2`)
+
+**Read the second table below before this one.** The first `high` run
+showed the effect described here; the second, identical, did not.
 
 Per-queue priority is one knob; the per-process GPU scheduling class
 (`D3DKMTSetProcessSchedulingPriorityClass`, the one VR compositors use to
@@ -490,8 +493,29 @@ half as much. `above_normal` (`hub-gpuprio-abovenormal1`, class 3,
 applied) gives little: 21.9 ms per pair, 57 Hz, a 27.7 ms pair period, a
 step near the day's noise. So the effect lives at `high`, `realtime` is not
 to be used, and `above_normal` is the gentler fallback if `high` proves
-too aggressive worn. A second `high` run (`hub-gpuprio-high2`) confirms or
-denies the size of the effect against the day's tenth of noise.
+too aggressive worn.
+
+The second `high` run (`hub-gpuprio-high2`, class 4, applied): **22.6 ms
+per pair, 56 Hz, a 25.9 ms pair period**, indistinguishable from normal.
+So the effect is unconfirmed: one run of two, and the process class cannot
+be claimed. What the pair of runs does establish is that the contended
+pipeline's run-to-run variance can exceed thirty per cent (the same code,
+the same flags, the same scene: 15.5 against 22.6 ms), which is larger
+than the tenth the morning's Lua work assumed and weakens every
+single-run arm of the afternoon; only differences well beyond that, or
+the same result in repeated runs, mean anything here. A third `high` run
+and a second normal control follow.
+
+| arm | GPU per pair, ms | loop, Hz | pair period, ms |
+| --- | ---: | ---: | ---: |
+| normal (render1) | 23.2 | 53 | 32.6 |
+| queue priority (queue1) | 22.5 | 56 | 25.8 |
+| no visibility padding (nopad1) | 23.0 | 55 | 30.0 |
+| above_normal | 21.9 | 57 | 27.7 |
+| high, run 1 | 15.5 | 66 | 23.5 |
+| high, run 2 | 22.6 | 56 | 25.9 |
+| realtime | 21.5 | 64 | 60.9 (viewer starved) |
+| no viewer (engine alone) | under 7 | 133 | none |
 
 ## Experiments for the user, with the same instruments
 
