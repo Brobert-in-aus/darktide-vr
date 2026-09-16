@@ -1,4 +1,19 @@
-# Item radial: built, reviewed, withdrawn (16 September 2026)
+# Item radial: built, reviewed, withdrawn, rebuilt (16 September 2026)
+
+**Later the same evening: rebuilt on the generalised claim and re-wired.**
+Every item under "What it would take" below is done; the sections after it
+describe the first attempt and are kept as the record of why. The rebuilt
+module takes the carried-items button through the bindings' contextual claim
+with the `unbound` action, so for that press the control does nothing of its
+own; the pick is delivered on release through the forced-action channel, and a
+release with nothing picked delivers the control's own stock cycle, so a plain
+tap still does what it did. The claim's own edges (`support_grip`) drive the
+state, which closes without delivering on cancel; a pick only counts after the
+stick has passed through neutral once; it is excluded from the hub; the button
+is found by whichever of the item actions it carries; and it draws only while
+the off hand tracks. A holster, two-hand or reach claim always takes the slot
+first, and the two-hand grip is told a radial claim is not the support hand.
+Worn check: checklist item 21.
 
 The backlog item (todo-2026-09-14): "Holding the carried-items button shows a
 radial at the hand; flick the stick to pick scanner, stim or carried item."
@@ -41,7 +56,7 @@ Both have the same root: the control's own press is never suppressed.
   edge again. What remains is to have the radial issue a claim for the
   carried-items control with the `unbound` action while open, then the state
   and hub fixes below.
-- **Cancel rather than freeze.** `sample` returns before `Radial.step` when
+- (done) **Cancel rather than freeze.** `sample` returns before `Radial.step` when
   gameplay input is inactive or the option is off, leaving `{open, index}` set
   for ever. `api.destroy` has no call site, and the radial is in none of the
   cancel paths the communication wheel uses. A pick made before the escape menu,
@@ -49,21 +64,21 @@ Both have the same root: the control's own press is never suppressed.
   where input is active and the control is not held — a wield out of nowhere,
   long after the cause. The comms gesture's rule is the one to copy:
   ineligibility cancels.
-- **Require a fresh press and a neutral stick.** `Radial.step` opens on the
+- (done) **Require a fresh press and a neutral stick.** `Radial.step` opens on the
   first held frame wherever the stick already is, and the first pick latches.
   Tap the control mid snap-turn, with the stick hard over, and a sector is
   chosen before the player has seen the radial. The comms gesture's
   rearm/idle/holding phases exist for this.
-- **Exclude the hub**, as every sibling on those lines does. `physical_hold`
+- (done) **Exclude the hub**, as every sibling on those lines does. `physical_hold`
   does not filter on the action's `hub` flag, so the radial opens in the
   Mourningstar, claims the stick (blocking turning and the third-person orbit
   pitch) and delivers a wield mask that bypasses the hub filtering `forced`
   never sees.
-- **Handle the two item actions being bound apart.** `physical_hold` needs one
+- (done) **Handle the two item actions being bound apart.** `physical_hold` needs one
   control to carry the whole mask, and `device` and `cycle_pocketables` are
   separately bindable. A player who splits them keeps a working carried-items
   button and gets a silently inert radial.
-- **Guard on the off hand's tracking**, as `darktidevr_wrist_display` does, or
+- (done) **Guard on the off hand's tracking**, as `darktidevr_wrist_display` does, or
   the panel sits at the last-known grip pose while its sectors still respond.
 
 ## What was sound, and worth keeping

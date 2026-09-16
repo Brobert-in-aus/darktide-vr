@@ -5923,6 +5923,8 @@ function presentation.inject_primary_action(self, main_t, input)
     )
 end
 
+presentation.controller_bindings_module = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings")
 presentation.controller_bindings = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings"
 ).install(mod)
@@ -6532,6 +6534,8 @@ function presentation.inject_gameplay_input(self, main_t, input)
     local exclusive_stick=presentation.communication_input.sample(self,player_unit,input,
         controller_observation.gameplay_input_active,
         tonumber(controller_observation.gameplay_held[0]),game_mode_name,active_world)
+    -- The radial owns the stick while it is open, as the comms wheel does.
+    if presentation.item_radial and presentation.item_radial.open() then exclusive_stick=true end
     presentation.apply_controller_turning(main_t,exclusive_stick)
     local support_request=presentation.two_hand and presentation.two_hand.sample(
         player_unit,controller_observation.gameplay_input_active,main_t,self)
@@ -6546,6 +6550,13 @@ function presentation.inject_gameplay_input(self, main_t, input)
         support_request=presentation.reach_interact.sample(player_unit,
             controller_observation.gameplay_input_active and game_mode_name~="hub",main_t,support_request)
     end
+    local radial_request=false
+    if presentation.item_radial then
+        -- Last of all: it takes the carried-items button, not a grip, and only
+        -- when no grip claim wants the slot. Not in the hub.
+        support_request,radial_request=presentation.item_radial.sample(
+            controller_observation.gameplay_input_active and game_mode_name~="hub",support_request)
+    end
     -- The input time, for the bindings' reverse grip grace.
     if type(support_request)=='table' then support_request.now=main_t end
     local pressed, held, released = presentation.controller_bindings.sample(
@@ -6557,9 +6568,14 @@ function presentation.inject_gameplay_input(self, main_t, input)
     if presentation.holsters then
         presentation.holsters.finish_grip(presentation.controller_bindings.support_grip,holster_request)
     end
+    if presentation.item_radial then
+        presentation.item_radial.finish(presentation.controller_bindings.support_grip,radial_request,
+            controller_observation.right_stick_x,controller_observation.right_stick_y,
+            controller_observation.right_aim_usable)
+    end
     if presentation.two_hand then
-        -- A holster claim is not the support hand's grip.
-        presentation.two_hand.finish(holster_request and presentation.holsters.idle_grip or
+        -- A holster or radial claim is not the support hand's grip.
+        presentation.two_hand.finish((holster_request or radial_request) and presentation.holsters.idle_grip or
             presentation.controller_bindings.support_grip)
     end
     if presentation.haptics then
@@ -11858,7 +11874,9 @@ mod:hook_safe(
         end
         if presentation.wrist_display then
             presentation.wrist_display.draw(self._world, player_unit)
-
+        end
+        if presentation.item_radial then
+            presentation.item_radial.draw(self._world)
         end
         if presentation.forearm_holsters then
             presentation.forearm_holsters.update_previews(self._world, player_unit, dt, t)
@@ -15568,12 +15586,9 @@ presentation.holsters = mod:io_dofile(
 presentation.reach_interact = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_reach_interact"
 ).install(mod, presentation)
--- The item radial is built but deliberately not installed: the carried-items
--- control wields on press, so the radial cycled an item before the player had
--- chosen one, and its "Device" sector could never produce a press edge because
--- that action's mask is a subset of the control's own. Both need the control's
--- press suppressed, which needs the contextual claim generalised beyond the
--- grips. See docs/phase1/item-radial-2026-09-16.md.
+presentation.item_radial = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_item_radial"
+).install(mod, presentation, controller_observation)
 presentation.weapon_inspect = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_weapon_inspect"
 ).install(mod, presentation)

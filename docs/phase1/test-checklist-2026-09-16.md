@@ -310,58 +310,46 @@ tracked eye).
       weapon hand is there. The untested part is the last step, so bring a
       force sword, a power sword or a power maul.
 
-## Suggested order
-
-Quickest first, then the ones that need a mission. Items 15 to 19 are all
-"nothing should look different" passes on refactors, so they need no separate
-sitting: if items 1 to 14 behave, those are covered.
-
-1. In the Psykhanium, from the menu: 8 (calibration T-pose guidance, worth a
-   fresh calibration first, since every arm length follows it), 11 (inspect),
-   12 (push to talk), 3 (melee swings), 4 (glove grip), 7 (body heading),
-   18 (fingers held).
-2. Still in the Psykhanium: 5 (melee charge count), 2 (strafe wobble),
-   9 (eye anchor: does the view sit where it did?), 19 (crosshair unchanged),
-   15 September item 30 (grab feedback along the gun), 32 (body holsters).
-3. With a force sword or shock maul: 20 (weapon charge at the weapon), which
-   is the A/B on whether the HUD panel's copy should hide.
-4. In a mission (SoloPlay is enough for most): 10 (reach to interact),
-   13 (tag by pointing), 16 (shooting still arms from the weapon hand),
-   17 (off-hand-relative movement), 1 (servo skull, Skitarius with the
-   flamethrower blitz talented), 15 September item 19 (teammate status).
-5. Last, because it needs a flag written and removed: 14 (the body overlay).
-
-## Suggested order
-
-Quickest first, then the ones that need a mission. Items 15 to 19 are all
-"nothing should look different" passes on refactors, so they need no separate
-sitting: if items 1 to 14 behave, those are covered.
-
-1. In the Psykhanium, from the menu: 8 (calibration T-pose guidance, worth a
-   fresh calibration first, since every arm length follows it), 11 (inspect),
-   12 (push to talk), 3 (melee swings), 4 (glove grip), 7 (body heading),
-   18 (fingers held).
-2. Still in the Psykhanium: 5 (melee charge count), 2 (strafe wobble),
-   9 (eye anchor: does the view sit where it did?), 19 (crosshair unchanged),
-   15 September item 30 (grab feedback along the gun), 32 (body holsters).
-3. With a force sword or shock maul: 20 (weapon charge at the weapon), which
-   is the A/B on whether the HUD panel's copy should hide.
-4. In a mission (SoloPlay is enough for most): 10 (reach to interact),
-   13 (tag by pointing), 16 (shooting still arms from the weapon hand),
-   17 (off-hand-relative movement), 1 (servo skull, Skitarius with the
-   flamethrower blitz talented), 15 September item 19 (teammate status).
-5. Last, because it needs a flag written and removed: 14 (the body overlay).
-
 21. **Item radial at your hand** (restart; Experimental features, "Item radial
-    at your hand", default off, new 16 September). Hold the carried items
-    control (Y by default): three labels appear at your off hand.
-    - Flick the stick towards one and let go: you should take that item.
-    - Let go without moving the stick: the control should cycle as it always
-      did. This is the important one, since it is what keeps the option safe
-      to leave on.
-    - While it is open the stick must not turn you.
-    - Are the labels the right size and place, in front of the off hand? Say
-      if they sit in the way or are hard to read.
-    - `DARKTIDEVR_ITEM_RADIAL open` and `... wield mask=N` in the log.
-    - With "Weapon hand holsters" on as well, the two should not interfere:
-      the holsters are reached for, the radial is chosen.
+    at your hand", default off; built, withdrawn after review and rebuilt on
+    16 September). Hold the carried items control (Y by default): three labels
+    appear at your off hand.
+    - Flick the stick towards one and let go: you should take that item, and
+      *only* that item, with no swap on the press. The first build swapped on
+      press and again on release; that is the thing to watch for.
+    - Try all three sectors. The Device sector could not fire at all in the
+      first build.
+    - Tap it without moving the stick: it should cycle exactly as it always
+      did (one frame later than stock, which you will not see).
+    - Tap it mid snap-turn, with the stick already hard over: nothing should be
+      picked, since the stick has to pass through neutral first.
+    - While it is open the stick must not turn you; once closed, it must.
+    - Open it, then open the menu with it still held and let go: nothing
+      should be wielded when you come back.
+    - With "Weapon hand holsters" on too: reaching into a holster and pressing
+      the carried items control should not drop the holster claim, and the
+      holster should still take the grip first.
+    - `DARKTIDEVR_ITEM_RADIAL open control=y` and `... wield mask=N` in the log.
+
+## Suggested order
+
+Quickest first, then the ones that need a mission. Items 15 to 19 are all
+"nothing should look different" passes on refactors, so they need no separate
+sitting: if items 1 to 14 behave, those are covered.
+
+1. In the Psykhanium, from the menu: 8 (calibration T-pose guidance, worth a
+   fresh calibration first, since every arm length follows it), 11 (inspect),
+   12 (push to talk), 3 (melee swings), 4 (glove grip), 7 (body heading),
+   18 (fingers held).
+2. Still in the Psykhanium: 5 (melee charge count), 2 (strafe wobble),
+   9 (eye anchor: does the view sit where it did?), 19 (crosshair unchanged),
+   15 September item 30 (grab feedback along the gun), 32 (body holsters).
+3. As Robobert (the Skitarius), still in the Psykhanium: 20 (weapon charge at
+   the weapon, the A/B on whether the HUD panel's copy should hide) and the
+   two-handed ranged weapon for 15 September item 30 and checklist item 4.
+4. In a mission (SoloPlay is enough for most): 10 (reach to interact),
+   13 (tag by pointing), 16 (shooting still arms from the weapon hand),
+   17 (off-hand-relative movement), 21 (item radial, which wants a stim and a
+   carried item to pick between), 1 (servo skull, Skitarius with the
+   flamethrower blitz talented), 15 September item 19 (teammate status).
+5. Last, because it needs a flag written and removed: 14 (the body overlay).

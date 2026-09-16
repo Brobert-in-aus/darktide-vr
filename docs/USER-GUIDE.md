@@ -189,6 +189,15 @@ weapon, so you can point something out while your gun is aimed elsewhere. With
 the hand down, or holding the gun, or up at your mouth to talk, tagging follows
 the weapon as usual. Not in the hub.
 
+### Item radial at your hand (experimental)
+
+Experimental features, "Item radial at your hand". Hold the carried items
+control and three choices appear at your off hand: your carried item, your stim
+and your device. Flick the stick towards one and let go to take it. Let go
+without choosing and the control cycles through them as it always did, so
+nothing is lost by turning this on. While the radial is open the stick picks
+rather than turns you. Not in the Mourningstar.
+
 ### Wrist display, teammate status (experimental)
 
 - "Wrist display": health (white), toughness (the HUD's blue) and stamina bars
