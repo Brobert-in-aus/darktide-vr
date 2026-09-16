@@ -288,8 +288,10 @@ local function copy_gameplay_fingers(hand)
             Unit.local_rotation(source, node.source))
     end
     if key and state.finger_steady then
-        local count = (state.finger_samples or 0) + 1
-        state.finger_samples = count
+        -- Per hand: a shared counter let the second hand capture off the
+        -- first hand's steady frames.
+        local count = (hand.finger_samples or 0) + 1
+        hand.finger_samples = count
         if count >= BodyProxy.FINGER_SAMPLES then
             local pose = {}
             for index, node in ipairs(hand.finger_nodes) do
@@ -300,7 +302,7 @@ local function copy_gameplay_fingers(hand)
                 tostring(key), #pose, count))
         end
     elseif key then
-        state.finger_samples = 0
+        hand.finger_samples = 0
     end
 end
 
