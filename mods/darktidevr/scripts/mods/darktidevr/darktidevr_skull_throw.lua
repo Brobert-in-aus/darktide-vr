@@ -318,7 +318,13 @@ function Skull.install(mod, presentation)
             follow.t = t
             follow.node = follow.node or child_node(skull)
             follow.position = Skull.smoothed(follow.position, real, dt)
-            if follow.node then place(extension, skull, follow, follow.position) end
+            if follow.node then
+                place(extension, skull, follow, follow.position)
+                if not follow.logged then
+                    follow.logged = true
+                    mod:info("DARKTIDEVR_SKULL_THROW follow node=%d state=%s", follow.node, tostring(name))
+                end
+            end
             return
         end
         -- A throw takes over from the follower cleanly.
