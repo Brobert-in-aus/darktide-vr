@@ -316,6 +316,19 @@ fill or a count would update at half the frame rate, which a player can in
 principle see, so it is a change for the user to choose, not one to make
 unattended.
 
+## `hub-marker2`: the first comparable total
+
+No marker was in view after the warm-up report, so the shared head frame is
+unmeasured in the field (exact by construction; the plane maths is covered
+by the suite). What the run gives instead is the first total with the
+nesting fixed: 0.156 to 0.166 ms a frame with no marker in view, no errors,
+which agrees with wide2's 0.183 less its 26 us of double-counted haptics
+sub-sections. That is the baseline to compare against from here: about
+0.16 ms of interpreted Lua a frame, 1.5 per cent of an 11 ms frame, with
+haptics 58 us of it and the rest spread thin. The three levers left are all
+the user's to pull: the JIT switch (the patch), the marker draw cadence, and
+a lower body-read rate for haptics.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one
