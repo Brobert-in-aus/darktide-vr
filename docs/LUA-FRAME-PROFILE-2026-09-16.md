@@ -591,10 +591,8 @@ work shows in all three numbers at once.
 1. Headset refresh 90 Hz in Virtual Desktop (the compositing and the
    encoder both run per vsync; the game makes 32 fresh pairs a second at
    either rate).
-2. Hardware GPU scheduling on (Windows graphics settings, reboot). Today's
-   engine log reports it off. It changes how the three GPU clients are
-   arbitrated, and it is the one arm nobody has run; with it on,
-   `darktidevr_queue_priority.flag` is worth one more launch.
+2. Hardware GPU scheduling is already on (user, evening, checked in
+   Windows; the engine's "false" is the game misreporting). Not an arm.
 3. The VR render-settings profile, `tools/stereo/set-vr-render-settings.ps1`
    (ambient occlusion, GI, SSR, sun and local shadows, decals, volumetrics
    off; texture quality low; LOD and scatter reduced). It cuts the engine's

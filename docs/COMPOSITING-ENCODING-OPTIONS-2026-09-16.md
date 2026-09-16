@@ -94,15 +94,14 @@ usual for AV1 or HEVC on the headset. Under 40 ms total is the target.
 
 ## What Windows and the driver offer
 
-- **Hardware-accelerated GPU scheduling.** The engine log reports it off on
-  this machine. The guides are split: turn it off if stutter appears; some
-  VR users report the opposite. NVIDIA's frame generation is documented as
-  requiring it on, yet frame generation delivers here with it off, which is
-  a contradiction worth checking in Windows' graphics settings. It changes
-  how the three GPU clients are arbitrated and is the one arm nobody has
-  run (a reboot per arm). With it on, `darktidevr_queue_priority.flag` and
-  `darktidevr_gpu_process_priority.flag` = `high` are each worth one more
-  launch, since both were measured only with it off.
+- **Hardware-accelerated GPU scheduling is on** (user, 16 September
+  evening, checked in Windows' graphics settings). The engine's startup line
+  "Hardware Accelerated GPU scheduler: false" is the game misreporting, not
+  Windows. So the "untested arm" is already the state of the machine, and
+  the 16 September null results for queue priority and the process class
+  were measured with it on, which is where priority classes matter least:
+  with hardware scheduling the GPU arbitrates its own queues. Both flags
+  stay opt-in and closed.
 - **Process and queue priority.** Measured 16 September: no demonstrated
   effect with hardware scheduling off; `realtime` starves the viewer.
 - **Other GPU clients.** Anything else that composes or encodes during play
