@@ -182,6 +182,20 @@ What follows for every Lua path in this mod:
   our functions back in is safe. Build it behind a flag, measure it in the
   Hub, and put the numbers and the risk to the user.
 
+### The mod can reach the JIT (`hub-jitprobe1`)
+
+`jit global=true mods_lua=false require=true status=false version=LuaJIT
+2.1.1771479498`: the global `jit` table is visible to the mod, `require("jit")`
+works, and `jit.status()` is false, so the compiler is off in the mod's
+environment as in the game's. One implementation detail decides the shape of
+any experiment: with the JIT globally off LuaJIT installs no hot-counting in
+its dispatch table at all, so `jit.on(func)` for one function has no effect;
+the only switch that compiles anything is `jit.on()` for the whole state,
+which compiles the game's Lua as well. That is exactly what Fatshark avoided,
+for a reason `boot_init.lua` does not state. So: a flag, an unattended Hub
+run with the profiler, the numbers and the error count, and the decision is
+the user's. Never on by default.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one

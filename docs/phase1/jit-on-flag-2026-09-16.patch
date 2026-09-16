@@ -1,0 +1,28 @@
+diff --git a/mods/darktidevr/scripts/mods/darktidevr/darktidevr.lua b/mods/darktidevr/scripts/mods/darktidevr/darktidevr.lua
+index d7ddd6f..f27a5b7 100644
+--- a/mods/darktidevr/scripts/mods/darktidevr/darktidevr.lua
++++ b/mods/darktidevr/scripts/mods/darktidevr/darktidevr.lua
+@@ -3266,6 +3266,23 @@ pcall(function()
+     mod:info("DARKTIDEVR_FRAME_PROFILE jit global=%s mods_lua=%s require=%s status=%s version=%s",
+         tostring(global_jit ~= nil), tostring(mods_jit ~= nil), tostring(required ~= nil),
+         tostring(status), tostring(probe and probe.version))
++    -- Experiment, flag only, never an option: turn the compiler on for the
++    -- whole state. With it globally off no function is hot-counted, so a
++    -- per-function jit.on does nothing; this is the only switch there is, and
++    -- it compiles the game's Lua too, which Fatshark chose not to. The Hub
++    -- profile with this flag says what it is worth and whether anything
++    -- breaks; the decision is the user's.
++    local flag = Mods.lua.io.open("./../mods/darktidevr/darktidevr_jit_test.flag", "r")
++    if flag then
++        local value = flag:read("*all"); flag:close()
++        if probe and probe.on and type(value) == "string" and value:match("^%s*enabled%s*$") then
++            local ok, err = pcall(probe.on)
++            local after
++            pcall(function() after = tostring(probe.status()) end)
++            mod:info("DARKTIDEVR_FRAME_PROFILE jit_on requested=true ok=%s status=%s err=%s",
++                tostring(ok), tostring(after), tostring(err))
++        end
++    end
+ end)
+ function presentation.refresh_performance_profile_request()
+     local startup = presentation.native_startup.read(Mods.lua.io.open)
