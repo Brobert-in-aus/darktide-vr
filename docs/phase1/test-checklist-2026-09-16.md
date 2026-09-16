@@ -383,3 +383,10 @@ sitting: if items 1 to 14 behave, those are covered.
     its flags before launch anyway. Measured in the Hub: the mod's Lua from
     0.30 to 0.18 ms a frame, no errors. If items 1 to 23 behave, this is
     covered; the one thing to notice is that nothing stutters that did not.
+
+25. **Sampler gates** (restart; no option, nothing should look different).
+    The communication wheel button, two-hand support and its capture all
+    behave as they did: the wheel opens on its button, a calibrated gun
+    still takes the support hand, and holding nothing costs the mod less.
+    The three changes are exact reorderings, so if items 6 (two-hand) and 12
+    (push to talk) behave, this is covered.

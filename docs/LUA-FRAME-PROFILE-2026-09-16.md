@@ -247,6 +247,34 @@ The same pattern, milder, is in eleven modules that poll a test flag every
 120 calls: a failed open every two seconds each, which is the shape of their
 spikes. Raised to 300 as well.
 
+## The sampler gates (`hub-gates2`)
+
+Three exact reductions: `physical_hold` returns before walking the controls
+when no button is held; two-hand's `live()` looks up fixed keys instead of
+concatenating three strings a frame; and its `snapshot` asks whether a gun is
+wielded before the tracking, online-rule and state-machine gates, which are
+pure, so the order does not change the answer.
+
+| section, µs/frame | wide2 | gates2 |
+| --- | ---: | ---: |
+| input.two_hand | 11.8 | 7.6 |
+| input.communication | 10.0 | 8.9 |
+| mod total, ms/frame | 0.183 | 0.245 |
+
+The total went up, and the table says why if read whole: `render.marker_widget`
+was absent in wide2 and is 41 µs a frame in gates2, because an interaction
+marker was in view this time; take it out and the runs are 0.183 against
+0.204, and the rest of that gap is the whole run being about a tenth slower
+(275 frames a report against 286; every untouched section is 10 to 20 per
+cent dearer). The gates' five microseconds is real and inside that noise;
+they stay because they are exact. The lesson for reading these tables: the
+run-to-run noise is about a tenth, so only changes larger than that, or
+sections that appear and vanish, mean anything without a same-run control.
+
+The marker replay, 27 µs per widget per frame whenever a marker is in view,
+which in the Hub is most of the time, is the largest situational cost now
+and the next target.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one
