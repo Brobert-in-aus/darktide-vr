@@ -580,7 +580,10 @@ python tools/stereo/summarize-hub-arms.py --root artifacts/unattended/profile-<d
 
 which prints GPU per pair (23 ms today), the loop rate (55 Hz), the pair
 period at the viewer (26 to 33 ms) and errors for each run. Repeat an arm
-that seems to move: the day's one 15.5 ms run did not survive two repeats. The contention stretches the game's GPU work
+that seems to move: the day's one 15.5 ms run did not survive two repeats.
+Each run's `summary.json` now records `headset_wakefulness_mid` and
+`streamer_processes_mid` at the hold's midpoint; a run whose headset slept
+(less encoder contention) is not comparable and should be dropped. The contention stretches the game's GPU work
 about 3.3 times (7 to 23.5 ms), so a millisecond saved in the engine is
 worth three on the headset, and an arm that shortens the pipeline's own
 work shows in all three numbers at once.
