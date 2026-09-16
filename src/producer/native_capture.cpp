@@ -503,6 +503,8 @@ using CreateComputePipelineStateFn = HRESULT(STDMETHODCALLTYPE*)(
 using CreateCommandSignatureFn = HRESULT(STDMETHODCALLTYPE*)(
     ID3D12Device*, const D3D12_COMMAND_SIGNATURE_DESC*, ID3D12RootSignature*,
     REFIID, void**);
+using CreateCommandQueueFn = HRESULT(STDMETHODCALLTYPE*)(
+    ID3D12Device*, const D3D12_COMMAND_QUEUE_DESC*, REFIID, void**);
 using CreateDescriptorHeapFn = HRESULT(STDMETHODCALLTYPE*)(
     ID3D12Device*, const D3D12_DESCRIPTOR_HEAP_DESC*, REFIID, void**);
 using CreateConstantBufferViewFn = void(STDMETHODCALLTYPE*)(
@@ -621,6 +623,7 @@ CreateGraphicsPipelineStateFn original_create_graphics_pipeline_state{};
 CreateComputePipelineStateFn original_create_compute_pipeline_state{};
 CreateCommandSignatureFn original_create_command_signature{};
 CreateDescriptorHeapFn original_create_descriptor_heap{};
+CreateCommandQueueFn original_create_command_queue{};
 CreateConstantBufferViewFn original_create_constant_buffer_view{};
 CreateShaderResourceViewFn original_create_shader_resource_view{};
 CreateUnorderedAccessViewFn original_create_unordered_access_view{};
@@ -1398,6 +1401,14 @@ std::atomic<bool> gpu_profile_enabled{};
 // mode must be selected before dtvr_install() because MinHook cannot safely add
 // this interdependent hook set after renderer threads are live.
 std::atomic<bool> kInstallDiagnosticRenderHooks{};
+// Opt-in (darktidevr_queue_priority.flag): every command queue the game
+// creates is asked for at high priority, so the OS scheduler favours its
+// work over the other GPU clients on the headset path (the viewer's
+// runtime compositing and the streamer's encoder), which the 16 September
+// profile measured as tripling the eye's GPU span. Off, nothing is hooked.
+std::atomic<bool> kRaiseQueuePriority{};
+std::atomic<int> queue_priority_raised{};
+std::atomic<int> queue_priority_refused{};
 std::atomic<bool> vertex_shader_dump_requested{};
 // Unlike the retired per-draw constant-buffer experiments, shader replacement
 // only needs the three PSO construction hooks. Keep it independently
@@ -5117,6 +5128,25 @@ void record_descriptor_heap(ID3D12Device* device,
   }
   std::scoped_lock lock(descriptor_mutex);
   descriptor_heaps[reinterpret_cast<std::uintptr_t>(heap)] = info;
+}
+
+HRESULT STDMETHODCALLTYPE create_command_queue_hook(
+    ID3D12Device* device, const D3D12_COMMAND_QUEUE_DESC* description,
+    REFIID iid, void** output) {
+  if (description &&
+      description->Priority == D3D12_COMMAND_QUEUE_PRIORITY_NORMAL) {
+    D3D12_COMMAND_QUEUE_DESC raised = *description;
+    raised.Priority = D3D12_COMMAND_QUEUE_PRIORITY_HIGH;
+    const auto result =
+        original_create_command_queue(device, &raised, iid, output);
+    if (SUCCEEDED(result)) {
+      queue_priority_raised.fetch_add(1, std::memory_order_relaxed);
+      return result;
+    }
+    // A driver that refuses the priority gets the game's own description.
+    queue_priority_refused.fetch_add(1, std::memory_order_relaxed);
+  }
+  return original_create_command_queue(device, description, iid, output);
 }
 
 HRESULT STDMETHODCALLTYPE create_descriptor_heap_hook(
@@ -13892,6 +13922,10 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
       MH_CreateHook(dispatch_message_w_target, &dispatch_message_w_hook,
                     reinterpret_cast<void**>(&original_dispatch_message_w)) !=
           MH_OK ||
+      (kRaiseQueuePriority.load(std::memory_order_relaxed) &&
+       MH_CreateHook(device_vtable[8], &create_command_queue_hook,
+                    reinterpret_cast<void**>(&original_create_command_queue)) !=
+           MH_OK) ||
       (install_pso_substitution_hooks &&
        MH_CreateHook(device_vtable[10], &create_graphics_pipeline_state_hook,
                     reinterpret_cast<void**>(
@@ -15916,6 +15950,24 @@ dtvr_set_menu_direct_capture(int enabled) {
     command_traces.clear();
   }
   return requested ? 1 : 0;
+}
+
+extern "C" __declspec(dllexport) int dtvr_set_queue_priority(int enabled) {
+  if (hooks_installed.load(std::memory_order_acquire)) {
+    return kRaiseQueuePriority.load(std::memory_order_relaxed) == (enabled != 0)
+               ? 0
+               : 1;
+  }
+  kRaiseQueuePriority.store(enabled != 0, std::memory_order_release);
+  return 0;
+}
+
+// Queues created at high priority, and requests the driver refused.
+extern "C" __declspec(dllexport) int dtvr_queue_priority_raised(void) {
+  return queue_priority_raised.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) int dtvr_queue_priority_refused(void) {
+  return queue_priority_refused.load(std::memory_order_relaxed);
 }
 
 extern "C" __declspec(dllexport) int

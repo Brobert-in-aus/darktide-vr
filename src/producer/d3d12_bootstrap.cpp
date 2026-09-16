@@ -14,6 +14,7 @@ using SetBillboardShaderSubstitutionFn = int (*)(int);
 using SetVertexShaderDumpFn = int (*)(int);
 using EnableClusterTraceFn = int (*)();
 using SetClusterLightVisibilityFixFn = int (*)(int);
+using SetQueuePriorityFn = int (*)(int);
 using SetBillboardBasisFn = int (*)(float, float, float, float, float, float,
                                     int);
 using InstallForDeviceFn = int (*)(ID3D12Device*);
@@ -199,6 +200,8 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID parameter, PVOID*) {
       vertex_shader_dump_requested || pass_trace_requested || draw_census_requested;
   const auto pixel_probe_requested = text_flag_enabled(
       mod_bin_path + L"..\\darktidevr_billboard_pixel_shader_probe.flag");
+  const auto queue_priority_requested = text_flag_enabled(
+      mod_bin_path + L"..\\darktidevr_queue_priority.flag");
   path = mod_bin_path + L"darktidevr_native_capture.dll";
   const auto native = LoadLibraryW(path.c_str());
   if (!native) {
@@ -223,8 +226,13 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID parameter, PVOID*) {
   const auto set_cluster_light_visibility_fix =
       reinterpret_cast<SetClusterLightVisibilityFixFn>(GetProcAddress(
           native, "dtvr_set_cluster_light_visibility_fix"));
+  const auto set_queue_priority = reinterpret_cast<SetQueuePriorityFn>(
+      GetProcAddress(native, "dtvr_set_queue_priority"));
   const auto install = reinterpret_cast<InstallForDeviceFn>(
       GetProcAddress(native, "dtvr_install_for_device"));
+  const auto queue_priority_result =
+      set_queue_priority ? set_queue_priority(queue_priority_requested ? 1 : 0)
+                         : -1;
   const auto diagnostics_result =
       select_diagnostics
           ? select_diagnostics(diagnostic_hooks_requested ? 1 : 0)
@@ -255,9 +263,11 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID parameter, PVOID*) {
           ? set_billboard_basis(1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0)
           : -1;
   const auto install_result = install ? install(first_device) : -1;
-  char message[384]{};
+  // wsprintfA is unbounded; the buffer is sized well past the line.
+  char message[640]{};
   wsprintfA(message,
-            "native_results diagnostic_requested=%d diagnostics=%d "
+            "native_results queue_priority_requested=%d queue_priority=%d "
+            "diagnostic_requested=%d diagnostics=%d "
             "substitution_requested=%d substitution=%d "
             "shader_dump_requested=%d shader_dump=%d "
             "pixel_probe_requested=%d pixel_probe=%d "
@@ -265,6 +275,7 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID parameter, PVOID*) {
             "cluster_trace_requested=%d cluster_trace=%d "
             "cluster_light_fix_requested=%d cluster_light_fix=%d "
             "basis=%d install=%d",
+            queue_priority_requested ? 1 : 0, queue_priority_result,
             diagnostic_hooks_requested ? 1 : 0, diagnostics_result,
             billboard_shader_substitution_requested ? 1 : 0,
             substitution_result, vertex_shader_dump_requested ? 1 : 0,

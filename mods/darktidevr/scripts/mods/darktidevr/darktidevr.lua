@@ -911,6 +911,8 @@ local function ensure_ui_native_hooks()
         int dtvr_take_gpu_eye_profile(int eye, unsigned long long *values);
         int dtvr_take_gpu_stage_profile(int eye, unsigned long long *values);
         int dtvr_set_gpu_eye_profile(int enabled);
+        int dtvr_queue_priority_raised(void);
+        int dtvr_queue_priority_refused(void);
         int dtvr_set_menu_draw_scope(int enabled);
         unsigned long long dtvr_menu_draw_scope_redirect_count(void);
         int dtvr_arm_options_menu_capture(void);
@@ -3789,6 +3791,12 @@ local function record_render_timings(label, left_ticks, right_ticks, pair_ticks)
             local ok, render_time, gpu_time = pcall(Application.get_frame_times)
             mod:info("DARKTIDEVR_PERF engine_frame_times_read=%s render_value=%s gpu_value=%s gpu_profile_requested=%s",
                 tostring(ok), tostring(render_time), tostring(gpu_time), tostring(performance_profile_requested))
+            -- The queue-priority experiment's evidence (darktidevr_queue_priority.flag);
+            -- an older native module without the export reads as unavailable.
+            local ok_raised, raised = pcall(function() return ui_native_capture.dtvr_queue_priority_raised() end)
+            local ok_refused, refused = pcall(function() return ui_native_capture.dtvr_queue_priority_refused() end)
+            mod:info("DARKTIDEVR_PERF queue_priority_raised=%s refused=%s",
+                ok_raised and tostring(raised) or "unavailable", ok_refused and tostring(refused) or "unavailable")
         end
         local to_ms = 1000 / render_timing_frequency
         table.sort(presentation.render_timing_left_samples)

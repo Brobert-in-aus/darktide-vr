@@ -380,6 +380,20 @@ interleaved with the game's.
 `Application.get_frame_times` is nil in retail; the engine offers no frame
 time of its own to Lua.
 
+The control (`hub-render-noviewer1`, the same flags, no viewer): the loop
+runs at 130 to 145 Hz, 700 frames a report, so both eyes together take at
+most about 7 ms of GPU. The per-eye timestamps need the capture path, which
+is idle without a viewer, so the loop rate is the measurement there. With
+the viewer, 23.5 ms: the contention triples the game's GPU time.
+
+The lever this suggests, and the one nothing in the repository has tried:
+the OS schedules GPU work by queue priority when hardware scheduling is
+off, and every queue the game creates is at normal priority, the same as
+the runtime's compositing and the streamer's encoder. Asking for the game's
+queues at high priority is one hook on the device's `CreateCommandQueue`
+in the proxy, flag-gated (`darktidevr_queue_priority.flag`), and its effect
+is read off the same eye spans.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one
