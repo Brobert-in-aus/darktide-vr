@@ -156,6 +156,32 @@ every trace start and abort with the reason and the source line. That is the
 next measurement, and it may apply to every per-frame function in the mod,
 not just this one.
 
+## The answer: the game runs with the JIT off
+
+`scripts/boot_init.lua`, line 4, in the stock game: `jit.off()`. Every Lua
+function in Darktide, the mod's included, runs in the LuaJIT interpreter. That
+is why four models in a row were wrong by the same factor: a body of a few
+hundred bytecodes that would compile to a few microseconds costs thirty
+interpreted, and closures, pcalls, read counts and tables were never the lever
+because none of them is the interpreter's per-bytecode cost.
+
+What follows for every Lua path in this mod:
+
+- **Cost is bytecodes executed per frame.** The only real reductions are doing
+  less per frame: sampling things that change slowly at a lower rate, early
+  exits before any work, and hoisting anything invariant out of the per-frame
+  path. Micro-structure (allocation, pcall, table shape) is second order, as
+  the four steps above showed: about 8 us of 59 between them, though the
+  spike reduction from removing allocation was real.
+- **`jit.on(func)` re-enables compilation for one function even when the JIT
+  is globally off.** If the mod can reach the `jit` table, its own hot
+  per-frame functions could be compiled while the game's stay interpreted,
+  which would be a large multiple on every measured section. That is not a
+  change to make quietly: Fatshark turned the JIT off deliberately, and the
+  reason (stability, determinism, or a specific fault) decides whether opting
+  our functions back in is safe. Build it behind a flag, measure it in the
+  Hub, and put the numbers and the risk to the user.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one
