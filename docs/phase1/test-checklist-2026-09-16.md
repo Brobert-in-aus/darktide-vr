@@ -14,6 +14,17 @@ tracked eye).
   (`artifacts/packages/darktidevr-0.2.0-alpha.1-d6d0e9081ce7`), checked at the
   start of the session. The only flag in the mod folder is the mod's own
   `darktidevr_crosshair_scale.flag`.
+- **Check the flags again before putting the headset on.** Six of today's
+  features read a `*.flag` file in the installed mod folder and turn
+  themselves on when one is there, whatever the option says:
+  `darktidevr_reach_test`, `_inspect_test`, `_comms_test`, `_tag_test`,
+  `_weapon_charge_test` and `darktidevr_holsters_test`, plus
+  `darktidevr_body_mirror.flag` for the overlay. The unattended runner writes
+  and removes them, but a run that is killed leaves them behind. Anything
+  other than `darktidevr_crosshair_scale.flag` should be deleted first.
+- The Lua in the install matches the branch head, checked after every
+  deployment today. The native binaries are still the released ones; see the
+  handover for why.
 
 ## Items
 
@@ -205,20 +216,6 @@ tracked eye).
       is worth it, or the arms should be their calibrated length instead
       (the open question in the arm length design).
 
-## Suggested order
-
-Quickest first, then the ones that need a mission:
-
-1. In the Psykhanium, from the menu: 8 (calibration T-pose guidance, worth a
-   fresh calibration first, since every arm length follows it), 11 (inspect),
-   12 (push to talk), 3 (melee swings), 4 (glove grip), 7 (body heading).
-2. Still in the Psykhanium: 5 (melee charge count), 2 (strafe wobble),
-   15 September item 30 (grab feedback along the gun), 32 (body holsters).
-3. In a mission (SoloPlay is enough for most): 10 (reach to interact),
-   13 (tag by pointing), 1 (servo skull, Skitarius with the flamethrower
-   blitz talented), 15 September item 19 (teammate status).
-4. Last, because it needs a flag written and removed: 14 (the body overlay).
-
 15. **Hand role resolution in one place** (restart; no option, nothing should
     look different). Five modules each had their own copy of the
     right-dominant fallback table and now ask `presentation.hand_side(role)`.
@@ -290,3 +287,24 @@ Quickest first, then the ones that need a mission:
     - They must disappear when you stow the weapon, open a menu, or switch to
       a weapon with no charge.
     - `DARKTIDEVR_WEAPON_CHARGE drawn=N` logs once when they first draw.
+
+## Suggested order
+
+Quickest first, then the ones that need a mission. Items 15 to 19 are all
+"nothing should look different" passes on refactors, so they need no separate
+sitting: if items 1 to 14 behave, those are covered.
+
+1. In the Psykhanium, from the menu: 8 (calibration T-pose guidance, worth a
+   fresh calibration first, since every arm length follows it), 11 (inspect),
+   12 (push to talk), 3 (melee swings), 4 (glove grip), 7 (body heading),
+   18 (fingers held).
+2. Still in the Psykhanium: 5 (melee charge count), 2 (strafe wobble),
+   9 (eye anchor: does the view sit where it did?), 19 (crosshair unchanged),
+   15 September item 30 (grab feedback along the gun), 32 (body holsters).
+3. With a force sword or shock maul: 20 (weapon charge at the weapon), which
+   is the A/B on whether the HUD panel's copy should hide.
+4. In a mission (SoloPlay is enough for most): 10 (reach to interact),
+   13 (tag by pointing), 16 (shooting still arms from the weapon hand),
+   17 (off-hand-relative movement), 1 (servo skull, Skitarius with the
+   flamethrower blitz talented), 15 September item 19 (teammate status).
+5. Last, because it needs a flag written and removed: 14 (the body overlay).
