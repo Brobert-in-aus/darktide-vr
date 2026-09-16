@@ -113,8 +113,10 @@ function Reach.install(mod, presentation)
         return test_enabled
     end
 
+    -- Withdrawn from the menu after the 16 September worn test; only the
+    -- unattended test flag turns it on (a saved option value is ignored).
     function api.enabled()
-        return mod:get("vr_reach_interact") == true or test_flag()
+        return test_flag()
     end
 
     local function vector(value)

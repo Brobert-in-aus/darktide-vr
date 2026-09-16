@@ -308,6 +308,11 @@ function Readout.install(mod, presentation, observation)
             hide(); return
         end
         local values = slot_values(unit)
+        -- Melee charges show as a count only when the weapon charge style
+        -- says so (the bars, or nothing, otherwise); ranged values always.
+        if values and values.charges and not test and mod:get("vr_weapon_charge_style") ~= "count" then
+            hide(); return
+        end
         if test and not logged_slot then
             logged_slot = true
             local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
@@ -357,7 +362,6 @@ function Readout.install(mod, presentation, observation)
             -- above the weapon hand's grip (user, 16 September: beside the
             -- hand it sat over the ranged weapon). One display or the other,
             -- by the weapon charge style option.
-            if mod.get and mod:get("vr_weapon_charge_style") ~= "count" and not test then hide(); return end
             -- The controller grip, as the gun and the forearm holsters use:
             -- the drawn wrist followed the character's animation (animation
             -- audit, 16 September, item F).

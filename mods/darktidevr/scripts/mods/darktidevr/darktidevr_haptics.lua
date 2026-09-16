@@ -21,7 +21,7 @@ Haptics.KINDS = {
     -- Push to talk held: a constant, very low hum on the talking hand,
     -- repeated every tenth of a second while the gesture is engaged (user,
     -- 16 September worn).
-    talk = {modes = BOTH, notice = true, amplitude = 0.08, duration_ms = 120},
+    talk = {modes = BOTH, amplitude = 0.08, duration_ms = 120},
     -- A grip press on a holster whose item is already in the hand: nothing
     -- happens (played twice, a double tap, darktidevr_holsters).
     refused = {modes = BOTH, notice = true, amplitude = 0.5, duration_ms = 25},

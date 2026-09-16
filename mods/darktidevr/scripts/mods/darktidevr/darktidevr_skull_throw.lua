@@ -46,6 +46,11 @@ Skull.MIRROR_SIDE = true
 -- skull from the server's own rest, and back again when it returns.
 Skull.FOLLOW_TAU = 0.2
 Skull.FOLLOW_SNAP = 2.0
+-- When an order sends the skull, the drawn one bridges from where the
+-- follower had it to the real flight over this long, then the real skull
+-- is drawn as it is (a chase at 10 m/s would trail by metres); when it
+-- returns, the follower resumes from the flight's last real position.
+Skull.BRIDGE_SECONDS = 0.35
 
 local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
 
@@ -95,6 +100,18 @@ function Skull.rest_offsets(position, forward, mirror)
         result[name] = {mirror and -offset[1] or offset[1], forward or offset[2], offset[3]}
     end
     return result
+end
+
+-- The drawn position on the bridge from `from` to the real one: linear in
+-- time over duration, the real position from then on. 3-arrays. Pure.
+function Skull.bridge_position(from, real, elapsed, duration)
+    duration = duration or Skull.BRIDGE_SECONDS
+    if type(from) ~= "table" or not (duration > 0) then return {real[1], real[2], real[3]}, true end
+    if not finite(elapsed) or elapsed <= 0 then return {from[1], from[2], from[3]}, false end
+    if elapsed >= duration then return {real[1], real[2], real[3]}, true end
+    local w = elapsed / duration
+    return {from[1] + (real[1] - from[1]) * w, from[2] + (real[2] - from[2]) * w,
+        from[3] + (real[3] - from[3]) * w}, false
 end
 
 -- The drawn position smoothed toward the real one: exponential with the
@@ -154,9 +171,12 @@ function Skull.install(mod, presentation)
         if type(rules) ~= "table" then return end
         if on and not originals then
             originals = {}
+            local seen = {}
             for rule, entry in pairs(rules) do
                 local position = type(entry) == "table" and entry.first_person and entry.first_person.position
-                if type(position) == "table" then
+                -- Two rules sharing one table would be mirrored twice.
+                if type(position) == "table" and not seen[position] then
+                    seen[position] = true
                     local saved, plain = {}, {}
                     for name, box in pairs(position) do
                         saved[name] = box
@@ -310,19 +330,42 @@ function Skull.install(mod, presentation)
             pending = nil
         end
         if not throw then
-            -- The follower: the drawn skull chases the real one with the HUD's
-            -- kind of lag, across the rest-side jump when an order sends the
-            -- server's skull and back when it returns.
             local real = array(Unit.world_position(skull, 1))
             local dt = follow.t and t - follow.t or 0
             follow.t = t
             follow.node = follow.node or child_node(skull)
-            follow.position = Skull.smoothed(follow.position, real, dt)
-            if follow.node then
-                place(extension, skull, follow, follow.position)
-                if not follow.logged then
-                    follow.logged = true
-                    mod:info("DARKTIDEVR_SKULL_THROW follow node=%d state=%s", follow.node, tostring(name))
+            if api.following then
+                -- The follower: the drawn skull chases the real one with the
+                -- HUD's kind of lag. Back from a flight it resumes from the
+                -- flight's last real position, so the return to the mirrored
+                -- rest is a glide, not a jump.
+                if not follow.position and follow.last_real then follow.position = follow.last_real end
+                follow.last_real, follow.bridge = nil, nil
+                follow.position = Skull.smoothed(follow.position, real, dt)
+                if follow.node then
+                    place(extension, skull, follow, follow.position)
+                    if not follow.logged then
+                        follow.logged = true
+                        mod:info("DARKTIDEVR_SKULL_THROW follow node=%d state=%s", follow.node, tostring(name))
+                    end
+                end
+            else
+                -- Sent, or on its way back: a short bridge from where the
+                -- follower had it to the real flight, then the real skull as
+                -- it is. The last real position seeds the follower's return.
+                follow.last_real = real
+                if follow.position and not follow.bridge then
+                    follow.bridge = {start = t, from = follow.position}
+                    follow.position = nil
+                end
+                if follow.bridge and follow.node then
+                    local drawn, done = Skull.bridge_position(follow.bridge.from, real, t - follow.bridge.start)
+                    if done then
+                        unplace(follow, skull)
+                        follow.bridge, follow.base, follow.written = nil, nil, nil
+                    else
+                        place(extension, skull, follow, drawn)
+                    end
                 end
             end
             return

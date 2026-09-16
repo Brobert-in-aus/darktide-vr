@@ -39,4 +39,16 @@ local s3 = Skull.smoothed({0.5, 0, 0}, {1, 0, 0}, 0, 0.2, 2)
 assert(s3[1] == 0.5, 'no time passed: no movement')
 assert(Skull.smoothed({0, 0, 0}, {1, 0, 0}, 10, 0.2, 2)[1] <= 1, 'never overshoots')
 assert(Skull.FOLLOW_TAU == 0.2 and Skull.FOLLOW_SNAP == 2.0)
+
+-- The bridge: linear from the follower's last drawn position to the real
+-- one over the duration, then the real position and done.
+local b0, d0 = Skull.bridge_position({0, 0, 0}, {2, 0, 0}, 0.175, 0.35)
+assert(math.abs(b0[1] - 1) < 1e-9 and not d0, 'half way at half the duration')
+local b1, d1 = Skull.bridge_position({0, 0, 0}, {2, 0, 0}, 0.35, 0.35)
+assert(b1[1] == 2 and d1, 'the real position and done at the duration')
+local b2, d2 = Skull.bridge_position(nil, {2, 0, 0}, 0.1, 0.35)
+assert(b2[1] == 2 and d2, 'nothing to bridge from: the real position, done')
+local b3, d3 = Skull.bridge_position({0, 0, 0}, {2, 0, 0}, 0, 0.35)
+assert(b3[1] == 0 and not d3, 'the first frame holds the last drawn position')
+assert(Skull.BRIDGE_SECONDS == 0.35)
 print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed')

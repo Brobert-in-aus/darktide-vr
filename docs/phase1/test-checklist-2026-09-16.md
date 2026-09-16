@@ -512,3 +512,19 @@ it); loading and menu boards move against the head (design question open).
     weapon hand's grip, not over the ranged weapon; "bars" shows the HUD's
     charge bars there instead; "off" shows neither. The count also needs
     Ammo count at the hand on.
+
+37. **Review fixes on the evening's changes** (restart; the "still works"
+    family, with two visible checks). A review found: the talk hum was a
+    haptic "notice" and swallowed damage and toughness pulses while
+    talking (now it never displaces one); the skull follower kept chasing
+    during the flight and would have trailed two metres then snapped (now
+    it bridges over a third of a second when the skull is sent, draws the
+    real skull in flight, and glides back to your side on its return); the
+    melee count's gate could hide a ranged weapon's ammo count under "bars"
+    or "off" (now it gates on the values being charges); reach and inspect
+    kept running for anyone who had turned them on (now only their test
+    flags can); the boards' re-seat waits for a frame with a head and for
+    the runtime's recenter to have taken effect. Check worn: while
+    push to talk is held, a hit still buzzes both hands; a sent skull
+    leaves your side smoothly and comes back smoothly; with the weapon
+    charge display on "bars" or "off", a gun's ammo count still shows.
