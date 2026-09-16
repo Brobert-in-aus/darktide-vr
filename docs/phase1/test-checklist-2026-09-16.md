@@ -421,9 +421,12 @@ sitting: if items 1 to 14 behave, those are covered.
 28. **Native module and proxy rebuilt** (restart; no option; the "still
     works" family, and the one native change of the day). The capture DLL
     and the d3d12 proxy in the installed mod are today's build; without
-    `darktidevr_queue_priority.flag` (absent for you) the only difference is
-    two exported counters and a bootstrap log field, no hook. Launch, reach
-    the Hub, confirm the headset picture and the bootstrap log line
-    `native_results queue_priority_requested=0 queue_priority=0`. If the
+    `darktidevr_queue_priority.flag` and `darktidevr_gpu_process_priority.flag`
+    (both absent for you) the only difference is two exported counters and
+    the bootstrap log's leading fields, no hook and no OS call. Launch, reach
+    the Hub, confirm the headset picture and, in
+    `binaries/darktidevr-d3d12-bootstrap.log`, the line beginning
+    `native_results gpu_process_priority_class=-1 applied=0 status=0x00000000
+    queue_priority_requested=0 queue_priority=0`. If the
     game fails to start or the picture is missing, the first suspect is the
     proxy: `Darktide VR Mode.bat` status reports the proxy's state.
