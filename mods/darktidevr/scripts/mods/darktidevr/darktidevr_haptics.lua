@@ -464,11 +464,38 @@ function Haptics.install(mod, presentation, send)
         return ok and value or nil
     end
     local EMPTY = {}
+    -- Step 2 (profile doc): read each component once a frame and cache the
+    -- extensions, which do not change while the unit lives. A nil extension is
+    -- not cached, so one that arrives later is still found.
+    local function component(unit_data, name)
+        local ok, value = pcall(unit_data.read_component, unit_data, name)
+        if ok then return value end
+        return nil
+    end
+    local function field_of(component_table, key)
+        if component_table == nil then return nil end
+        local ok, value = pcall(index, component_table, key)
+        return ok and value or nil
+    end
+    local extensions = {unit = nil}
+    local function extension(unit, name, key)
+        if extensions.unit ~= unit then
+            extensions.unit, extensions.unit_data, extensions.health, extensions.toughness,
+                extensions.ability, extensions.weapon = unit, nil, nil, nil, nil, nil
+        end
+        local cached = extensions[key]
+        if cached ~= nil then return cached end
+        cached = ScriptUnit.has_extension(unit, name)
+        if cached ~= nil then extensions[key] = cached end
+        return cached
+    end
+    local last_template, last_melee = nil, false
     local function read_body(unit, unit_data)
-        local health = ScriptUnit.has_extension(unit, "health_system")
-        local toughness = ScriptUnit.has_extension(unit, "toughness_system")
-        local ability = ScriptUnit.has_extension(unit, "ability_system")
+        local health = extension(unit, "health_system", "health")
+        local toughness = extension(unit, "toughness_system", "toughness")
+        local ability = extension(unit, "ability_system", "ability")
         local state = component_field(unit_data, "character_state", "state_name")
+        local block = component(unit_data, "block")
         return {
             health = health and method_value(health, health.current_health),
             max_health = health and method_value(health, health.max_health),
@@ -476,20 +503,26 @@ function Haptics.install(mod, presentation, send)
             disabled = Haptics.DISABLED_STATES[state] == true or
                 component_field(unit_data, "disabled_character_state", "is_disabled") == true,
             stamina = component_field(unit_data, "stamina", "current_fraction"),
-            blocked = component_field(unit_data, "block", "has_blocked") == true,
-            perfect_block = component_field(unit_data, "block", "is_perfect_blocking") == true,
+            blocked = field_of(block, "has_blocked") == true,
+            perfect_block = field_of(block, "is_perfect_blocking") == true,
             combat_charges = ability and method_value(ability, ability.remaining_ability_charges, "combat_ability"),
             grenade_charges = ability and method_value(ability, ability.remaining_ability_charges, "grenade_ability"),
         }
     end
     local function read_melee(reading, unit, unit_data, wielded)
         reading.t = Managers.time:time("gameplay")
-        local weapon = ScriptUnit.has_extension(unit, "weapon_system")
+        local weapon = extension(unit, "weapon_system", "weapon")
         local template = weapon and weapon:weapon_template()
-        local keywords = template and template.keywords
-        for _, keyword in ipairs(type(keywords) == "table" and keywords or EMPTY) do
-            if keyword == "melee" then reading.melee = true end
+        -- The keyword scan only when the template changes; it is the same
+        -- table for as long as the same weapon is wielded.
+        if template ~= last_template then
+            last_template, last_melee = template, false
+            local keywords = template and template.keywords
+            for _, keyword in ipairs(type(keywords) == "table" and keywords or EMPTY) do
+                if keyword == "melee" then last_melee = true end
+            end
         end
+        reading.melee = last_melee
         if reading.melee and type(wielded) == "string" and wielded:match("^slot_") then
             reading.special = unit_data:read_component(wielded).special_active == true
         end
@@ -514,7 +547,9 @@ function Haptics.install(mod, presentation, send)
             previous, previous_body, previous_gauges, previous_melee, previous_interaction = nil, nil, nil, nil, nil
             return
         end
-        local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
+        local unit_data = extension(unit, "unit_data_system", "unit_data")
+        -- Once, for the gauges and the ammo step both.
+        local inventory = unit_data and component(unit_data, "inventory")
         if unit_data then
             local body = read_body(unit, unit_data)
             -- The first event this mode plays; the rest of the frame is one pulse.
@@ -525,13 +560,14 @@ function Haptics.install(mod, presentation, send)
                 end
             end
             previous_body = body
-            local wielded = component_field(unit_data, "inventory", "wielded_slot")
+            local wielded = field_of(inventory, "wielded_slot")
+            local charge_component = component(unit_data, "action_module_charge")
             local gauges = {
                 heat = type(wielded) == "string" and wielded:match("^slot_") and
                     component_field(unit_data, wielded, "overheat_current_percentage") or nil,
                 peril = component_field(unit_data, "warp_charge", "current_percentage"),
-                charge = component_field(unit_data, "action_module_charge", "charge_level"),
-                max_charge = component_field(unit_data, "action_module_charge", "max_charge"),
+                charge = field_of(charge_component, "charge_level"),
+                max_charge = field_of(charge_component, "max_charge"),
             }
             for _, event in ipairs(Haptics.gauge_events(previous_gauges, gauges)) do
                 if Haptics.plays(event[1], mode) then
@@ -562,7 +598,9 @@ function Haptics.install(mod, presentation, send)
             end
             previous_interaction = interaction
         end
-        local inventory = unit_data and unit_data:read_component("inventory")
+        -- The inventory read above. (It was an unprotected second read here;
+        -- a throwing read now ends the ammo step rather than the whole sample,
+        -- which is the only behavioural difference and the safer one.)
         if not inventory or inventory.wielded_slot ~= "slot_secondary" then previous = nil; return end
         local values = presentation.ammo_readout and presentation.ammo_readout.slot_values and
             presentation.ammo_readout.slot_values(unit)
