@@ -65,7 +65,7 @@ Inspect.TEST_FLAG = "./../mods/darktidevr/darktidevr_inspect_test.flag"
 
 function Inspect.install(mod, presentation)
     local api = {}
-    local state, failed, entries = {}, false, 0
+    local state, failures, entries = {}, 0, 0
     -- The stock inspect action's mask in the bindings' catalogue.
     local INSPECT_MASK = 16384
 
@@ -113,12 +113,16 @@ function Inspect.install(mod, presentation)
     end
 
     function api.apply(unit, active, t)
-        if failed then return end
         local ok, in_pose = pcall(sample, unit, active, t)
         if not ok then
-            failed = true
+            -- Keep going: one bad frame during a load or a respawn should not
+            -- end the feature for the session.
+            failures = failures + 1
             state = {}
-            mod:warning("DARKTIDEVR_INSPECT error=%s", tostring(in_pose):sub(1, 160))
+            if failures <= 3 then
+                mod:warning("DARKTIDEVR_INSPECT error=%s failures=%d",
+                    tostring(in_pose):sub(1, 160), failures)
+            end
             in_pose = false
         end
         local engaged

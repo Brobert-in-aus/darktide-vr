@@ -56,7 +56,7 @@ Comms.TEST_FLAG = "./../mods/darktidevr/darktidevr_comms_test.flag"
 
 function Comms.install(mod, presentation)
     local api = {}
-    local state, failed, entries = {}, false, 0
+    local state, failures, entries = {}, 0, 0
     -- The push-to-talk action's mask in the bindings' catalogue.
     local TALK_MASK = 8388608
 
@@ -99,12 +99,16 @@ function Comms.install(mod, presentation)
     end
 
     function api.apply(unit, active, t)
-        if failed then return end
         local ok, at_mouth = pcall(sample, unit, active, t)
         if not ok then
-            failed = true
+            -- Keep going, and never leave the microphone held: at_mouth false
+            -- closes it through Comms.step below.
+            failures = failures + 1
             state = {}
-            mod:warning("DARKTIDEVR_COMMS error=%s", tostring(at_mouth):sub(1, 160))
+            if failures <= 3 then
+                mod:warning("DARKTIDEVR_COMMS error=%s failures=%d",
+                    tostring(at_mouth):sub(1, 160), failures)
+            end
             at_mouth = false
         end
         local engaged

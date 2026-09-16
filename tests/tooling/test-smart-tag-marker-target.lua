@@ -42,9 +42,15 @@ local function stock_marker() return head_marker,2 end
 local function marker() return hooks._find_world_marker_target(stock_marker,hud,{}, {}) end
 assert(hud:_find_raycast_targets(true)==raycast and forced==1,'Online tag bypassed stock forced targeting')
 assert(roles_asked[1]=='dominant','the weapon hand by default')
+-- Pointing with the off hand hands the whole raycast back to stock, which
+-- traces through force_update_smart_tag_targets and so through the role. The
+-- cached reticle this override returns belongs to the weapon hand, so using it
+-- while pointing would mean the gesture changed nothing.
 tag_role='support'
-hud:_find_raycast_targets(true)
-assert(roles_asked[#roles_asked]=='support','the pointing hand while the tag gesture is on')
+local before=#roles_asked
+forced=0
+assert(hud:_find_raycast_targets(true)==raycast and forced==1,'the stock trace runs while pointing')
+assert(#roles_asked==before,'the weapon hand reticle is not consulted while pointing')
 tag_role='dominant'
 local selected,distance=marker()
 assert(selected==aim_marker and distance==7,'Head-centred marker overrode simulation aim')

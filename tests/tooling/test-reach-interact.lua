@@ -48,4 +48,11 @@ assert(early.control == 'right_grip' and early.acquire == false and early.approa
     'approaching announces without taking the grip')
 assert(Reach.request(nil, owner) == nil and Reach.request({}, owner) == nil)
 
-print('reach_interact=pass direction choose request')
+-- Approaching is announced so a grip pressed on the way in is held back, but
+-- it must not be treated as "the hand is there": the interaction target only
+-- moves once the hand has arrived (review, 16 September).
+assert(choice.approach == false and approaching.approach == true)
+assert(Reach.request(approaching, owner).acquire == false,
+    'approaching never takes the grip on its own')
+
+print('reach_interact=pass direction choose request approach')

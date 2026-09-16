@@ -119,6 +119,9 @@ tracked eye).
       scripture, a team mate to revive. Reaching with either hand.
     - The grip must keep its own binding (weapon special on the right, class
       ability on the left) whenever nothing is in reach.
+    - The ordinary interact button must still target what you are *looking*
+      at until your hand actually arrives at something: a hand loosely near a
+      console while you look at a crate should still interact with the crate.
     - A holster or the gun's second grip must still win the hand: with
       "Weapon hand holsters" on too, reaching into a holster equips rather
       than interacting.
@@ -147,6 +150,8 @@ tracked eye).
     - Swinging a weapon past your face must not inspect (the 0.35 s dwell).
     - A pulse on the gun hand (with vibration on) when it starts;
       `DARKTIDEVR_INSPECT enter` in the log.
+    - Not in the Mourningstar: the game offers no weapon inspection there, so
+      the gesture is off in the hub. Try it in the Psykhanium or a mission.
     - Unit test `weapon_inspect` only; the thresholds are worn judgements, so
       say if it takes too much or too little to start.
 

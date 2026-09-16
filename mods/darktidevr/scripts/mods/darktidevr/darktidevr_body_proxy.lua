@@ -248,6 +248,12 @@ local function copy_gameplay_fingers(hand)
         return
     end
     if not hand.finger_nodes then
+        -- The node list is rebuilt whenever the rig respawns, and it is only
+        -- the nodes this glove and this source rig share. Poses captured
+        -- against an older list are indexed by position, so they would land on
+        -- the wrong joints: drop them with the list.
+        BodyProxy.finger_poses = {}
+        hand.finger_key, hand.finger_samples = nil, nil
         hand.finger_nodes = {}
         for _, suffix in ipairs({"handindex", "handmiddle", "handring",
                 "handpinky", "handthumb", "thumb"}) do
@@ -288,8 +294,10 @@ local function copy_gameplay_fingers(hand)
             Unit.local_rotation(source, node.source))
     end
     if key and state.finger_steady then
-        -- Per hand: a shared counter let the second hand capture off the
-        -- first hand's steady frames.
+        -- Per hand and per weapon: a shared counter let the second hand
+        -- capture off the first hand's steady frames, and a counter that
+        -- survived a weapon swap let the new weapon capture one frame in.
+        if hand.finger_key ~= key then hand.finger_key, hand.finger_samples = key, 0 end
         local count = (hand.finger_samples or 0) + 1
         hand.finger_samples = count
         if count >= BodyProxy.FINGER_SAMPLES then
@@ -302,7 +310,7 @@ local function copy_gameplay_fingers(hand)
                 tostring(key), #pose, count))
         end
     elseif key then
-        hand.finger_samples = 0
+        hand.finger_key, hand.finger_samples = key, 0
     end
 end
 

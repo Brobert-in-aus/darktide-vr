@@ -13831,7 +13831,16 @@ end
 mod:hook("HudElementSmartTagging", "_find_raycast_targets",
     function(func, self, force_update_targets)
         local aim = presentation.controller_aim
-        local position, rotation = aim.target(presentation.tag_role())
+        local role = presentation.tag_role()
+        -- Pointing with the off hand: let the stock path run. It calls
+        -- force_update_smart_tag_targets, which darktidevr_controller_aim
+        -- hooks and runs through this same role, so the trace leaves the
+        -- pointing hand. The override below exists only for the weapon hand,
+        -- whose reticle is already traced and cached; there is no cached
+        -- reticle for the off hand, and using the weapon's would mean the
+        -- gesture changed nothing at all.
+        if role ~= "dominant" then return func(self, force_update_targets) end
+        local position, rotation = aim.target(role)
         if not position or not rotation then return func(self, force_update_targets) end
         local point, unit = aim.cached_reticle_target()
         local player_unit = self._parent:player_unit()
@@ -13842,6 +13851,7 @@ mod:hook("HudElementSmartTagging", "_find_raycast_targets",
 
 mod:hook("HudElementSmartTagging", "_find_world_marker_target",
     function(func, self, ui_renderer, render_settings)
+        -- The marker hover follows the same hand as the tag above.
         local aim_position, aim_rotation = presentation.controller_aim.target(presentation.tag_role())
         local simulation_aim = presentation.online_rules.simulation_aim_active(self._parent:player_unit())
         if not simulation_aim and (not aim_position or not aim_rotation) then

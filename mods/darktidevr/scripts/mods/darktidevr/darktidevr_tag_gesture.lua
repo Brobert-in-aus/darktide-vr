@@ -65,7 +65,7 @@ Tag.TEST_FLAG = "./../mods/darktidevr/darktidevr_tag_test.flag"
 
 function Tag.install(mod, presentation)
     local api = {}
-    local state, pointing, failed, entries = {}, false, false, 0
+    local state, pointing, failures, entries = {}, false, 0, 0
 
     local test_poll, test_enabled = 0, false
     local function test_flag()
@@ -97,6 +97,11 @@ function Tag.install(mod, presentation)
         local bindings = presentation.controller_bindings
         if bindings and bindings.support_grip and bindings.support_grip.held then return false end
         if presentation.comms_gesture and presentation.comms_gesture.engaged then return false end
+        -- The pose says the arm is out; the tag needs that hand's *aim*
+        -- channel, which is tracked separately from its grip. Without this the
+        -- gesture could hand the tag to a hand with no usable ray, and the
+        -- stock screen-centre fallback would take over: worse than the weapon.
+        if not presentation.hand_aim_usable("support") then return false end
         local eye, eye_rotation = presentation.eye_pose(unit)
         local grip = presentation.weapon_grip_target("support")
         if not eye or not eye_rotation or not grip then return false end
@@ -108,13 +113,16 @@ function Tag.install(mod, presentation)
     local function in_pose(unit, active)
         local ok, out = pcall(sample, unit, active)
         if ok then return out == true end
-        failed = true
-        mod:warning("DARKTIDEVR_TAG error=%s", tostring(out):sub(1, 160))
+        -- Keep going: a bad frame drops the tag back to the weapon hand for
+        -- that frame rather than for the session.
+        failures = failures + 1
+        if failures <= 3 then
+            mod:warning("DARKTIDEVR_TAG error=%s failures=%d", tostring(out):sub(1, 160), failures)
+        end
         return false
     end
 
     function api.apply(unit, active, t)
-        if failed then state, pointing = {}, false; return end
         local out
         state, out = Tag.step(state, in_pose(unit, active), t)
         if out and not pointing then
