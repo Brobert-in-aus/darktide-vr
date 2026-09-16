@@ -95,6 +95,17 @@ local function run(mode)
     ammo = {clip = 5, clip_max = 5, reserve = 15, reserve_max = 20}; frame() -- 21 reloaded
     ammo = {clip = 1, clip_max = 5, reserve = 2, reserve_max = 20}; frame()  -- 22 low ammo
     ammo = nil; components.inventory.wielded_slot = "slot_primary"; frame() -- 23 melee again
+    -- A slot whose config does not declare the two weapon-specific fields:
+    -- the stock read proxy throws on an undeclared field (its __index does
+    -- config[field].type), so those two reads must stay guarded. Every other
+    -- field the sample reads is in the static config and cannot throw.
+    components.slot_primary = setmetatable({}, {__index = function(_, key)
+        if key == "overheat_current_percentage" or key == "special_active" then
+            error("undeclared field " .. key)
+        end
+        return nil
+    end})
+    frame()                                                      -- 24 strict slot
     -- Off: nothing, and the history is dropped so nothing fires on return.
     mode = "off"; frame()
     return pulses

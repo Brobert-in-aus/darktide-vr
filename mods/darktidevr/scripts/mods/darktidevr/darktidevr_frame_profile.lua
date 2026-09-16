@@ -15,7 +15,10 @@ local Profile = {}
 Profile.FLAG = "./../mods/darktidevr/darktidevr_frame_profile.flag"
 Profile.REPORT_SECONDS = 5
 Profile.REPORT_LINES = 40
-Profile.TOP = 12
+-- Enough rows for the outer sections and every nested one; with the cut at
+-- twelve, the haptics sub-sections fell off the report and read as
+-- "unaccounted" (hub-haptics3).
+Profile.TOP = 40
 
 -- A fresh accumulator. Pure.
 function Profile.new()
