@@ -304,11 +304,15 @@ tracked eye).
       the charge lives in the style's material values, which were not being
       replayed, so the bar would have been frozen at its default. Both fixed
       the same day.
-    - An unattended run since then shows everything upstream working in the
-      game (`why=no_counter_for_this_weapon`, which is correct for a staff):
-      the counter element is found and fresh, the wielded slot is read, the
-      weapon hand is there. The untested part is the last step, so bring a
-      force sword, a power sword or a power maul.
+    - Seen drawing in the game since: a run as Robobert logged `drawn=8`, all
+      eight bars, with every probe reading `why=drawn` and no warnings. So the
+      bars render with their material values applied. What the synthetic run
+      cannot do is charge the weapon or judge placement, so this item is now
+      exactly the A/B: are they in the right place at the right size, do they
+      fill and empty with the panel's copy, and should the panel's copy hide.
+      (Getting here took two fixes today that each made it dead code: it asked
+      for a gun pose when every charge weapon is melee, and it looked a
+      material up instead of creating an instance.)
 
 21. **Item radial at your hand** (restart; Experimental features, "Item radial
     at your hand", default off; built, withdrawn after review and rebuilt on
