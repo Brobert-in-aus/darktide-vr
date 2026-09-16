@@ -2354,11 +2354,20 @@ function presentation.update_vendor_menu_test(manager)
     end
 end
 
+-- A dev diagnostic armed by a flag file. It used to try to open that file on
+-- every InputManager update: with no file present, which is every player, a
+-- failed open on the main thread each frame, and the frame profiler put the
+-- hook at 64 us in the Hub (docs/LUA-FRAME-PROFILE-2026-09-16.md). Polled
+-- every INPUT_FLAG_POLL updates now; nothing waits on it faster than that.
+presentation.INPUT_FLAG_POLL = 300
 function presentation.scan_input_services(manager)
     if presentation.input_inventory_done or not Mods or not Mods.lua or
             not Mods.lua.io then
         return
     end
+    presentation.input_inventory_poll = (presentation.input_inventory_poll or 0) + 1
+    if presentation.input_inventory_poll < presentation.INPUT_FLAG_POLL then return end
+    presentation.input_inventory_poll = 0
     local flag_path =
         "./../mods/darktidevr/darktidevr_input_inventory.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
@@ -2429,7 +2438,10 @@ end
 function presentation.update_menu_input_probe(manager)
     local probe = presentation.menu_input_probe
     probe.poll_updates = (probe.poll_updates or 0) + 1
-    if probe.poll_updates >= 15 and Mods and Mods.lua and Mods.lua.io then
+    -- The same slow poll as the inventory scan above: this is a dev probe
+    -- armed by a flag, and a file open every 15 updates was the second
+    -- largest piece of the hook's cost.
+    if probe.poll_updates >= presentation.INPUT_FLAG_POLL and Mods and Mods.lua and Mods.lua.io then
         probe.poll_updates = 0
         local flag_path =
             "./../mods/darktidevr/darktidevr_menu_input_probe.flag"
