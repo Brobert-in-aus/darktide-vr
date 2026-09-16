@@ -140,6 +140,22 @@ interaction, and four event lists that are almost always empty). Step 4 is to
 stop allocating them: double-buffer the four readings against their
 `previous`, and return a shared empty list when there are no events.
 
+## Step 4: no allocation per frame (`hub-haptics5`)
+
+Same conditions, nested: 59.6 to 56.1 us. The sub-sections sum barely moved
+(27.4 to 26.2) and, this time, **the spikes did not fall** (median 197 to
+203, worst 313 to 338). About 30 us still sit outside every sub-section, in
+code that should cost a few microseconds. Four models in a row have been off
+by the same shape, which is itself the evidence: work that should be cheap
+costing five to ten times more is what an interpreted function looks like.
+LuaJIT compiles a function only if a trace through it completes; anything in
+it the JIT does not implement aborts the trace, and after enough aborts the
+function is blacklisted and runs interpreted for good. Nothing so far has
+asked the JIT what it did with `sample`. It can be asked: `jit.attach` reports
+every trace start and abort with the reason and the source line. That is the
+next measurement, and it may apply to every per-frame function in the mod,
+not just this one.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one
