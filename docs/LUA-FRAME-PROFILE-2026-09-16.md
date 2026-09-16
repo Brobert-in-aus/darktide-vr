@@ -439,6 +439,40 @@ under twelve per cent of the pair and lose half the displayed frames, so
 it stays; the runtime toggle the mod has for it goes through the user
 settings and was not used.
 
+## Experiments for the user, with the same instruments
+
+Every arm below changes a setting the brief keeps out of unattended hands,
+so they are yours; the instruments are the day's and give one comparable
+table. Each arm is one Hub launch with the headset streaming:
+
+```
+tools/unattended/run-darktide-session.ps1 -Scene Hub -HoldSeconds 100 -End Quit -SyntheticControllerPath -RequestFiles @{'darktidevr_frame_profile.flag'='enabled'; 'darktidevr_cpu_render_timing.flag'='enabled'; 'darktidevr_performance_profile.flag'='enabled'} -OutputDirectory artifacts/unattended/profile-<date>/<arm>
+```
+
+Read three numbers from `console.log`: the last `DARKTIDEVR_GPU_PERF`
+line's `left_avg_ms`/`right_avg_ms` (the contended eye spans; 11.9/11.7
+today), the `frames=` of the `DARKTIDEVR_FRAME_PROFILE report=` lines
+divided by five (the loop rate; 54 today), and `fresh_pair_fps` at the end
+of `viewer.log` (32 today). The contention stretches the game's GPU work
+about 3.3 times (7 to 23.5 ms), so a millisecond saved in the engine is
+worth three on the headset, and an arm that shortens the pipeline's own
+work shows in all three numbers at once.
+
+1. Headset refresh 90 Hz in Virtual Desktop (the compositing and the
+   encoder both run per vsync; the game makes 32 fresh pairs a second at
+   either rate).
+2. Hardware GPU scheduling on (Windows graphics settings, reboot). Today's
+   engine log reports it off. It changes how the three GPU clients are
+   arbitrated, and it is the one arm nobody has run; with it on,
+   `darktidevr_queue_priority.flag` is worth one more launch.
+3. The VR render-settings profile, `tools/stereo/set-vr-render-settings.ps1`
+   (ambient occlusion, GI, SSR, sun and local shadows, decals, volumetrics
+   off; texture quality low; LOD and scatter reduced). It cuts the engine's
+   own GPU work, which the stretch multiplies; it has never been measured
+   before and after, and it is a visual-quality decision.
+4. Resolution one step down and H.264+, both measured on 11 September
+   (15 to 23 per cent and about 10 per cent), as the reference arms.
+
 ## Where the day ended
 
 | the mod's Lua, per frame | 0.30 ms morning, 0.16 ms now |
