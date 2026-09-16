@@ -517,6 +517,16 @@ and a second normal control follow.
 | realtime | 21.5 | 64 | 60.9 (viewer starved) |
 | no viewer (engine alone) | under 7 | 133 | none |
 
+What differed between the two `high` runs: the first had no player markers
+in view for its whole run and a game-side stage span of 4.6 ms against
+6.5 to 7.0 in every other arm; the second had markers for part of it.
+Markers alone do not explain the spread (`nopad1` had markers in one report
+of 22 and still 23.0 ms), and the stage span cannot separate scene load
+from priority because it is a contended wall time too. The public Hub's
+population changes between launches and is the uncontrolled variable of
+the afternoon; a population count from the game's own log is the
+covariate to add before any of these arms is repeated.
+
 ## Experiments for the user, with the same instruments
 
 Every arm below changes a setting the brief keeps out of unattended hands,
