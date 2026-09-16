@@ -428,6 +428,17 @@ per cent), and hardware GPU scheduling on, which changes how the three GPU
 clients are arbitrated and is the one arm nobody has run. The engine side
 of the frame is measured and is not the problem.
 
+## Frame generation under contention: not a lever either
+
+The NGX timing log of `hub-queue1` (viewer running, 90 reports): the
+frame-generation evaluation is **1.39 ms left, 1.31 ms right** per pair,
+2.7 ms of the 23.5, and not stretched by the contention (the simulator
+measured 1.8; the 11 September handoff saw the same). It returns about
+fifty generated frames a second for that. Turning it off would give back
+under twelve per cent of the pair and lose half the displayed frames, so
+it stays; the runtime toggle the mod has for it goes through the user
+settings and was not used.
+
 ## Where the day ended
 
 | the mod's Lua, per frame | 0.30 ms morning, 0.16 ms now |
