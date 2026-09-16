@@ -47,7 +47,10 @@ function Counts.install(mod, presentation)
     local function test_flag()
         test_poll = test_poll - 1
         if test_poll > 0 then return test_enabled end
-        test_poll = 120
+        -- Every 300 calls (about five seconds at the input rate): a failed open
+        -- on the main thread each poll is where these modules' spikes came
+        -- from (docs/LUA-FRAME-PROFILE-2026-09-16.md).
+        test_poll = 300
         local io_api = Mods and Mods.lua and Mods.lua.io
         local file = io_api and io_api.open("./../mods/darktidevr/darktidevr_holster_counts_test.flag", "r")
         if not file then test_enabled = false; return false end

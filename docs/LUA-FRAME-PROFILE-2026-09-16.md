@@ -223,6 +223,30 @@ every frame, is work that could run far less often or not at all while no
 menu is up, and it is the one place a reduction of tens of microseconds is
 available without touching what the player feels.
 
+## The first real win: a failed file open per frame (`hub-wide2`)
+
+`presentation.scan_input_services`, in the `InputManager.update` hook, tried
+to open `darktidevr_input_inventory.flag` on every update; the flag arms a dev
+diagnostic, and with no file present, which is every player, that was a
+failed `CreateFile` on the main thread each frame. The menu input probe did
+the same every 15 updates. Both poll every 300 updates now; nothing in the
+tools or tests waits on them faster.
+
+| | before | after |
+| --- | ---: | ---: |
+| input.manager_update, µs/frame | 63.7 | 3.8 |
+| mod Lua, ms/frame | 0.299 | 0.183 |
+
+Sixty microseconds a frame for every player, from a diagnostic nobody had
+enabled, and it is gone without touching anything the player feels. The
+haptics rewrites, by comparison, bought eight. This is the lesson of the day
+in one row: under an interpreter, look for work that should not be happening
+at all before making work that should be happening cheaper.
+
+The same pattern, milder, is in seven modules that poll a test flag every
+120 calls: a failed open every two seconds each, which is the shape of their
+spikes. Raised to 300 as well.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one
