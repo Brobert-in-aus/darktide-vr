@@ -390,3 +390,14 @@ sitting: if items 1 to 14 behave, those are covered.
     still takes the support hand, and holding nothing costs the mod less.
     The three changes are exact reorderings, so if items 6 (two-hand) and 12
     (push to talk) behave, this is covered.
+
+26. **Marker material values replayed once per change** (restart; no option;
+    the "still works" family, but this one is worth a look rather than an
+    assumption). Every world marker on the plane keeps its look: the frame
+    around an interaction prompt keeps its proportions and its 9-slice edges
+    (the `ui_scale` value), icon tints and progress fills update as they did
+    (a value that changes replays at once), the tag wheel and the hand
+    overlays are unchanged (their scaled copies replay every time, as
+    before). If a marker's frame ever looks stretched or a fill sticks at an
+    old value, this is the item: the atlas skips replaying a material's
+    values while their revision holds.
