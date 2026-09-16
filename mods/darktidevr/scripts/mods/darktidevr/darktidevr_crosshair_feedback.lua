@@ -1,9 +1,16 @@
 -- Reuse stock charge/hit styles, placing their pixels around the shared
 -- hand-aim target. No charge simulation, damage inference or eye-edge scaling.
 local Feedback={}
-function Feedback.quad(pass,widget)
+-- accept(id) chooses which of a widget's passes to rebuild; without it, the
+-- crosshair's own charge and hit passes. The weapon counter reuses this for
+-- its charge bars, which are the same kind of material pass with the same
+-- pivot and rotation handling.
+function Feedback.accept_crosshair(id)
+    return id:match('^charge_')~=nil or id:match('^hit_')~=nil
+end
+function Feedback.quad(pass,widget,accept)
     local id=pass.style_id
-    if type(id)~='string' or not (id:match('^charge_') or id:match('^hit_')) then return end
+    if type(id)~='string' or not (accept or Feedback.accept_crosshair)(id) then return end
     local style=widget.style and widget.style[id]
     local content=pass.content_id and widget.content[pass.content_id] or widget.content
     if not style or not content or style.visible==false or content.visible==false or

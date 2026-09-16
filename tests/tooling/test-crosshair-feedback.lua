@@ -12,6 +12,15 @@ near(mask.x,-32);near(mask.y,13);near(mask.h,26);assert(mask.uvs[1][2]==.5)
 local hit=Feedback.quad({style_id='hit_top_left',value_id='hit'},widget)
 near(hit.x,-12);near(hit.y,-12);near(hit.c,math.sqrt(.5));near(hit.s,-math.sqrt(.5))
 assert(hit.color[1]==128 and Feedback.quad({style_id='center'},widget)==nil)
+-- Another element's passes come through the same rebuild when it says which
+-- ones it wants (the weapon counter's charge bars).
+local function accept_all() return true end
+assert(Feedback.quad({style_id='center',value_id='charge'},widget,accept_all)~=nil,'an accepted pass is rebuilt')
+assert(Feedback.quad({style_id='center'},widget,accept_all)==nil,'accepted but with no material to draw')
+assert(Feedback.quad({style_id='charge_left',value_id='charge'},widget,function() return false end)==nil,
+    'a refused pass is skipped even when the crosshair would take it')
+assert(Feedback.accept_crosshair('charge_left') and Feedback.accept_crosshair('hit_top_left')
+    and not Feedback.accept_crosshair('center'),'the default filter is unchanged')
 widget.style.hit_top_left.visible=false;assert(Feedback.quad({style_id='hit_top_left'},widget)==nil)
 widget.style.charge_mask_left.size[2]=0;assert(Feedback.quad({style_id='charge_mask_left'},widget)==nil)
 near(Feedback.pixel_scale(10,1),.49/41*.7)
