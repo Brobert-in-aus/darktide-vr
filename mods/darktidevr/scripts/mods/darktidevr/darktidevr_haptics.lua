@@ -453,11 +453,22 @@ function Haptics.install(mod, presentation, send)
     -- closures and tables it built each frame). A failed read is nil, as with
     -- field; an index on a missing component is protected the same way.
     local function index(t, k) return t[k] end
+    -- A field the static component config declares: read_component returns
+    -- nil for an unknown component and never throws, and a declared field's
+    -- index cannot throw, so no pcall (profile doc, step 3: the pcalls were
+    -- the cost, about a microsecond each, twenty-five a frame).
     local function component_field(unit_data, name, key)
-        local ok, component = pcall(unit_data.read_component, unit_data, name)
-        if not ok or component == nil then return nil end
-        local ok2, value = pcall(index, component, key)
-        return ok2 and value or nil
+        local component_table = unit_data:read_component(name)
+        if component_table == nil then return nil end
+        return component_table[key]
+    end
+    -- A field a weapon slot's own config may not declare: the read proxy's
+    -- __index throws on those, so this one stays guarded.
+    local function guarded_field(unit_data, name, key)
+        local component_table = unit_data:read_component(name)
+        if component_table == nil then return nil end
+        local ok, value = pcall(index, component_table, key)
+        return ok and value or nil
     end
     local function method_value(object, method, argument)
         local ok, value = pcall(method, object, argument)
@@ -468,14 +479,11 @@ function Haptics.install(mod, presentation, send)
     -- extensions, which do not change while the unit lives. A nil extension is
     -- not cached, so one that arrives later is still found.
     local function component(unit_data, name)
-        local ok, value = pcall(unit_data.read_component, unit_data, name)
-        if ok then return value end
-        return nil
+        return unit_data:read_component(name)
     end
     local function field_of(component_table, key)
         if component_table == nil then return nil end
-        local ok, value = pcall(index, component_table, key)
-        return ok and value or nil
+        return component_table[key]
     end
     local extensions = {unit = nil}
     local function extension(unit, name, key)
@@ -537,7 +545,7 @@ function Haptics.install(mod, presentation, send)
         end
         reading.melee = last_melee
         if reading.melee and type(wielded) == "string" and wielded:match("^slot_") then
-            reading.special = unit_data:read_component(wielded).special_active == true
+            reading.special = guarded_field(unit_data, wielded, "special_active") == true
         end
         local action = unit_data:read_component("weapon_action")
         local settings = template and template.actions and template.actions[action.current_action_name]
@@ -549,9 +557,10 @@ function Haptics.install(mod, presentation, send)
         end
     end
     local function read_interaction(interaction, unit_data)
-        local component = unit_data:read_component("interaction")
+        local component_table = unit_data:read_component("interaction")
+        if component_table == nil then return end
         interaction.state, interaction.start_time, interaction.duration =
-            component.state, component.start_time, component.duration
+            component_table.state, component_table.start_time, component_table.duration
     end
     -- Once per gameplay frame, after input.
     function api.sample(unit)
@@ -577,7 +586,7 @@ function Haptics.install(mod, presentation, send)
             local charge_component = section("haptics.read_gauges", component, unit_data, "action_module_charge")
             local gauges = {
                 heat = type(wielded) == "string" and wielded:match("^slot_") and
-                    component_field(unit_data, wielded, "overheat_current_percentage") or nil,
+                    guarded_field(unit_data, wielded, "overheat_current_percentage") or nil,
                 peril = component_field(unit_data, "warp_charge", "current_percentage"),
                 charge = field_of(charge_component, "charge_level"),
                 max_charge = field_of(charge_component, "max_charge"),
@@ -601,7 +610,7 @@ function Haptics.install(mod, presentation, send)
             end
             previous_melee = reading
             local interaction = {t = reading.t}
-            section("haptics.read_interaction", pcall, read_interaction, interaction, unit_data)
+            section("haptics.read_interaction", read_interaction, interaction, unit_data)
             for _, event in ipairs(section("haptics.interaction_events", interaction_events_of,
                     previous_interaction, interaction)) do
                 if Haptics.plays(event[1], mode) then
