@@ -501,3 +501,22 @@ it); loading and menu boards move against the head (design question open).
 34. **Loading and menu boards** (restart; item 30 as corrected): every board
     is a spatial board in the world; a recenter re-seats it in front of you.
     The build you saw head-locked was my unattended run's, not this one.
+
+35. **Servo skulls swapped and following smoothly** (restart; Experimental
+    features, "Grab and throw the servo skull"; Skitarius with the
+    flamethrower skull). The flamethrower skull now rests on your off-hand
+    side, 30 cm forward, and the medical and regular skulls on the other;
+    all of them follow you with a small lag, like the HUD, instead of
+    sitting rigidly on the body. Grab the flamethrower skull with the off
+    hand (grip near it), with Weapon hand holsters on: the grab takes the
+    skull, not the forearm holster. Order it out normally: the drawn skull
+    slides across to the flying one over a fraction of a second rather than
+    jumping (the server's skull leaves from its own rest); on its return it
+    slides back to your side. Throw as before.
+
+36. **One weapon charge display** (restart; Experimental features, "Weapon
+    charge display": count / bars / off, default count). With a melee
+    weapon that has charges, the count sits where the bars sit, above the
+    weapon hand's grip, not over the ranged weapon; "bars" shows the HUD's
+    charge bars there instead; "off" shows neither. The count also needs
+    Ammo count at the hand on.

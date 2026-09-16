@@ -32,6 +32,19 @@ Skull.FREE_FRACTION = 0.4
 Skull.RELEASE_WINDOW = 0.75
 Skull.MAX_THROW_SECONDS = 4
 Skull.ARRIVED_METRES = 0.15
+-- The skulls' sides swapped (user, 16 September worn): stock rests the
+-- flamethrower skull on the right, beside the gun hand's forearm holster,
+-- so the off hand reaching for it found the holster's zone first; the
+-- medical and regular skulls rest on the left. Mirroring the rest table's
+-- side axis puts the throwable one at the off hand and the others away.
+Skull.MIRROR_SIDE = true
+-- The drawn skull follows its real position smoothly, as the HUD follows
+-- the head, instead of sitting rigidly on the body: a time constant, and a
+-- distance beyond which it snaps (a respawn, a teleport). The same
+-- follower carries it across the jump when an order sends the server's
+-- skull from the server's own rest, and back again when it returns.
+Skull.FOLLOW_TAU = 0.2
+Skull.FOLLOW_SNAP = 2.0
 
 local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
 
@@ -73,6 +86,29 @@ function Skull.forward_offsets(position, forward)
     return result
 end
 
+-- The rest offsets for one skull rule: the side (x) mirrored when asked, the
+-- forward offset (y) replaced when given, height kept. Pure.
+function Skull.rest_offsets(position, forward, mirror)
+    local result = {}
+    for name, offset in pairs(position) do
+        result[name] = {mirror and -offset[1] or offset[1], forward or offset[2], offset[3]}
+    end
+    return result
+end
+
+-- The drawn position smoothed toward the real one: exponential with the
+-- time constant, snapping when there is no drawn position yet, no time has
+-- passed since a snap is harmless, or the two are further apart than snap.
+-- 3-arrays. Pure.
+function Skull.smoothed(drawn, real, dt, tau, snap)
+    tau, snap = tau or Skull.FOLLOW_TAU, snap or Skull.FOLLOW_SNAP
+    if type(drawn) ~= "table" or not finite(dt) or dt < 0 then return {real[1], real[2], real[3]} end
+    local dx, dy, dz = real[1] - drawn[1], real[2] - drawn[2], real[3] - drawn[3]
+    if dx * dx + dy * dy + dz * dz > snap * snap then return {real[1], real[2], real[3]} end
+    local alpha = 1 - math.exp(-dt / tau)
+    return {drawn[1] + dx * alpha, drawn[2] + dy * alpha, drawn[3] + dz * alpha}
+end
+
 function Skull.install(mod, presentation)
     local api = {}
     local zone = {id = "skull", selector = "blitz", centre = {0, 0, 0}, radius = Skull.GRAB_RADIUS}
@@ -91,28 +127,42 @@ function Skull.install(mod, presentation)
         return not (presentation.current_game_mode_name and presentation.current_game_mode_name() == "hub")
     end
 
-    -- The flamethrower skull's rest positions brought forward while the option
-    -- is on, restored when it is off. The stock movement extensions read the
-    -- same table every frame.
+    -- Every skull's rest positions while the option is on: sides mirrored,
+    -- the flamethrower's brought forward; restored when it is off. The stock
+    -- movement extensions read the same table every frame. The server keeps
+    -- its own table, so an order sends the real skull from the server's rest;
+    -- the follower below carries the drawn one across.
     local function apply_forward(on)
         Settings = Settings or require("scripts/settings/companion/companion_servo_skull_movement_settings")
-        local entry = Settings.movement_settings and Settings.movement_settings[Skull.RULE]
-        local position = entry and entry.first_person and entry.first_person.position
-        if not position then return end
+        local rules = Settings.movement_settings
+        if type(rules) ~= "table" then return end
         if on and not originals then
             originals = {}
-            local plain = {}
-            for name, box in pairs(position) do
-                originals[name] = box
-                local v = box:unbox()
-                plain[name] = {Vector3.x(v), Vector3.y(v), Vector3.z(v)}
+            for rule, entry in pairs(rules) do
+                local position = type(entry) == "table" and entry.first_person and entry.first_person.position
+                if type(position) == "table" then
+                    local saved, plain = {}, {}
+                    for name, box in pairs(position) do
+                        saved[name] = box
+                        local v = box:unbox()
+                        plain[name] = {Vector3.x(v), Vector3.y(v), Vector3.z(v)}
+                    end
+                    originals[rule] = saved
+                    local forward = rule == Skull.RULE and Skull.FORWARD or nil
+                    for name, offset in pairs(Skull.rest_offsets(plain, forward, Skull.MIRROR_SIDE)) do
+                        position[name] = Vector3Box(offset[1], offset[2], offset[3])
+                    end
+                end
             end
-            for name, offset in pairs(Skull.forward_offsets(plain, Skull.FORWARD)) do
-                position[name] = Vector3Box(offset[1], offset[2], offset[3])
-            end
-            mod:info("DARKTIDEVR_SKULL_THROW rest_forward=%.2f", Skull.FORWARD)
+            mod:info("DARKTIDEVR_SKULL_THROW rest_forward=%.2f mirror=%s", Skull.FORWARD, tostring(Skull.MIRROR_SIDE))
         elseif not on and originals then
-            for name, box in pairs(originals) do position[name] = box end
+            for rule, saved in pairs(originals) do
+                local entry = rules[rule]
+                local position = type(entry) == "table" and entry.first_person and entry.first_person.position
+                if type(position) == "table" then
+                    for name, box in pairs(saved) do position[name] = box end
+                end
+            end
             originals = nil
         end
     end
@@ -186,14 +236,35 @@ function Skull.install(mod, presentation)
             if Unit.scene_graph_parent(skull, node) == 1 then return node end
         end
     end
-    local function restore(skull)
-        if throw and throw.node and skull and Unit.alive(skull) then
-            local current = Unit.local_position(skull, throw.node)
-            if throw.written and Vector3.distance(current, throw.written:unbox()) < 1e-5 then
-                Unit.set_local_position(skull, throw.node, throw.base:unbox())
+    -- A drawn placement through the child node: base is the node's own local
+    -- position (re-read whenever something else wrote the node), written the
+    -- last position this module wrote. Shared by the throw and the follower.
+    local function place(extension, skull, record, drawn)
+        local root_pose = Unit.world_pose(skull, 1)
+        local local_offset = Matrix4x4.transform(Matrix4x4.inverse(root_pose), Vector3(drawn[1], drawn[2], drawn[3]))
+        local current = Unit.local_position(skull, record.node)
+        if not record.base or not record.written or Vector3.distance(current, record.written:unbox()) >= 1e-5 then
+            record.base = Vector3Box(current)
+        end
+        local desired = record.base:unbox() + local_offset
+        Unit.set_local_position(skull, record.node, desired)
+        record.written = Vector3Box(desired)
+        World.update_unit_and_children(extension._world, skull)
+    end
+    local function unplace(record, skull)
+        if record and record.node and record.base and skull and Unit.alive(skull) then
+            local current = Unit.local_position(skull, record.node)
+            if record.written and Vector3.distance(current, record.written:unbox()) < 1e-5 then
+                Unit.set_local_position(skull, record.node, record.base:unbox())
             end
         end
+    end
+    local follow = {}
+    local function restore(skull)
+        unplace(throw, skull)
         throw = nil
+        unplace(follow, skull)
+        follow = {}
     end
 
     -- After the stock movement extension placed the skull this frame.
@@ -222,7 +293,20 @@ function Skull.install(mod, presentation)
         elseif pending and t - pending.t > Skull.RELEASE_WINDOW then
             pending = nil
         end
-        if not throw then return end
+        if not throw then
+            -- The follower: the drawn skull chases the real one with the HUD's
+            -- kind of lag, across the rest-side jump when an order sends the
+            -- server's skull and back when it returns.
+            local real = array(Unit.world_position(skull, 1))
+            local dt = follow.t and t - follow.t or 0
+            follow.t = t
+            follow.node = follow.node or child_node(skull)
+            follow.position = Skull.smoothed(follow.position, real, dt)
+            if follow.node then place(extension, skull, follow, follow.position) end
+            return
+        end
+        -- A throw takes over from the follower cleanly.
+        if follow.base then unplace(follow, skull); follow = {} end
         local elapsed = t - throw.start
         local real = array(Unit.world_position(skull, 1))
         if not throw.arrived and throw.target then
@@ -237,16 +321,7 @@ function Skull.install(mod, presentation)
             restore(skull); return
         end
         local drawn = Skull.drawn_position(throw.release, throw.velocity, elapsed, real, weight)
-        local root_pose = Unit.world_pose(skull, 1)
-        local local_offset = Matrix4x4.transform(Matrix4x4.inverse(root_pose), Vector3(drawn[1], drawn[2], drawn[3]))
-        local current = Unit.local_position(skull, throw.node)
-        if not throw.base or not throw.written or Vector3.distance(current, throw.written:unbox()) >= 1e-5 then
-            throw.base = Vector3Box(current)
-        end
-        local desired = throw.base:unbox() + local_offset
-        Unit.set_local_position(skull, throw.node, desired)
-        throw.written = Vector3Box(desired)
-        World.update_unit_and_children(extension._world, skull)
+        place(extension, skull, throw, drawn)
     end
 
     local failed = false
@@ -268,7 +343,7 @@ function Skull.install(mod, presentation)
         mod:hook_require("scripts/extension_systems/flying_companion_movement/flying_companion_husk_movement_extension", hook_class)
     end
 
-    function api.destroy() pending = nil; throw = nil; apply_forward(false) end
+    function api.destroy() pending = nil; throw = nil; follow = {}; apply_forward(false) end
     return api
 end
 

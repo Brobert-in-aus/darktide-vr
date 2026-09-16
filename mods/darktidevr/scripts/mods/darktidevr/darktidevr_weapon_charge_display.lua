@@ -115,7 +115,7 @@ function Charge.install(mod, presentation, tracking)
     end
 
     function api.enabled()
-        return mod:get("vr_weapon_charge") == true or test_flag()
+        return mod:get("vr_weapon_charge_style") == "bars" or test_flag()
     end
 
     function api.destroy()

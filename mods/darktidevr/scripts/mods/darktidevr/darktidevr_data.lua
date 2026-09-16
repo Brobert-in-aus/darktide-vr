@@ -210,9 +210,17 @@ return {
                         default_value = false,
                     },
                     {
-                        setting_id = "vr_weapon_charge",
-                        type = "checkbox",
-                        default_value = false,
+                        -- One display for a melee weapon's special charges
+                        -- (user, 16 September: the count and the bars showed
+                        -- the same thing in two places).
+                        setting_id = "vr_weapon_charge_style",
+                        type = "dropdown",
+                        default_value = "count",
+                        options = {
+                            {text = "vr_weapon_charge_style_count", value = "count"},
+                            {text = "vr_weapon_charge_style_bars", value = "bars"},
+                            {text = "vr_weapon_charge_style_off", value = "off"},
+                        },
                     },
                     {
                         setting_id = "vr_item_radial",

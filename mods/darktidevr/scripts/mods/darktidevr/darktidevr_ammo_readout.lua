@@ -22,6 +22,9 @@ Readout.AWAY_FROM_EYE = 0.06
 -- hand-relative placement showed it (worn screenshot 19:04): beside the
 -- receiver, just ahead of the hand. The hand drawn from the hidden
 -- character's animation moved with the weapon and while strafing.
+-- The melee charge count sits where the HUD's charge bars would: above the
+-- weapon hand's grip (darktidevr_weapon_charge_display, the same offsets).
+Readout.CHARGE_FORWARD, Readout.CHARGE_UP = 0.06, 0.09
 Readout.GUN_FORWARD = 0.08
 Readout.GUN_SIDE = 0.04
 Readout.GUN_UP = 0.0
@@ -350,22 +353,18 @@ function Readout.install(mod, presentation, observation)
             anchor = gun_position + Quaternion.forward(gun_rotation) * Readout.GUN_FORWARD +
                 midline * Readout.GUN_SIDE + Quaternion.up(gun_rotation) * Readout.GUN_UP
         else
-            -- No gun placed (melee charges): beside the hand.
-            local side = presentation.weapon_hand_roles.physical("dominant")
+            -- No gun placed (melee charges): where the charge bars would sit,
+            -- above the weapon hand's grip (user, 16 September: beside the
+            -- hand it sat over the ranged weapon). One display or the other,
+            -- by the weapon charge style option.
+            if mod.get and mod:get("vr_weapon_charge_style") ~= "count" and not test then hide(); return end
             -- The controller grip, as the gun and the forearm holsters use:
             -- the drawn wrist followed the character's animation (animation
             -- audit, 16 September, item F).
-            local grip = presentation.weapon_grip_target("dominant")
-            if not grip then hide(); return end
-            local flat_right = Quaternion.right(eye_rotation)
-            local inward = side == "left" and flat_right or -flat_right
-            anchor = grip + Vector3.up() * Readout.OFFSET_UP + inward * Readout.OFFSET_INWARD
-            local aim
-            if presentation.weapon_aim_target then
-                local _, rotation = presentation.weapon_aim_target("dominant")
-                aim = rotation
-            end
-            if aim then anchor = anchor + Quaternion.forward(aim) * Readout.OFFSET_FORWARD end
+            local grip, grip_rotation = presentation.weapon_grip_target("dominant")
+            if not grip or not grip_rotation then hide(); return end
+            anchor = grip + Quaternion.forward(grip_rotation) * Readout.CHARGE_FORWARD +
+                Quaternion.up(grip_rotation) * Readout.CHARGE_UP
             local offset = eye - anchor
             local distance = Vector3.length(offset)
             if distance > 1e-4 then
