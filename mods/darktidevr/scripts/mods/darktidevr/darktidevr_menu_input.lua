@@ -251,6 +251,21 @@ function MenuInput.proxy(source, null_service, sample, vector, read_desktop, wid
     end})
 end
 
+-- The index of the character list card whose profile carries this name, or
+-- nil. The unattended runner asks for a character by name so a run can carry
+-- a particular loadout (16 September: the Skitarius "Robobert" for a charge
+-- weapon and a two-handed ranged weapon in the Psykhanium). Pure.
+function MenuInput.character_index(view, name)
+    local widgets = view and view._character_list_widgets
+    if type(name) ~= "string" or type(widgets) ~= "table" then return nil end
+    for index = 1, #widgets do
+        local content = widgets[index] and widgets[index].content
+        local profile = content and content.profile
+        if profile and profile.name == name then return index end
+    end
+    return nil
+end
+
 function MenuInput.advance_startup(request, view, blocked, t)
     if not request.armed or request.done then return false end
     if request.owner and request.owner ~= view then
@@ -267,6 +282,21 @@ function MenuInput.advance_startup(request, view, blocked, t)
     end
     request.ready_since = request.ready_since or t
     if t - request.ready_since < 1 then return false end
+    -- A named character first, through the stock card selection, which also
+    -- requests the profile from the backend; then the same settle before play.
+    -- A name that is not in the list is logged and play proceeds with whatever
+    -- is selected, rather than never starting.
+    if request.character and not request.selected then
+        request.selected = true
+        local index = MenuInput.character_index(view, request.character)
+        if index and type(view._on_character_widget_selected) == "function" then
+            view:_on_character_widget_selected(index, true)
+            request.selected_index = index
+            request.ready_since = t
+            return false
+        end
+        request.character_missing = true
+    end
     local callback = view._widgets_by_name.play_button.content.hotspot.pressed_callback
     if type(callback) ~= "function" then return false end
     -- Consume before invoking stock behavior: never replay after returning to
@@ -290,7 +320,9 @@ function MenuInput.install(mod, presentation)
             if consumed then
                 consumed:write("consumed")
                 consumed:close()
-                startup.armed = value:match("^start%s*$") ~= nil
+                startup.armed = value:match("^start") ~= nil
+                -- "start:<name>" selects that character card before play.
+                startup.character = value:match("^start:(%S.-)%s*$")
             end
         end
     end
@@ -305,7 +337,8 @@ function MenuInput.install(mod, presentation)
         local observed, reference = pcall(null_reference,input)
         local null = not input or not observed or input == reference
         if MenuInput.advance_startup(startup, self, null, t) then
-            mod:info("DARKTIDEVR_STARTUP character_select=start_requested source=one_shot")
+            mod:info("DARKTIDEVR_STARTUP character_select=start_requested source=one_shot character=%s index=%s missing=%s",
+                tostring(startup.character), tostring(startup.selected_index), tostring(startup.character_missing == true))
         end
         local current = readiness[self]
         if not current then current = {start=t, samples=0}; readiness[self] = current end

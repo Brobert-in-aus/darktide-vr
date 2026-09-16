@@ -504,3 +504,50 @@ do
     assert(menu.menu_buttons.hotkey_menu_special_1=='y' and menu.menu_buttons.hotkey_menu_special_2=='x')
     print('menu_hotkey_buttons=pass key_alias_types release_required owner_quarantine pointer_independent')
 end
+
+-- A named character (the unattended runner's "start:<name>"): selected through
+-- the stock card selection, which also requests the profile from the backend,
+-- then the same one-second settle before play. A name that is not in the list
+-- is recorded and play proceeds with whatever is selected, rather than never
+-- starting.
+do
+    local selected = {}
+    ready_view._character_list_widgets = {
+        {content = {profile = {name = 'Psykerson', character_id = 'p1'}}},
+        {content = {profile = {name = 'Robobert', character_id = 'r1'}}},
+    }
+    ready_view._on_character_widget_selected = function(self, index, quiet)
+        selected[#selected + 1] = index
+        assert(quiet == true, 'no selection sound for a scripted pick')
+    end
+    assert(menu.character_index(ready_view, 'Robobert') == 2)
+    assert(menu.character_index(ready_view, 'Psykerson') == 1)
+    assert(menu.character_index(ready_view, 'Nobody') == nil and menu.character_index(nil, 'Robobert') == nil)
+    assert(menu.character_index(ready_view, nil) == nil)
+
+    local before = starts
+    local named = {armed = true, character = 'Robobert'}
+    assert(not menu.advance_startup(named, ready_view, false, 10))
+    assert(not menu.advance_startup(named, ready_view, false, 10.5), 'still settling')
+    assert(not menu.advance_startup(named, ready_view, false, 11), 'the pick happens here, not play')
+    assert(#selected == 1 and selected[1] == 2 and named.selected_index == 2)
+    assert(starts == before, 'play did not fire on the same frame as the pick')
+    assert(not menu.advance_startup(named, ready_view, false, 11.5), 'settling again after the pick')
+    assert(menu.advance_startup(named, ready_view, false, 12))
+    assert(starts == before + 1 and #selected == 1, 'play once, pick once')
+    assert(not named.character_missing)
+
+    local missing = {armed = true, character = 'Nobody'}
+    local before_missing, picks = starts, #selected
+    assert(not menu.advance_startup(missing, ready_view, false, 20))
+    assert(menu.advance_startup(missing, ready_view, false, 21), 'a missing name still starts')
+    assert(missing.character_missing == true and #selected == picks, 'nothing picked')
+    assert(starts == before_missing + 1)
+
+    -- Without a name, nothing about the existing start changes.
+    local plain = {armed = true}
+    assert(not menu.advance_startup(plain, ready_view, false, 30))
+    assert(menu.advance_startup(plain, ready_view, false, 31))
+    assert(#selected == picks, 'no pick without a name')
+    print('startup_character: named card picked through stock selection, settle, once, missing name falls through')
+end

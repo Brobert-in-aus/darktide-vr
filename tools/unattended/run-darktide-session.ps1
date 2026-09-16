@@ -22,6 +22,9 @@ param(
     [switch] $NoViewer,
     [switch] $SyntheticControllerPath,
     [string] $RuntimeJson,
+    # Select this character card (by its name) before pressing Play, so a run
+    # carries a particular loadout. Empty: whichever card is selected.
+    [string] $StartCharacter = '',
     # Other mod request files to set for this run, e.g. @{ 'darktidevr_gameplay_input_test.flag' = 'enabled' }.
     [hashtable] $RequestFiles = @{},
     # After the scene is reached: open and close stock chat this many times
@@ -82,7 +85,7 @@ $launchStart = Get-Date
 $stopFile = Join-Path $OutputDirectory 'viewer-stop.flag'
 try {
     Remove-Item -LiteralPath (Join-Path $modRoot 'darktidevr_quit_game.flag') -ErrorAction SilentlyContinue
-    Set-RequestFile 'darktidevr_start_character.flag' $(if ($Scene -eq 'Title') { 'disabled' } else { 'start' })
+    Set-RequestFile 'darktidevr_start_character.flag' $(if ($Scene -eq 'Title') { 'disabled' } elseif ($StartCharacter) { "start:$StartCharacter" } else { 'start' })
     $psykhaniumRequest = Set-PsykhaniumLaunchRequest -GameRoot $GameRoot -Action $(if ($Scene -eq 'Psykhanium') { 'enter' } else { 'disabled' })
     if ($ExternalViewer -or $NoViewer) { Set-RequestFile 'darktidevr_external_viewer.flag' 'external' }
     foreach ($name in $RequestFiles.Keys) { Set-RequestFile $name ([string]$RequestFiles[$name]) }
