@@ -3252,6 +3252,21 @@ presentation.frame_profile = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_frame_profile").install(mod,
     function() return tonumber(ui_native_capture.dtvr_qpc_ticks()) end,
     function() return tonumber(ui_native_capture.dtvr_qpc_frequency()) end)
+-- The game boots with jit.off() (scripts/boot_init.lua), so every Lua function
+-- runs interpreted. Whether the mod can reach the jit table at all decides
+-- whether its own hot functions could be compiled selectively; one line, once.
+pcall(function()
+    local global_jit = rawget(_G, "jit")
+    local mods_jit = Mods and Mods.lua and Mods.lua.jit
+    local required
+    pcall(function() required = require("jit") end)
+    local status
+    local probe = global_jit or mods_jit or required
+    if probe and probe.status then pcall(function() status = tostring(probe.status()) end) end
+    mod:info("DARKTIDEVR_FRAME_PROFILE jit global=%s mods_lua=%s require=%s status=%s version=%s",
+        tostring(global_jit ~= nil), tostring(mods_jit ~= nil), tostring(required ~= nil),
+        tostring(status), tostring(probe and probe.version))
+end)
 function presentation.refresh_performance_profile_request()
     local startup = presentation.native_startup.read(Mods.lua.io.open)
     diagnostic_render_hooks_requested = startup.diagnostic_hooks
