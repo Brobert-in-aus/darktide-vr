@@ -411,3 +411,13 @@ sitting: if items 1 to 14 behave, those are covered.
     frame clock, so a stale key would show as the plane lagging the head by
     a frame. The profiler's totals also stop double-counting nested
     sections, which changes only log lines.
+
+28. **Native module and proxy rebuilt** (restart; no option; the "still
+    works" family, and the one native change of the day). The capture DLL
+    and the d3d12 proxy in the installed mod are today's build; without
+    `darktidevr_queue_priority.flag` (absent for you) the only difference is
+    two exported counters and a bootstrap log field, no hook. Launch, reach
+    the Hub, confirm the headset picture and the bootstrap log line
+    `native_results queue_priority_requested=0 queue_priority=0`. If the
+    game fails to start or the picture is missing, the first suspect is the
+    proxy: `Darktide VR Mode.bat` status reports the proxy's state.
