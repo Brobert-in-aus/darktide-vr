@@ -192,7 +192,11 @@ function Charge.install(mod, presentation, tracking)
                 if style and style.material_values and type(material) == "string" then
                     local instance = materials[pass.style_id]
                     if not instance or instance.gui ~= gui or instance.name ~= material then
-                        instance = {gui = gui, name = material, handle = Gui.material(gui, material)}
+                        -- create_material, as darktidevr_marker_world does: Gui.material
+                        -- looks a registered material up and failed with "Material not
+                        -- found" the first time this ran with a charge weapon (Robobert,
+                        -- run robobert1).
+                        instance = {gui = gui, name = material, handle = Gui.create_material(gui, material)}
                         materials[pass.style_id] = instance
                     end
                     if instance.handle then
