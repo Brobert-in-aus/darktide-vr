@@ -329,6 +329,30 @@ haptics 58 us of it and the rest spread thin. The three levers left are all
 the user's to pull: the JIT switch (the patch), the marker draw cadence, and
 a lower body-read rate for haptics.
 
+## Where the Hub's frame actually goes (`hub-noviewer1`)
+
+The user asked for rendering performance, into the engine if need be. The
+first measurement answers a question none of the Lua work could: with the
+viewer, the capture consumer and Virtual Desktop's encoder out of the way
+(`-NoViewer`; the mod still renders both eyes into the same 2112x2304
+targets), the Hub's game loop runs at about **118 Hz** (590 frames a
+5-second report) against **55 Hz** with them (276). And the mod's own Lua
+per frame halves as well, 0.16 to 0.067 ms, the same code: that is the
+signature of the game's threads getting half the CPU they get alone.
+
+| Hub, 1280x768 window, 2112x2304 per eye | with viewer | no viewer |
+| --- | ---: | ---: |
+| game loop, Hz | 55 | 118 |
+| mod Lua, ms/frame | 0.16 | 0.067 |
+
+So the engine renders the Hub in stereo at 118 Hz on this machine; the
+pipeline after it (the viewer process at 120 Hz with reprojection, the
+d3d12 capture handoff, the Virtual Desktop streamer's encoder, all on the
+same eight cores and one GPU) is where the other half of the frame goes.
+Which of the three, and whether it is CPU contention or GPU contention, is
+the next measurement: the same run with the CPU render timing and the
+native GPU eye profile armed, with and without the viewer.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one
