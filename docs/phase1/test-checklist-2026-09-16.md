@@ -440,3 +440,22 @@ sitting: if items 1 to 14 behave, those are covered.
     cell. Check: no sliver beside the ammo count; the ammo count, holster
     labels, wrist display and world markers otherwise unchanged (a half
     texel is below what the eye can see).
+
+## Worn results (user, 16 September evening)
+
+1 not grabbable; changes asked: swap the skull's rest side, interpolate to
+  the real skull when it is sent, follow smoothly like the HUD rather than
+  locked to the body, and work with hand holsters on. 2 fixed. 3 works.
+4 yes. 5 works but sits over the ranged weapon: put it with the charge bars,
+  or one display with a toggle (both show the same). 6 unknown. 7 no
+  full-body toggle in the VR settings menu. 8 untested. 9 unclear text.
+10 does not work, and impractical (physical reach is far shorter than the
+  interaction distance). 11 does not work, and pointless with IK hands.
+12 works (a haptic fires); wants a constant very low vibration while
+  active. 13 untested; needs a second reticle if kept; usefulness doubted.
+17 label should read "left hand relative" and switch with handedness.
+18 fine. 19 nothing noticed. 20 see 5. 21 works, but a stick flick still
+  fires its binding (flick up switches weapon) while the radial is open,
+  and the pick should trigger on the flick.
+Also: a sliver of the wrist display beside the ammo count (item 29 fixes
+it); loading and menu boards move against the head (design question open).
