@@ -30,14 +30,17 @@ Both have the same root: the control's own press is never suppressed.
 
 ## What it would take
 
-- **Generalise the contextual claim beyond the grips.** The bindings already
-  block a control's bit and deliver a different action for one press, but only
-  for `left_grip` and `right_grip` (`request_bit` in
-  `darktidevr_controller_bindings.lua`). Mapping any control id to its bit is
-  small; the risk is that the same machinery carries the virtual holsters and
-  the two-hand grip, which are shipped and worn-tested. This is the change that
-  fixes both faults above: with the control's own mask blocked, `api.held` no
-  longer contains it, so the Device sector produces an edge again.
+- ~~**Generalise the contextual claim beyond the grips.**~~ Done the same
+  evening: `Bindings.control_bit(id)` replaces the two-way grip conditional, so
+  a claim may name any button. The grips resolve to exactly the bits that were
+  hardcoded (512 and 4, asserted in `test-controller-bindings.lua`), and the
+  grip-layer test block proves the holsters' and two-hand grip's behaviour is
+  unchanged. Nothing uses the wider mapping yet, so it is inert in play. This
+  is the change that fixes both faults above: with the control's own mask
+  blocked, `api.held` no longer contains it, so the Device sector produces an
+  edge again. What remains is to have the radial issue a claim for the
+  carried-items control with the `unbound` action while open, then the state
+  and hub fixes below.
 - **Cancel rather than freeze.** `sample` returns before `Radial.step` when
   gameplay input is inactive or the option is off, leaving `{open, index}` set
   for ever. `api.destroy` has no call site, and the radial is in none of the

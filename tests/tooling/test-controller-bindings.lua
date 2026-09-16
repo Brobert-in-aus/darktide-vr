@@ -623,6 +623,18 @@ do
 end
 
 do
+    -- A contextual claim can name any button, not just the grips. The grips
+    -- must resolve to exactly the bits that were hardcoded before, since the
+    -- virtual holsters and the two-hand grip run on them; the grip-layer
+    -- block above is what proves their behaviour is unchanged.
+    assert(Bindings.control_bit('left_grip') == 512, 'left grip bit unchanged')
+    assert(Bindings.control_bit('right_grip') == 4, 'right grip bit unchanged')
+    assert(Bindings.control_bit('y') == 16, 'any button may be named now')
+    assert(Bindings.control_bit('right_stick_up') == nil, 'a stick direction cannot hold a claim')
+    assert(Bindings.control_bit('nonesuch') == nil and Bindings.control_bit(nil) == nil)
+end
+
+do
     -- The forced-action channel the gestures use (inspect by bringing the
     -- weapon up, push to talk at the mouth): an action mask no control is
     -- bound to, ORed in before a sample and consumed by it. Its edges come

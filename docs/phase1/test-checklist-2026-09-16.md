@@ -266,12 +266,17 @@ tracked eye).
     - Say if any weapon's held curl looks wrong for that grip: the capture
       takes whatever the animation was showing at that moment.
 
-19. **Crosshair feedback unchanged** (restart; part of the same "still works"
-    family as 15 to 17). The helper that rebuilds the crosshair's charge and
+19. **Crosshair feedback unchanged, and the grip claims** (restart; part of
+    the same "still works" family as 15 to 17). Two refactors, both meant to
+    change nothing: The helper that rebuilds the crosshair's charge and
     hit pieces in the world now lets another element ask for its own passes;
     the crosshair keeps its existing filter. Charge bars and hit feedback
     around the aim point should look exactly as they do now, at whatever
     crosshair scale is set.
+    - The bindings' contextual claim can now name any button rather than only
+      the two grips; the grips resolve to the same bits as before and nothing
+      uses the wider mapping yet. Weapon hand holsters and the two-hand grip
+      should take and release the grip exactly as they do now.
 
 20. **Weapon charge at the weapon** (restart; Experimental features, "Weapon
     charge at the weapon", default off, new 16 September). A weapon with

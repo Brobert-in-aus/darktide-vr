@@ -71,6 +71,19 @@ Bindings.REQUEST_ACTIONS = {unbound=0, alternate=2, blitz=512, pocketable=65536,
     -- Reach interactions: the grip interacts with what the hand reaches.
     interact=8}
 
+-- The physical bit a contextual claim names. Only the grips were nameable,
+-- which is all the virtual holsters and the two-hand grip need; any button may
+-- be named now, so a claim can also suppress a control's own action for one
+-- press. That is what the item radial needs and could not have
+-- (docs/phase1/item-radial-2026-09-16.md). Axis directions are excluded: a
+-- stick direction cannot hold a claim.
+function Bindings.control_bit(id)
+    if type(id)~='string' then return nil end
+    for _,control in ipairs(Bindings.controls) do
+        if control.id==id and not control.axis then return control.bit end
+    end
+end
+
 local function atomic(action)
     return action.mask>0 and bit.band(action.mask,action.mask-1)==0
 end
@@ -439,8 +452,7 @@ function Bindings.install(mod)
         -- The caller supplies weapon/tracking identity and acquisition/retention
         -- tests; saved user bindings are never rewritten. No caller means the
         -- original mapper behavior, including ordinary keyboard coexistence.
-        local request_bit=type(support)=='table' and
-            (support.control=='left_grip' and 512 or support.control=='right_grip' and 4) or nil
+        local request_bit=type(support)=='table' and Bindings.control_bit(support.control) or nil
         local request_mask=request_bit and Bindings.REQUEST_ACTIONS[support.action] or nil
         local request_valid=request_bit and request_mask~=nil and support.owner~=nil
         local cancelled_grip=0
