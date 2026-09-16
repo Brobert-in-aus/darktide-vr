@@ -288,7 +288,12 @@ tracked eye).
       whether the panel's should hide while this is on.
     - They must disappear when you stow the weapon, open a menu, or switch to
       a weapon with no charge.
-    - `DARKTIDEVR_WEAPON_CHARGE drawn=N` logs once when they first draw.
+    - `DARKTIDEVR_WEAPON_CHARGE drawn=N` logs once when they first draw, and
+      `DARKTIDEVR_WEAPON_CHARGE probe why=...` every three seconds says why
+      not: `no_counter_for_this_weapon` is the normal answer for most weapons,
+      while `no_element`, `element_stale`, `no_weapon_hand` or
+      `counter_has_no_charge_passes` each mean something else is wrong. If
+      nothing draws, that word is the answer to send back.
     - This did not work at all when first written: it asked for a gun pose,
       and every weapon with charge bars is melee, so it could never draw; and
       the charge lives in the style's material values, which were not being

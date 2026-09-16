@@ -76,4 +76,13 @@ assert(Charge.apply_material_values(Material, nil, {a = 1}) == 0)
 assert(Charge.apply_material_values(Material, 'handle', {ignored = true}) == 0,
     'a value of a kind the engine has no setter for')
 
-print('weapon_charge_display=pass accept rebuild scale freshness material_values')
+-- Why nothing drew, so a worn check can tell "this weapon has no charge
+-- counter" (the normal case for most weapons) from something actually wrong.
+assert(Charge.reason(nil, true, {}, 1, true) == 'no_element')
+assert(Charge.reason('element', false, {}, 1, true) == 'element_stale')
+assert(Charge.reason('element', true, nil, 0, true) == 'no_counter_for_this_weapon')
+assert(Charge.reason('element', true, {}, 0, false) == 'no_weapon_hand')
+assert(Charge.reason('element', true, {}, 0, true) == 'counter_has_no_charge_passes')
+assert(Charge.reason('element', true, {}, 3, true) == 'drawn')
+
+print('weapon_charge_display=pass accept rebuild scale freshness material_values reason')

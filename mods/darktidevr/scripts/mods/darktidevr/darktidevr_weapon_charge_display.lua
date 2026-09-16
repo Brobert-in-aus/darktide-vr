@@ -75,6 +75,21 @@ function Charge.fresh(stamp, now, max_age)
 end
 
 Charge.TEST_FLAG = "./../mods/darktidevr/darktidevr_weapon_charge_test.flag"
+Charge.PROBE_SECONDS = 3
+Charge.PROBE_LINES = 20
+
+-- Why nothing drew, in one word, so a worn check can tell "this weapon has no
+-- charge counter" from "the counter is there and something else stopped us".
+-- Nothing drawing is the normal case for most weapons, so this is a probe
+-- rather than a warning.
+function Charge.reason(element, fresh, widget, accepted, grip)
+    if not element then return "no_element" end
+    if not fresh then return "element_stale" end
+    if not widget then return "no_counter_for_this_weapon" end
+    if not grip then return "no_weapon_hand" end
+    if (accepted or 0) == 0 then return "counter_has_no_charge_passes" end
+    return "drawn"
+end
 
 function Charge.install(mod, presentation, tracking)
     local api = {}
@@ -116,6 +131,14 @@ function Charge.install(mod, presentation, tracking)
         if source == self then api.destroy(); failed = nil end
     end)
 
+    local probe_t, probe_lines = 0, 0
+    local function probe(now, widget, accepted, element_fresh, grip)
+        if type(now) ~= "number" or probe_lines >= Charge.PROBE_LINES or now < probe_t then return end
+        probe_t, probe_lines = now + Charge.PROBE_SECONDS, probe_lines + 1
+        mod:info("DARKTIDEVR_WEAPON_CHARGE probe why=%s accepted=%d",
+            Charge.reason(source, element_fresh, widget, accepted, grip ~= false), accepted or 0)
+    end
+
     -- The widget of the slot the player is holding, or nil.
     local function wielded_widget()
         if not source or not source._slot_widgets then return nil end
@@ -137,14 +160,15 @@ function Charge.install(mod, presentation, tracking)
                 not Charge.fresh(source_t, now) or presentation.mode ~= 1 or
                 not tracking.authoring_enabled or
                 presentation.gameplay_context.ui_blocks_gameplay(Managers.ui) then
+            if api.enabled() then probe(now, nil, 0, source ~= nil and Charge.fresh(source_t, now)) end
             hide(); return
         end
         local widget = wielded_widget()
-        if not widget or not widget.passes then hide(); return end
+        if not widget or not widget.passes then probe(now, widget, 0, true); hide(); return end
         -- The weapon hand's controller grip: every weapon with charge bars is
         -- melee, so there is no gun pose to use.
         local grip, grip_rotation = presentation.weapon_grip_target("dominant")
-        if not grip or not grip_rotation then hide(); return end
+        if not grip or not grip_rotation then probe(now, widget, 0, true, false); hide(); return end
         local position = grip +
             Quaternion.forward(grip_rotation) * Charge.FORWARD +
             Quaternion.up(grip_rotation) * Charge.UP
@@ -189,6 +213,7 @@ function Charge.install(mod, presentation, tracking)
                     uv11 = Vector2(q.uvs[1][1], q.uvs[1][2]), snap_pixel_positions = false})
             end
         end
+        probe(now, widget, drawn, true, true)
         if drawn > 0 and not api.logged then
             api.logged = true
             mod:info("DARKTIDEVR_WEAPON_CHARGE drawn=%d", drawn)
