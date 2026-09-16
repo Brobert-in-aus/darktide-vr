@@ -474,3 +474,30 @@ it); loading and menu boards move against the head (design question open).
     still drifts against the head without a recenter, the recenters
     themselves are the next question (the headset's tracking, boundary or
     Virtual Desktop; the mod requests none).
+
+31. **Item radial picks on the flick** (restart; Experimental features,
+    "Item radial"). Hold the carried-items control and flick the stick into
+    a sector: the item wields the moment the stick enters the sector, not on
+    release, and a flick-and-press together no longer falls through to the
+    stock weapon cycle. A press mid snap-turn with the stick already hard
+    over still waits for the stick to pass centre before it can pick. A
+    plain tap still cycles as stock does. A second flick to another sector
+    wields that one.
+
+32. **Push to talk hums while held** (restart; "Push to talk with the off
+    hand at the mouth"). While the gesture holds the talk key, the talking
+    hand carries a constant very low vibration (one faint pulse every tenth
+    of a second) on top of the entry pulse; it stops when you lower the
+    hand.
+
+33. **Full body in the settings menu** (restart; Experimental features,
+    "Full body (experimental)", default off). The same experimental
+    full-body mode the dev flag turned on, now as an option; takes effect on
+    the next level. The movement direction option now reads
+    "Left-hand-relative". "Reach to interact" and "Inspect by bringing the
+    weapon up" are out of the menu (withdrawn after tonight's worn test;
+    their saved values are ignored).
+
+34. **Loading and menu boards** (restart; item 30 as corrected): every board
+    is a spatial board in the world; a recenter re-seats it in front of you.
+    The build you saw head-locked was my unattended run's, not this one.

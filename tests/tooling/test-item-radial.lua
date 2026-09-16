@@ -33,33 +33,40 @@ local PRESSED, HELD, RELEASED, CANCELLED = {pressed = true, held = true}, {held 
 -- A fresh press the bindings accepted opens it; a held stick at that moment
 -- picks nothing until the stick has been neutral once (mid snap-turn tap).
 local state, deliver = Radial.step(nil, PRESSED, 1, 0)
-assert(state.open and state.index == nil and deliver == nil)
-state = Radial.step(state, HELD, 1, 0)
-assert(state.index == nil, 'a stick already hard over does not pick')
+assert(state.open and state.index == nil and deliver == nil and state.neutral_seen == false)
+state, deliver = Radial.step(state, HELD, 1, 0)
+assert(state.index == nil and deliver == nil, 'hard over since the press: no pick yet')
 state = Radial.step(state, HELD, 0, 0)
 assert(state.neutral_seen and state.index == nil, 'neutral seen, nothing picked yet')
-state = Radial.step(state, HELD, 0.95, -0.3)
-assert(state.index == 2, 'now a flick picks')
-state = Radial.step(state, HELD, 0, 0)
-assert(state.index == 2, 'and returning the stick to centre keeps the pick')
--- Release delivers that option, once.
+-- The flick delivers on the frame the stick enters the sector.
+state, deliver = Radial.step(state, HELD, 0.95, -0.3)
+assert(state.index == 2 and deliver == Radial.OPTIONS[2].mask and state.delivered, 'delivered on the flick')
+state, deliver = Radial.step(state, HELD, 0, 0)
+assert(state.index == 2 and deliver == nil, 'back to centre keeps the pick, delivers nothing more')
+-- Release delivers nothing more; the pick already went.
 state, deliver = Radial.step(state, RELEASED, 0, 0)
-assert(deliver == Radial.OPTIONS[2].mask and state.open == false)
+assert(deliver == nil and state.open == false)
 state, deliver = Radial.step(state, {}, 0, 0)
 assert(deliver == nil and state.open == false)
 
--- Released with nothing picked: the stock cycle, since the claim swallowed the
--- press that would have cycled. Turning the option on must not take a plain
--- tap's behaviour away.
+-- A press with the stick at rest needs no neutral pass: the first flick picks.
+local quick, quick_deliver = Radial.step(Radial.step(nil, PRESSED, 0, 0), HELD, 0.95, -0.3)
+assert(quick_deliver == Radial.OPTIONS[2].mask and quick.index == 2, 'a flick from rest delivers at once')
+-- A second flick to another sector delivers that one too; the same sector again does not.
+local second, second_deliver = Radial.step(Radial.step(quick, HELD, 0, 0), HELD, -0.95, -0.3)
+assert(second_deliver == 262144 and second.index ~= 2, 'a further flick delivers the new sector')
+assert(select(2, Radial.step(second, HELD, -0.95, -0.3)) == nil, 'holding in the sector repeats nothing')
+
+-- A plain tap (no pick at all) is the stock cycle, one frame late.
 local tap = Radial.step(nil, PRESSED, 0, 0)
 local after, tap_deliver = Radial.step(tap, RELEASED, 0, 0)
 assert(tap_deliver == Radial.CYCLE_MASK and after.open == false, 'a tap cycles as stock does')
 assert(Radial.CYCLE_MASK == 786432, 'the carried-items control own action')
 
--- A cancelled claim (another claim took the slot, input went away, the level
+-- A cancelled claim (the owner changed, the hand became ineligible, the mode
 -- changed) closes without delivering: no wield out of nowhere later.
 local picked = Radial.step(Radial.step(Radial.step(nil, PRESSED, 0, 0), HELD, 0, 0), HELD, 0, 1)
-assert(picked.index == 1)
+assert(picked.index ~= nil)
 local cancelled, cancel_deliver = Radial.step(picked, CANCELLED, 0, 0)
 assert(cancel_deliver == nil and cancelled.open == false)
 local later, later_deliver = Radial.step(cancelled, RELEASED, 0, 0)
@@ -70,8 +77,8 @@ assert(Radial.step(nil, HELD, 0, 1).open == false, 'held without a press stays c
 assert(Radial.step(nil, nil, 0, 0).open == false)
 
 -- The Device sector delivers its own mask, which the first attempt could not.
-local dev = Radial.step(Radial.step(Radial.step(nil, PRESSED, 0, 0), HELD, 0, 0), HELD, -0.95, -0.3)
-assert(dev.index == by_id.device)
-assert(select(2, Radial.step(dev, RELEASED, 0, 0)) == 262144, 'device delivers wield_5')
+local dev, dev_deliver = Radial.step(Radial.step(Radial.step(nil, PRESSED, 0, 0), HELD, 0, 0), HELD, -0.95, -0.3)
+assert(dev_deliver == 262144, 'device delivers wield_5 on the flick')
+assert(select(2, Radial.step(dev, RELEASED, 0, 0)) == nil, 'and nothing again on release')
 
-print('item_radial=pass select labels claim_edges neutral_rearm cancel device tap_cycles')
+print('item_radial=pass select labels claim_edges flick_delivers neutral_gate cancel device tap_cycles')

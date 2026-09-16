@@ -128,6 +128,17 @@ function Comms.install(mod, presentation)
             if presentation.haptics and type(t) == "number" and side then
                 pcall(presentation.haptics.pulse, side, "zone", t)
             end
+            api.next_hum_t = t
+        end
+        -- While engaged, a constant very low hum on the talking hand, one
+        -- "talk" pulse every tenth of a second (worn, 16 September).
+        if engaged and type(t) == "number" and t >= (api.next_hum_t or t) then
+            local side = presentation.weapon_hand_roles and
+                presentation.weapon_hand_roles.physical("support")
+            if presentation.haptics and side then
+                pcall(presentation.haptics.pulse, side, "talk", t)
+            end
+            api.next_hum_t = t + 0.1
         end
         api.engaged = engaged
     end

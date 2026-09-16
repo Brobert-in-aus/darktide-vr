@@ -185,22 +185,17 @@ return {
                         default_value = false,
                     },
                     {
+                        setting_id = "vr_full_body_experimental",
+                        type = "checkbox",
+                        default_value = false,
+                    },
+                    {
                         setting_id = "vr_forearm_holsters",
                         type = "checkbox",
                         default_value = false,
                     },
                     {
                         setting_id = "vr_skull_throw",
-                        type = "checkbox",
-                        default_value = false,
-                    },
-                    {
-                        setting_id = "vr_reach_interact",
-                        type = "checkbox",
-                        default_value = false,
-                    },
-                    {
-                        setting_id = "vr_weapon_inspect",
                         type = "checkbox",
                         default_value = false,
                     },

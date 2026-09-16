@@ -18,6 +18,10 @@ Haptics.KINDS = {
     -- A hand reaches a place where a grip press does something (a gun's
     -- foregrip, an armed holster).
     zone = {modes = BOTH, notice = true, amplitude = 0.3, duration_ms = 15},
+    -- Push to talk held: a constant, very low hum on the talking hand,
+    -- repeated every tenth of a second while the gesture is engaged (user,
+    -- 16 September worn).
+    talk = {modes = BOTH, notice = true, amplitude = 0.08, duration_ms = 120},
     -- A grip press on a holster whose item is already in the hand: nothing
     -- happens (played twice, a double tap, darktidevr_holsters).
     refused = {modes = BOTH, notice = true, amplitude = 0.5, duration_ms = 25},

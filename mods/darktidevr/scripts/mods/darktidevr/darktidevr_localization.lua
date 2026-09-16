@@ -33,6 +33,8 @@ return {
     spectate_third_person = {en = "Third-person spectating"},
     marker_plane = {en = "World-surface markers"},
     marker_plane_description = {en = "Draw world markers, nameplates and the interaction popup as one surface at the marker's distance, so both eyes see the same thing. Off returns to the per-eye flat markers."},
+    vr_full_body_experimental = {en = "Full body (experimental)"},
+    vr_full_body_experimental_description = {en = "Show your character's body under you, posed from your head and hands, instead of the tracked hands alone. The same mode the darktidevr_full_body_experimental.flag file turns on; takes effect on the next level."},
     vr_two_hand_support = {en = "Two-hand support"},
     vr_two_hand_support_description = {en = "Grip with your off hand where the weapon's own animation holds the foregrip to steady a gun with both hands. The glove moves onto the foregrip when your hand is close enough to grip. A grip recorded with /dtvr_two_hand_calibrate takes precedence for that weapon this session."},
     vr_two_hand_grip_mode = {en = "Two-hand grip"},
@@ -42,8 +44,6 @@ return {
     vr_virtual_stock = {en = "Virtual stock (experimental)"},
     vr_forearm_holsters = {en = "Weapon hand holsters (experimental)"},
     vr_skull_throw = {en = "Grab and throw the servo skull (experimental)"},
-    vr_reach_interact = {en = "Reach to interact (experimental)"},
-    vr_weapon_inspect = {en = "Inspect by bringing the weapon up (experimental)"},
     vr_comms_gesture = {en = "Push to talk with a hand at your mouth (experimental)"},
     vr_tag_gesture = {en = "Tag what your off hand points at (experimental)"},
     vr_weapon_charge = {en = "Weapon charge at the weapon (experimental)"},
@@ -52,8 +52,6 @@ return {
     vr_weapon_charge_description = {en = "Draws the charge bars of weapons that have them, such as the force sword and the shock maul, just above the weapon itself, facing you. The HUD panel still shows its own copy for now, so you can compare the two and say which you prefer."},
     vr_tag_gesture_description = {en = "Hold your off hand out ahead of you and press tag: the tag leaves that hand instead of your weapon, so you can point at something while shooting elsewhere. With the hand down, or on the gun, tagging follows the weapon as usual."},
     vr_comms_gesture_description = {en = "Bring your off hand up in front of your mouth and hold it there for half a second to open your microphone, as if speaking into a vox bead; drop the hand to close it. Works alongside the push to talk binding, not instead of it, and never while that hand is on the gun."},
-    vr_weapon_inspect_description = {en = "Hold your weapon up to your face and turn it side on to look at it: the game's inspect runs for as long as you keep it there. Pointing it where you look is aiming, not inspecting, so this never fires while you aim down the sights. Not in the Mourningstar, where the game does not offer weapon inspection at all."},
-    vr_reach_interact_description = {en = "Put a hand on a door control, a pickup or a downed team mate and press grip to interact with it, without looking at it. The game still chooses what can be reached and how far away it may be; your hand only says which direction to look in. While nothing is in reach, and whenever a holster or the gun's second grip wants that hand, the grip keeps its own binding."},
     vr_skull_throw_description = {en = "With the flamethrower servo skull talented, the skull hovers in view at your off-hand side. Grab it with your off hand to aim its flamethrower order, and let go to throw it: it flies from your hand to the target."},
     vr_forearm_holsters_description = {en = "Small holsters in a line above your gun hand's forearm, from the wrist: your other weapon, stim, carried item and device. Reach in with your other hand and press grip to equip. A small model of each item is always shown there; the one your hand is in grows and ticks (with Holster labels on, its name shows above it), the weapon shows its ammo or charges beneath it, and they hide while you two-hand the gun or aim down its sights."},
     vr_wrist_display = {en = "Wrist display"},
@@ -218,8 +216,10 @@ return {
     movement_reference_head = {
         en = "Headset-relative",
     },
-    -- The stored value is still "left_hand"; the label names the role.
+    -- The stored value is still "left_hand". The label names the hand (user,
+    -- 16 September); when a handedness setting exists it reads "Right-hand"
+    -- for a left-handed player, since the code behind it names the off hand.
     movement_reference_left_hand = {
-        en = "Off-hand-relative",
+        en = "Left-hand-relative",
     },
 }

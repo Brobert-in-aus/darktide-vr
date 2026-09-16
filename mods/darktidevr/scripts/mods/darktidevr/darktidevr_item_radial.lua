@@ -71,30 +71,34 @@ function Radial.closed() return {open = false} end
 -- stick. Returns the new state and the mask to deliver, if any.
 --
 -- Opening needs the claim to have been *taken* (a fresh press the bindings
--- accepted), and the stick to pass through neutral once before a pick
--- counts, so tapping the control mid snap-turn with the stick hard over does
--- not pick a sector the player never saw. After that a pick is kept while the
--- stick returns to centre, so letting go of the stick before the button does
--- not lose the choice. Release delivers; a cancelled claim delivers nothing.
--- Pure.
+-- accepted). A pick is delivered on the flick itself: the frame the stick
+-- enters a sector (worn, 16 September: waiting for the release turned a
+-- natural flick-and-press into the tap's stock cycle, a weapon switch). If
+-- the stick was already hard over at the press (a tap mid snap-turn), it
+-- must pass through neutral once first, so no sector the player never saw
+-- is picked. A further flick to another sector delivers that one too. The
+-- release then delivers nothing; a release with no pick at all is a tap and
+-- gives back the stock cycle. A cancelled claim delivers nothing. Pure.
 function Radial.step(state, grip, x, y)
     state = type(state) == "table" and state or Radial.closed()
     if type(grip) ~= "table" or grip.cancelled then return Radial.closed(), nil end
     if grip.pressed then
-        return {open = true, index = nil, neutral_seen = false}, nil
+        return {open = true, index = nil, neutral_seen = Radial.select(x, y) == nil, delivered = false}, nil
     end
     if grip.released then
         if not state.open then return Radial.closed(), nil end
-        local option = state.index and Radial.OPTIONS[state.index]
+        if state.delivered then return Radial.closed(), nil end
         -- A tap: the stock cycle, one frame later than stock would have.
-        return Radial.closed(), option and option.mask or Radial.CYCLE_MASK
+        return Radial.closed(), Radial.CYCLE_MASK
     end
     if not grip.held or not state.open then return Radial.closed(), nil end
     local picked = Radial.select(x, y)
     local neutral_seen = state.neutral_seen or picked == nil
-    local index = state.index
-    if neutral_seen and picked then index = picked end
-    return {open = true, index = index, neutral_seen = neutral_seen}, nil
+    local index, delivered, deliver = state.index, state.delivered, nil
+    if neutral_seen and picked and picked ~= index then
+        index, delivered, deliver = picked, true, Radial.OPTIONS[picked].mask
+    end
+    return {open = true, index = index, neutral_seen = neutral_seen, delivered = delivered}, deliver
 end
 
 -- Engine side. The pure part above is what the tests exercise.

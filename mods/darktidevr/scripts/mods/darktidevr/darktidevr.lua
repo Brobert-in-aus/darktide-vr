@@ -7501,10 +7501,12 @@ function presentation.update_body_visibility_gate(frame)
         "./../mods/darktidevr/darktidevr_full_body_experimental.flag"
     local full_body_flag = Mods and Mods.lua and Mods.lua.io and
         Mods.lua.io.open(full_body_path, "r")
-    local full_body_experimental = false
+    -- The option (user, 16 September: "no full body toggle in the VR settings
+    -- menu") or the dev flag, either turns the mode on.
+    local full_body_experimental = mod:get("vr_full_body_experimental") == true
     if full_body_flag then
-        full_body_experimental = full_body_flag:read("*all"):
-            match("^%s*enabled%s*$") ~= nil
+        full_body_experimental = full_body_experimental or
+            full_body_flag:read("*all"):match("^%s*enabled%s*$") ~= nil
         full_body_flag:close()
     end
     if full_body_experimental ~=
