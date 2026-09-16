@@ -3247,6 +3247,9 @@ end
 -- UIWorldSpawner.create_viewport is too late for shader/root localization.
 presentation.native_startup = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_native_startup")
+-- Per-frame cost of the mod's own Lua by section, opt-in (frame profile flag).
+presentation.frame_profile = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_frame_profile").install(mod)
 function presentation.refresh_performance_profile_request()
     local startup = presentation.native_startup.read(Mods.lua.io.open)
     diagnostic_render_hooks_requested = startup.diagnostic_hooks
@@ -5411,10 +5414,10 @@ local function update_stereo(manager)
         end
     end
     if presentation.weapon_charge_display then
-        presentation.weapon_charge_display.draw(world,clean_position,clean_rotation)
+        presentation.frame_profile.section("render.weapon_charge",presentation.weapon_charge_display.draw,world,clean_position,clean_rotation)
     end
     if presentation.crosshair_feedback then
-        presentation.crosshair_feedback.draw(world,clean_position,clean_rotation)
+        presentation.frame_profile.section("render.crosshair_feedback",presentation.crosshair_feedback.draw,world,clean_position,clean_rotation)
     end
 
     ScriptCamera.force_update(world, primary_camera)
@@ -6513,53 +6516,54 @@ function presentation.inject_gameplay_input(self, main_t, input)
     if presentation.attachment_scan and presentation.attachment_scan.mask_gameplay_input then
         presentation.attachment_scan.mask_gameplay_input(controller_observation)
     end
+    local profile=presentation.frame_profile
     if presentation.sight_ads then
-        presentation.sight_ads.apply(self, player_unit)
+        profile.section("input.sight_ads", presentation.sight_ads.apply, self, player_unit)
     end
     if presentation.weapon_inspect then
         -- After the sights, which get first claim on a weapon at the eye.
-        presentation.weapon_inspect.apply(player_unit,
+        profile.section("input.weapon_inspect", presentation.weapon_inspect.apply, player_unit,
             controller_observation.gameplay_input_active and game_mode_name~="hub", main_t)
     end
     if presentation.comms_gesture then
         -- Talking works in the hub too.
-        presentation.comms_gesture.apply(player_unit,
+        profile.section("input.comms_gesture", presentation.comms_gesture.apply, player_unit,
             controller_observation.gameplay_input_active, main_t)
     end
     if presentation.tag_gesture then
         -- After the talk gesture, which has first claim on that hand.
-        presentation.tag_gesture.apply(player_unit,
+        profile.section("input.tag_gesture", presentation.tag_gesture.apply, player_unit,
             controller_observation.gameplay_input_active and game_mode_name~="hub", main_t)
     end
-    local exclusive_stick=presentation.communication_input.sample(self,player_unit,input,
+    local exclusive_stick=profile.section("input.communication",presentation.communication_input.sample,self,player_unit,input,
         controller_observation.gameplay_input_active,
         tonumber(controller_observation.gameplay_held[0]),game_mode_name,active_world)
     -- The radial owns the stick while it is open, as the comms wheel does.
     if presentation.item_radial and presentation.item_radial.open() then exclusive_stick=true end
     presentation.apply_controller_turning(main_t,exclusive_stick)
-    local support_request=presentation.two_hand and presentation.two_hand.sample(
+    local support_request=presentation.two_hand and profile.section("input.two_hand",presentation.two_hand.sample,
         player_unit,controller_observation.gameplay_input_active,main_t,self)
     local holster_request=false
     if presentation.holsters then
         -- The hub has nothing to wield; its grip opens the inventory.
-        support_request,holster_request=presentation.holsters.sample(player_unit,
+        support_request,holster_request=profile.section("input.holsters",presentation.holsters.sample,player_unit,
             controller_observation.gameplay_input_active and game_mode_name~="hub",main_t,support_request)
     end
     if presentation.reach_interact then
         -- Last: a holster or the gun's support grip owns the hand first.
-        support_request=presentation.reach_interact.sample(player_unit,
+        support_request=profile.section("input.reach",presentation.reach_interact.sample,player_unit,
             controller_observation.gameplay_input_active and game_mode_name~="hub",main_t,support_request)
     end
     local radial_request=false
     if presentation.item_radial then
         -- Last of all: it takes the carried-items button, not a grip, and only
         -- when no grip claim wants the slot. Not in the hub.
-        support_request,radial_request=presentation.item_radial.sample(
+        support_request,radial_request=profile.section("input.item_radial",presentation.item_radial.sample,
             controller_observation.gameplay_input_active and game_mode_name~="hub",support_request)
     end
     -- The input time, for the bindings' reverse grip grace.
     if type(support_request)=='table' then support_request.now=main_t end
-    local pressed, held, released = presentation.controller_bindings.sample(
+    local pressed, held, released = profile.section("input.bindings",presentation.controller_bindings.sample,
         controller_observation.gameplay_input_active,
         tonumber(controller_observation.gameplay_held[0]),
         controller_observation.right_stick_x,controller_observation.right_stick_y,
@@ -6579,9 +6583,11 @@ function presentation.inject_gameplay_input(self, main_t, input)
             presentation.controller_bindings.support_grip)
     end
     if presentation.haptics then
-        pcall(presentation.haptics.sample,
+        profile.section("input.haptics", pcall, presentation.haptics.sample,
             controller_observation.gameplay_input_active and player_unit or nil)
     end
+    -- One input frame done: the profiler polls its flag and reports here.
+    profile.frame(main_t)
     if presentation.gameplay_ui then
         presentation.gameplay_ui.sample(controller_observation.gameplay_input_active, pressed, held)
     end
@@ -11850,7 +11856,7 @@ mod:hook_safe(
             self._world,
             player_unit)
         if ok and presentation.gun_aim then
-            presentation.gun_aim.update(self._world, player_unit)
+            presentation.frame_profile.section("draw.gun_aim", presentation.gun_aim.update, self._world, player_unit)
         end
         if presentation.weapon_parked_parts then
             presentation.weapon_parked_parts.update(player_unit)
@@ -11867,28 +11873,28 @@ mod:hook_safe(
             presentation.attachment_scan.update(player_unit)
         end
         if presentation.ammo_readout then
-            presentation.ammo_readout.draw(self._world, player_unit)
+            presentation.frame_profile.section("draw.ammo_readout", presentation.ammo_readout.draw, self._world, player_unit)
         end
         if presentation.holster_counts then
-            presentation.holster_counts.draw(self._world, player_unit)
+            presentation.frame_profile.section("draw.holster_counts", presentation.holster_counts.draw, self._world, player_unit)
         end
         if presentation.wrist_display then
-            presentation.wrist_display.draw(self._world, player_unit)
+            presentation.frame_profile.section("draw.wrist_display", presentation.wrist_display.draw, self._world, player_unit)
         end
         if presentation.item_radial then
-            presentation.item_radial.draw(self._world)
+            presentation.frame_profile.section("draw.item_radial", presentation.item_radial.draw, self._world)
         end
         if presentation.forearm_holsters then
-            presentation.forearm_holsters.update_previews(self._world, player_unit, dt, t)
+            presentation.frame_profile.section("draw.forearm_holsters", presentation.forearm_holsters.update_previews, self._world, player_unit, dt, t)
         end
         if presentation.teammate_status then
-            presentation.teammate_status.draw(self._world, player_unit)
+            presentation.frame_profile.section("draw.teammate_status", presentation.teammate_status.draw, self._world, player_unit)
         end
         if presentation.rig_scan then
             presentation.rig_scan.update(self._world, player_unit, dt, t)
         end
         if presentation.body_mirror then
-            presentation.body_mirror.update(self._world, player_unit, dt, t)
+            presentation.frame_profile.section("draw.body_mirror", presentation.body_mirror.update, self._world, player_unit, dt, t)
         end
         if presentation.pose_trace then
             presentation.pose_trace.sample(player_unit, t)

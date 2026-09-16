@@ -150,8 +150,10 @@ assert(math.abs(p - 0.5) < 1e-9, "next shell did not restart the ring")
 
 -- Drawn after the hand pose, and released with the other GUI resources.
 local file = assert(io.open(assert(arg[2]), "rb")); local main = file:read("*a"); file:close()
-local ik = assert(main:find("presentation.gun_aim.update(self._world, player_unit)", 1, true))
-local draw = assert(main:find("presentation.ammo_readout.draw(self._world, player_unit)", 1, true))
+-- The draw pass times each display through the frame profiler, so the
+-- anchor is the wrapped call; the ordering it checks is unchanged.
+local ik = assert(main:find("presentation.frame_profile.section(\"draw.gun_aim\", presentation.gun_aim.update, self._world, player_unit)", 1, true))
+local draw = assert(main:find("presentation.frame_profile.section(\"draw.ammo_readout\", presentation.ammo_readout.draw, self._world, player_unit)", 1, true))
 assert(draw > ik, "readout drawn before the hand pose")
 local state = assert(main:find("mod.on_game_state_changed = function", 1, true))
 assert(main:find("presentation.ammo_readout.destroy", state, true), "readout GUI survives loading")

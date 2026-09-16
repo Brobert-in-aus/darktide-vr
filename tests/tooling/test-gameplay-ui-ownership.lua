@@ -14,7 +14,10 @@ mod={get=function(_,key) return settings[key] end,info=function() end,
         if class=='ChatManager' then chat_hooks[name]=fn
         else assert(class=='HudElementSmartTagging');wheel_hooks[name]=fn end
     end}
+-- The input block times each sampler through the frame profiler; off, a
+-- section is a pass-through.
 presentation={mode=1,gameplay_context=dofile(arg[2]),
+    frame_profile={section=function(_,fn,...) return fn(...) end,frame=function() end},
     is_first_person_body_mode=function(mode) return mode=='hub' end,
     apply_controller_turning=function() end,
     keyboard_mouse_enabled=function() return false end,controllers_disabled=function() return false end}

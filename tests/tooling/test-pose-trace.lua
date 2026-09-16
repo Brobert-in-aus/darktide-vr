@@ -88,7 +88,9 @@ assert(headers == 1, "headers in the file: " .. headers)
 
 -- Wired after the hand pose, flushed when a level unloads.
 local file = assert(io.open(assert(arg[2]), "rb")); local main = file:read("*a"); file:close()
-local ik = assert(main:find("presentation.gun_aim.update(self._world, player_unit)", 1, true))
+-- The draw pass times each display through the frame profiler, so the
+-- anchor is the wrapped call; the ordering it checks is unchanged.
+local ik = assert(main:find("presentation.frame_profile.section(\"draw.gun_aim\", presentation.gun_aim.update, self._world, player_unit)", 1, true))
 local call = assert(main:find("presentation.pose_trace.sample(player_unit, t)", 1, true))
 assert(call > ik)
 local state = assert(main:find("mod.on_game_state_changed = function", 1, true))

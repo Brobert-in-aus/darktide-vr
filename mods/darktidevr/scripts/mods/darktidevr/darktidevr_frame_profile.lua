@@ -1,0 +1,137 @@
+-- Per-frame cost of the mod's own Lua, by section (16 September 2026: the
+-- day added seven per-frame samplers to the input and draw paths and nothing
+-- measured any of them; every earlier performance pass was native or GPU).
+-- Opt-in through darktidevr_frame_profile.flag; players never have it. Pure
+-- aggregation here, engine side below.
+--
+-- Sections are timed with Application.time_since_launch, which the stock
+-- scripts use as their high-resolution clock; os.clock is a millisecond on
+-- Windows and useless for this. When the flag is off a section costs one
+-- branch and a tail call.
+local Profile = {}
+
+Profile.FLAG = "./../mods/darktidevr/darktidevr_frame_profile.flag"
+Profile.REPORT_SECONDS = 5
+Profile.REPORT_LINES = 40
+Profile.TOP = 12
+
+-- A fresh accumulator. Pure.
+function Profile.new()
+    return {sections = {}, order = {}, frames = 0}
+end
+
+-- Record one timed call of a section. Pure.
+function Profile.add(acc, name, seconds)
+    if type(seconds) ~= "number" or seconds ~= seconds or seconds < 0 then return end
+    local entry = acc.sections[name]
+    if not entry then
+        entry = {name = name, calls = 0, total = 0, max = 0}
+        acc.sections[name] = entry
+        acc.order[#acc.order + 1] = name
+    end
+    entry.calls = entry.calls + 1
+    entry.total = entry.total + seconds
+    if seconds > entry.max then entry.max = seconds end
+end
+
+-- One frame has passed. Pure.
+function Profile.frame(acc)
+    acc.frames = acc.frames + 1
+end
+
+-- The sections by total cost, highest first, with per-frame and per-call
+-- figures in the units a log line wants (ms per frame, us per call). Pure.
+function Profile.report(acc, top)
+    local rows = {}
+    for _, name in ipairs(acc.order) do
+        local e = acc.sections[name]
+        rows[#rows + 1] = {
+            name = name, calls = e.calls,
+            total_ms = e.total * 1000,
+            per_frame_ms = acc.frames > 0 and e.total * 1000 / acc.frames or 0,
+            mean_us = e.calls > 0 and e.total * 1e6 / e.calls or 0,
+            max_us = e.max * 1e6,
+        }
+    end
+    table.sort(rows, function(a, b)
+        if a.total_ms ~= b.total_ms then return a.total_ms > b.total_ms end
+        return a.name < b.name
+    end)
+    local all = 0
+    for _, row in ipairs(rows) do all = all + row.total_ms end
+    local limit = top or Profile.TOP
+    if #rows > limit then
+        local kept = {}
+        for i = 1, limit do kept[i] = rows[i] end
+        rows = kept
+    end
+    return rows, {frames = acc.frames, total_ms = all,
+        per_frame_ms = acc.frames > 0 and all / acc.frames or 0}
+end
+
+-- Engine side.
+function Profile.install(mod)
+    local api = {}
+    local acc = Profile.new()
+    local enabled, poll, reports, next_report = false, 0, 0, nil
+    local clock = Application and Application.time_since_launch
+
+    local function flag()
+        poll = poll - 1
+        if poll > 0 then return enabled end
+        poll = 300
+        local io_api = Mods and Mods.lua and Mods.lua.io
+        local file = io_api and io_api.open(Profile.FLAG, "r")
+        if not file then enabled = false; return false end
+        local value = file:read("*all"); file:close()
+        enabled = type(value) == "string" and value:match("^%s*enabled%s*$") ~= nil and clock ~= nil
+        return enabled
+    end
+
+    function api.enabled() return enabled end
+
+    -- Run fn with its arguments, timing it under name when the profile is
+    -- on. Up to four results are returned, which covers every call site;
+    -- more would need a table per call and this must not allocate.
+    function api.section(name, fn, a, b, c, d, e, f, g, h)
+        if not enabled then return fn(a, b, c, d, e, f, g, h) end
+        local started = clock()
+        local r1, r2, r3, r4 = fn(a, b, c, d, e, f, g, h)
+        Profile.add(acc, name, clock() - started)
+        return r1, r2, r3, r4
+    end
+
+    -- Once per input frame. Polls the flag, counts the frame, and every
+    -- REPORT_SECONDS logs the top sections; bounded to REPORT_LINES reports a
+    -- session, so a forgotten flag cannot fill a log.
+    function api.frame(t)
+        local was = enabled
+        flag()
+        if not enabled then
+            if was then acc = Profile.new(); next_report = nil end
+            return
+        end
+        if not was then
+            acc = Profile.new(); next_report = nil
+            mod:info("DARKTIDEVR_FRAME_PROFILE enabled clock=%s", tostring(clock ~= nil))
+        end
+        Profile.frame(acc)
+        if type(t) ~= "number" then return end
+        next_report = next_report or (t + Profile.REPORT_SECONDS)
+        if t < next_report or reports >= Profile.REPORT_LINES then return end
+        next_report, reports = t + Profile.REPORT_SECONDS, reports + 1
+        local rows, summary = Profile.report(acc)
+        mod:info("DARKTIDEVR_FRAME_PROFILE report=%d frames=%d mod_ms_per_frame=%.3f sections=%d",
+            reports, summary.frames, summary.per_frame_ms, #acc.order)
+        for _, row in ipairs(rows) do
+            mod:info("DARKTIDEVR_FRAME_PROFILE section=%s ms_per_frame=%.4f calls=%d mean_us=%.1f max_us=%.1f",
+                row.name, row.per_frame_ms, row.calls, row.mean_us, row.max_us)
+        end
+        -- Each report is a fresh window, so a change shows in the next one.
+        acc = Profile.new()
+    end
+
+    return api
+end
+
+return Profile

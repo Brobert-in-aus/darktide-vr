@@ -357,3 +357,11 @@ sitting: if items 1 to 14 behave, those are covered.
    carried item to pick between), 1 (servo skull, Skitarius with the
    flamethrower blitz talented), 15 September item 19 (teammate status).
 5. Last, because it needs a flag written and removed: 14 (the body overlay).
+
+22. **Frame profiler wrapping** (restart; no option, nothing should look
+    different; the same "still works" family as 15 to 19). Every per-frame
+    sampler in the input block and every hand display in the draw pass is now
+    called through a timing wrapper. With the profiler's flag absent, which is
+    every player, the wrapper is one branch and a pass-through, and the calls
+    return exactly what they did. If items 1 to 14 and 20 to 21 behave, this
+    is covered.
