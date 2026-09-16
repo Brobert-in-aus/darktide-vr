@@ -414,11 +414,33 @@ which the 11 September handoff believed frame generation required, though
 today's engine log reports it off and frame generation delivering).
 
 What is left is the pipeline's own work: the runtime's per-vsync
-compositing of what the viewer submits (layer count and cadence) and the
-streamer's encoder, both proportional to submissions per second and pixels
-per submission. Those are the user's settings (refresh, resolution, codec)
-and the viewer's submission shape, and they are the next experiments; the
-engine side of the frame is measured and is not the problem.
+compositing of what the viewer submits and the streamer's encoder, both
+proportional to submissions per second and pixels per submission. The
+viewer's submission shape is already lean: in gameplay it hands the runtime
+two layers, the projection and the reticle quad (the pointer quads are
+menus only, the vignette ADS only), so there is nothing to strip there
+worth a build. The levers are the user's settings, in order of expected
+return: the headset refresh (120 to 90 Hz takes a quarter off both the
+compositing and the encoder, and the game delivers 32 fresh pairs a second
+either way), the resolution one step down (already measured on 11
+September at 15 to 23 per cent shorter spans), the codec (H.264+ about 10
+per cent), and hardware GPU scheduling on, which changes how the three GPU
+clients are arbitrated and is the one arm nobody has run. The engine side
+of the frame is measured and is not the problem.
+
+## Where the day ended
+
+| the mod's Lua, per frame | 0.30 ms morning, 0.16 ms now |
+| --- | --- |
+| the engine's two eyes, alone | at most 7 ms of GPU, 118 to 145 Hz |
+| the same two eyes with the headset pipeline | 23.5 ms of GPU, 54 Hz |
+| queue priority | tried, no effect |
+
+The mod's own cost was never the Hub's problem, and the day's Lua work was
+worth doing anyway for the sixty microseconds that should not have been
+there. The Hub's frame is the headset pipeline sharing the GPU with the
+game. That is measured now, three ways, and the levers that remain are the
+user's to pull.
 
 ## Method notes
 
