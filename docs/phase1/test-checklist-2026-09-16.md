@@ -298,8 +298,12 @@ tracked eye).
       and every weapon with charge bars is melee, so it could never draw; and
       the charge lives in the style's material values, which were not being
       replayed, so the bar would have been frozen at its default. Both fixed
-      the same day, but neither has been seen working, so treat this item as
-      "does it work at all" rather than a fine judgement.
+      the same day.
+    - An unattended run since then shows everything upstream working in the
+      game (`why=no_counter_for_this_weapon`, which is correct for a staff):
+      the counter element is found and fresh, the wielded slot is read, the
+      weapon hand is there. The untested part is the last step, so bring a
+      force sword, a power sword or a power maul.
 
 ## Suggested order
 
