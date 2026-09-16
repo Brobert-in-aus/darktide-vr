@@ -16,6 +16,9 @@ return {
                         value = "head",
                     },
                     {
+                        -- The value is kept as it was so saved settings
+                        -- survive; the label and the code behind it name the
+                        -- off hand (docs/phase1/handedness-audit-2026-09-16.md).
                         text = "movement_reference_left_hand",
                         value = "left_hand",
                     },

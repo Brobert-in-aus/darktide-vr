@@ -11337,11 +11337,15 @@ function presentation.flat_movement_rotation(yaw)
     return Quaternion.look(flat_forward, Vector3.up())
 end
 
-function presentation.left_hand_movement_rotation()
-    if not controller_observation.left_aim_usable then
+-- The off hand's heading, for off-hand-relative locomotion. The saved setting
+-- still stores the literal value "left_hand", so settings written before the
+-- handedness work keep working; only what it means moved to a role
+-- (docs/phase1/handedness-audit-2026-09-16.md).
+function presentation.off_hand_movement_rotation()
+    if not presentation.hand_aim_usable("support") then
         return nil
     end
-    local _, rotation = presentation.left_controller_aim_target()
+    local _, rotation = presentation.weapon_aim_target("support")
     if not rotation then
         return nil
     end
@@ -11357,16 +11361,16 @@ function presentation.left_hand_movement_rotation()
     return Quaternion.look(Vector3.normalize(flat_forward), Vector3.up())
 end
 
-function presentation.left_hand_movement_yaw()
-    local rotation = presentation.left_hand_movement_rotation()
+function presentation.off_hand_movement_yaw()
+    local rotation = presentation.off_hand_movement_rotation()
     return rotation and Quaternion.yaw(rotation) or nil
 end
 
 function presentation.movement_reference_rotation()
     if (mod:get("movement_reference") or "head") == "left_hand" then
-        local left_rotation = presentation.left_hand_movement_rotation()
+        local off_hand_rotation = presentation.off_hand_movement_rotation()
         if left_rotation then
-            return left_rotation, "left_hand"
+            return off_hand_rotation, "left_hand"
         end
         return controller_observation.gameplay_yaw and
             presentation.flat_movement_rotation(
@@ -11403,7 +11407,7 @@ function presentation.rotate_controller_movement(x, y)
     -- Keep the existing missing-state fallback without aborting input caching.
     local device_ok, device_axis = pcall(presentation.controller_movement_is_device_axis)
     if device_ok and device_axis then return x, y end
-    local reference_rotation = presentation.left_hand_movement_rotation()
+    local reference_rotation = presentation.off_hand_movement_rotation()
     if not reference_rotation then
         return x, y
     end

@@ -238,3 +238,14 @@ Quickest first, then the ones that need a mission:
     - With keyboard and mouse: a melee swing's roll still follows the mouse,
       and a controller ray still overrides it.
     - Unit tests cover the resolution; the fire-action arming is worn-only.
+
+17. **Off-hand-relative movement** (restart; Movement direction, the same
+    "still works" family as 15 and 16). The option that was labelled
+    "Left-hand-relative" now reads "Off-hand-relative" and the code behind it
+    asks for the off hand rather than the left controller. While the weapon
+    hand is fixed at the right these are the same hand, so nothing should
+    change:
+    - With it selected, walking still follows where your off hand points, and
+      still falls back when that controller loses tracking.
+    - A setting saved before today must still be selected when you open the
+      menu (the stored value is unchanged; only the label moved).

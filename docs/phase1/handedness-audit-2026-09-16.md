@@ -53,7 +53,7 @@ to decide what happens to saved right-handed grips.
 
 ## Should be a role (changeable today)
 
-### The off-hand locomotion reference (the largest cluster, and the only one a player can see)
+### The off-hand locomotion reference (done 16 September; the largest cluster, and the only one a player can see)
 
 `darktidevr.lua:11317-11382` and `darktidevr_data.lua:19-20`: the
 "movement reference" option stores the literal value `left_hand`, and the code
@@ -106,8 +106,16 @@ is a single answer to "which side is dominant when we cannot tell".
    The keyboard-and-mouse roll input, the attachment drift diagnostic and the
    holster debug trace now ask for the dominant hand. Only the locomotion
    cluster below is left.
-3. The locomotion reference cluster: relabel, keep the stored value, move the
-   reads to roles.
+3. ~~The locomotion reference cluster: relabel, keep the stored value, move
+   the reads to roles.~~ Done 16 September.
+   `presentation.off_hand_movement_rotation` and `off_hand_movement_yaw`
+   replace the `left_hand_` pair and read `hand_aim_usable("support")` and
+   `weapon_aim_target("support")`. The option's label is now
+   "Off-hand-relative"; its stored value stays `left_hand`, so settings written
+   before this keep working, and the `movement_reference_left_hand`
+   localization key stays for the same reason. No behaviour change while the
+   dominant hand is fixed at the right. The source invariant checks the new
+   names.
 4. The authored grip: decide whether a left-dominant player re-measures grips
    or whether the saved right-handed ones are mirrored, and say so in the
    option's text.

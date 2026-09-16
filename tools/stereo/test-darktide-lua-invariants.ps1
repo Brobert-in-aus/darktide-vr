@@ -987,8 +987,12 @@ if (-not $gameplayInputSource.Contains(
         -not $gameplayInputSource.Contains('next &= ~blocked_until_release_;')) {
     throw 'Gameplay input must baseline held buttons across a controller-writer generation change without synthesizing press edges.'
 }
+# The off hand, not the left one: the saved setting still stores "left_hand"
+# but the code behind it asks for the role (handedness audit, 16 September).
 if (-not $source.Contains(
-        'function presentation.left_hand_movement_rotation()') -or
+        'function presentation.off_hand_movement_rotation()') -or
+        -not $source.Contains(
+            'presentation.hand_aim_usable("support")') -or
         -not $source.Contains(
             'function presentation.movement_reference_rotation()') -or
         -not $source.Contains(
@@ -999,7 +1003,7 @@ if (-not $source.Contains(
             'mod:get("movement_reference") or "head"') -or
         -not $source.Contains(
             'Quaternion.inverse(presentation.flat_movement_rotation(')) {
-    throw 'Configurable VR locomotion must preserve headset-relative default, use the flattened live left-hand basis without an Euler round-trip, reject near-vertical rays and rotate only controller movement into the selected frame.'
+    throw 'Configurable VR locomotion must preserve headset-relative default, use the flattened live off-hand basis without an Euler round-trip, reject near-vertical rays and rotate only controller movement into the selected frame.'
 }
 if (-not $source.Contains(
         'presentation.menu_pointer.values = ffi.new("unsigned int[13]")') -or

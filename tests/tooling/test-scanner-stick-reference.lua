@@ -6,7 +6,7 @@ local last=assert(source:find('\nmod:hook(',first,true))
 local mode,state,hand='left_hand','walking',math.pi/2
 mod={get=function(_,key) assert(key=='movement_reference'); return mode end}
 controller_observation={gameplay_yaw=0,character_state_name='deliberately_stale'}
-presentation={gameplay_context=dofile(arg[2]),left_hand_movement_rotation=function() return hand end,
+presentation={gameplay_context=dofile(arg[2]),off_hand_movement_rotation=function() return hand end,
     flat_movement_rotation=function(yaw) return yaw end}
 local player={player_unit='local'}
 Managers={player={local_player=function(_,index) assert(index==1); return player end}}

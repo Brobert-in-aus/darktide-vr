@@ -214,7 +214,8 @@ return {
     movement_reference_head = {
         en = "Headset-relative",
     },
+    -- The stored value is still "left_hand"; the label names the role.
     movement_reference_left_hand = {
-        en = "Left-hand-relative",
+        en = "Off-hand-relative",
     },
 }
