@@ -515,7 +515,14 @@ and a second normal control follow.
 | high, run 1 | 15.5 | 66 | 23.5 |
 | high, run 2 | 22.6 | 56 | 25.9 |
 | realtime | 21.5 | 64 | 60.9 (viewer starved) |
-| FOV tangent 90 per cent (the user's setting; 1908x2076 per eye) | 21.2 | 59 | 31.2 |
+| FOV tangent 90 per cent (the user's setting; 1908x2076 per eye), two runs | 21.2, 20.7 | 59, 59 | 31.2, 25.4 |
+
+Measured after the user set Virtual Desktop's FOV tangent to 90 per cent:
+21.2 and 20.7 ms of GPU per pair in two runs against 22.5 to 23.2 for the
+normal-class arms, the loop at 59 Hz against 53 to 56. About a tenth off
+the pair, repeatable, the size 19 per cent fewer pixels predicts: the one
+pipeline arm of the day with a real, repeated gain, pointing the same way
+as the resolution step.
 | no viewer (engine alone) | under 7 | 133 | none |
 
 What differed between the two `high` runs: the first had no player markers
