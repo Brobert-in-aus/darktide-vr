@@ -35,7 +35,7 @@ animation, except what the server drives. Static audit of the branch at
 | E | `BodyProxy.align_gun_hand` (`darktidevr_body_proxy.lua:718-731`): glove = attach pose x animated hand-in-attach offset | gun-hand glove, `hand_pose` | fixed: per-weapon grip averaged over 30 steady frames (no action, not moving), then held (16 September); until captured the live offset is used |
 | F | `visible_grip_target` (`darktidevr.lua:8571-8584`) built on E | ammo counter melee branch, body mirror | fixed: the melee counter uses `weapon_grip_target`; `visible_grip_target` removed (16 September) |
 | G | `follow_gameplay_hands` (`darktidevr_body_proxy.lua:772-810`): animated 1p wrists for stock melee animation and keyboard and mouse hands | both gloves during melee swings; keyboard and mouse hands | decided (user, 16 September): during melee swings the gloves follow the animation, as now; an exception to the requirement. Keyboard and mouse hands keep the animation too (no controller pose to use) |
-| H | `copy_gameplay_fingers` (`darktidevr_body_proxy.lua:245-272`) | finger curl only | later: fixed per-item grip poses |
+| H | `copy_gameplay_fingers` (`darktidevr_body_proxy.lua:245-272`) | finger curl only | fixed: the curl is captured once per weapon and hand after 30 steady frames and then held, as the gun hand's grip is (item E); with no fresh capture key (melee, or no weapon) the fingers keep following the animation, which is the user's melee exception (16 September) |
 | I | `sync_equipment_hand_to_proxy` (`darktidevr.lua:9267-9313`) | held item placement, via E in body-drawn-hand mode | clean once E is fixed |
 | J | holsters `body_frame` (`darktidevr_holsters.lua:283-311`): built at input time, drawn in post-update; yaw from the first-person unit rotation when `body_visual_yaw` is nil (includes stock recoil offsets) | body holster zones, models, counts (withheld) | fixed: rebuilt at draw time for the body models and counts, yaw from the tracked eye (16 September) |
 | K | one-time capture of the model-eye offset from animated eye bones and 3p root yaw (`darktidevr.lua:4839-4843`, `:4887-4901`, `:4960-4974`) | camera and every controller target (constant offset) | fixed: measured in the aim's own yaw frame (`presentation.cyclopean_eye_offset`), so neither the 3p root's turn-to-run nor the scene facing enters it, and a pitched aim defers the capture (16 September) |
@@ -80,5 +80,10 @@ time with last frame's anchor and eye, consistently.
    on the basis' lateral axis and been zeroed, leaving the anchor with height
    alone. Both terms now survive. Whether the view sits right is still worn
    (checklist item 9).
-7. Finger curl (H) stays with the animation until per-item grip poses exist;
-   it drives no placement, only the curl of the drawn fingers.
+7. Finger curl (H; done, 16 September). Authored per-item poses were the
+   first idea and turned out not to be needed: the same capture-once-and-hold
+   that fixed the gun hand's grip works here, so the fingers take their curl
+   from the stock animation once, while nothing is happening, and then stop
+   following it. The key is only valid on the frame the gun path set it, so
+   melee and an empty hand keep the animation, matching the user's exception
+   for melee swings.

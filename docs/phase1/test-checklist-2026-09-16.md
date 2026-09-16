@@ -249,3 +249,17 @@ Quickest first, then the ones that need a mission:
       still falls back when that controller loses tracking.
     - A setting saved before today must still be selected when you open the
       menu (the stored value is unchanged; only the label moved).
+
+18. **Fingers stop following the animation** (restart; full-body/rigid-hand
+    drawn hands, animation audit item H). The drawn fingers take their curl
+    from the stock animation once per weapon, after about half a second of
+    standing still with no action, and then hold it.
+    - Stand still with a gun, then move and fire: the fingers should keep the
+      same grip rather than breathing with the idle or twitching through
+      actions.
+    - Switch weapons: each weapon should settle into its own grip.
+    - Melee swings: the fingers should still follow the swing, as the hands do.
+    - `DARKTIDEVR_IK finger_pose key=<weapon>/<hand> joints=N` in the log marks
+      each capture.
+    - Say if any weapon's held curl looks wrong for that grip: the capture
+      takes whatever the animation was showing at that moment.

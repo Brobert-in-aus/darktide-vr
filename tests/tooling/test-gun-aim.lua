@@ -214,4 +214,20 @@ do
     assert(other==live_p,'another weapon used the rifle grip')
     assert(proxy.gun_hand_offset(nil,true,live_p,live_q)==live_p,'no key: live offset')
 end
+-- The finger curl (animation audit item H) is keyed the same way, and the key
+-- is only valid on the frame the gun path set it: melee, which sets none,
+-- keeps following the animation as the user asked.
+do
+    local now=10
+    Managers={time={time=function(_,name) assert(name=='main'); return now end}}
+    assert(proxy.finger_capture_key('right')==nil,'no gun frame yet')
+    -- An invalid source: the key is recorded before any placement, so this
+    -- exercises the capture without disturbing the placement expectations.
+    proxy.align_gun_hand(world,{},oldp,oldr,newp,newr,'right','rifle',true)
+    assert(proxy.finger_capture_key('right')=='rifle/right','the weapon and the hand')
+    assert(proxy.finger_capture_key('left')=='rifle/left','each hand captures its own')
+    assert(proxy.finger_capture_key(nil)==nil)
+    now=11
+    assert(proxy.finger_capture_key('right')==nil,'a stale key is not used')
+end
 print('PASS controller gun pitch/hand: 120 poses, pitch sign/live setting/shared pitch for every item and hand, draw/reload ownership, actual simulation reader and rigid-hand relative grip preservation')

@@ -266,9 +266,41 @@ local function copy_gameplay_fingers(hand)
         print("DARKTIDEVR_IK finger_animation side=" .. hand.side ..
             " joints=" .. #hand.finger_nodes .. " owner=gameplay")
     end
+    -- Animation audit item H. The fingers followed the gameplay rig's live
+    -- animation, so they breathed with the idle and twitched through every
+    -- action. As with the gun hand's grip (item E), take the curl once per
+    -- weapon while nothing is happening and hold it.
+    --
+    -- Only while the gun path is driving this frame. With no fresh capture
+    -- key -- melee, or no weapon -- the fingers keep following the animation,
+    -- which is what the user asked for during melee swings.
+    local key = BodyProxy.finger_capture_key(hand.side)
+    local held = key and BodyProxy.finger_poses[key]
+    if held then
+        for index, node in ipairs(hand.finger_nodes) do
+            local rotation = held[index]
+            if rotation then Unit.set_local_rotation(hand.unit, node.target, rotation:unbox()) end
+        end
+        return
+    end
     for _, node in ipairs(hand.finger_nodes) do
         Unit.set_local_rotation(hand.unit, node.target,
             Unit.local_rotation(source, node.source))
+    end
+    if key and state.finger_steady then
+        local count = (state.finger_samples or 0) + 1
+        state.finger_samples = count
+        if count >= BodyProxy.FINGER_SAMPLES then
+            local pose = {}
+            for index, node in ipairs(hand.finger_nodes) do
+                pose[index] = QuaternionBox(Unit.local_rotation(source, node.source))
+            end
+            BodyProxy.finger_poses[key] = pose
+            print(string.format('DARKTIDEVR_IK finger_pose key=%s joints=%d samples=%d',
+                tostring(key), #pose, count))
+        end
+    elseif key then
+        state.finger_samples = 0
     end
 end
 
@@ -723,6 +755,17 @@ end
 -- the live offset is used. Returns the offset to place the hand with.
 BodyProxy.GUN_HAND_SAMPLES=30
 BodyProxy.gun_hand_offsets={}
+-- The finger curl per weapon and side (animation audit item H), captured after
+-- this many steady frames and then held. The key is only valid on the frame
+-- the gun path set it, so melee keeps the animation.
+BodyProxy.FINGER_SAMPLES=30
+BodyProxy.finger_poses={}
+function BodyProxy.finger_capture_key(side)
+    if not state.finger_key or not side then return nil end
+    local now=Managers and Managers.time and Managers.time:time('main')
+    if not now or state.finger_t~=now then return nil end
+    return state.finger_key..'/'..side
+end
 function BodyProxy.gun_hand_offset(key,steady,relative_position,relative_rotation)
     if not key then return relative_position,relative_rotation end
     local entry=BodyProxy.gun_hand_offsets[key]
@@ -754,6 +797,10 @@ end
 
 function BodyProxy.align_gun_hand(world,source,old_position,old_rotation,new_position,new_rotation,destination,key,steady)
     destination=destination or 'right'
+    -- The fingers read this on the same frame (item H).
+    state.finger_key=key
+    state.finger_steady=steady==true
+    state.finger_t=Managers and Managers.time and Managers.time:time('main')
     if not BodyProxy.rigid_hands_active() or source~=state.source_unit or
             not Unit.alive(source) or not Unit.has_node(source,'j_righthand') or
             (destination~='left' and destination~='right') then return false end
