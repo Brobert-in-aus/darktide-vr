@@ -149,6 +149,7 @@ do
     }, {
         online_rules = {simulation_aim_active = function(unit) return unit == local_unit end},
         weapon_hand_roles = {physical = function(role) return role == "dominant" and "right" or "left" end},
+        hand_side = function(role) return role == "support" and "left" or "right" end,
         using_native_menu_input = function() return native_menu end,
     }, function(hands, amplitude) pulses[#pulses + 1] = {hands, amplitude}; return true end)
     require = real_require

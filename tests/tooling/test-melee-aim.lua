@@ -6,7 +6,10 @@ Managers = {
     state = {game_mode = {game_mode_name = function() return "shooting_range" end}},
 }
 local hand_position, hand_rotation = {}, {}
-local presentation = {controller_aim_target = function() return hand_position, hand_rotation end}
+-- The mod resolves a role to a physical side in one place now
+-- (presentation.hand_side, docs/phase1/handedness-audit-2026-09-16.md).
+local presentation = {controller_aim_target = function() return hand_position, hand_rotation end,
+    hand_side = function(role) return role == 'support' and 'left' or 'right' end}
 local hooks = {}
 local mod = {
     hook = function(_, _, method, callback) hooks[method] = callback end,

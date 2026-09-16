@@ -29,7 +29,15 @@ end
 local mod = {io_dofile=function(_,path) return assert(modules[path:match("melee_(.+)$")]) end,
     info=function() end,warning=function() warnings=warnings+1 end}
 local tracking = {right_grip_usable=true,right_grip_tracking_live=true,body_anchor_qw=1}
+-- The mod resolves a role to a physical side in one place now
+-- (presentation.hand_side, docs/phase1/handedness-audit-2026-09-16.md).
 local presentation={controller_grip_target=function() return {1,2,3},{0,0,0,1} end}
+presentation.weapon_grip_target=function() return presentation.controller_grip_target() end
+presentation.hand_side=function(role)
+    local roles=presentation.weapon_hand_roles
+    if roles then return roles.physical(role) end
+    return role=='support' and 'left' or 'right'
+end
 local live = Live.install(mod,presentation,
     tracking,function() return mode end)
 local weapon = {weapon_template={name="fixture",actions={light={kind="sweep"}}},actions={light={_uses_matrix_data=true}}}

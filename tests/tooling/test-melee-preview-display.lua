@@ -39,7 +39,14 @@ World={create_world_gui=function(_,_,_,_,mode)
 Matrix4x4={identity=function() return {} end}
 Gui={set_visible=function(_,value) visible=value end,
     rect_3d=function() draws=draws+1 end}
+-- The mod resolves a role to a physical side in one place now
+-- (presentation.hand_side, docs/phase1/handedness-audit-2026-09-16.md).
 local presentation={mode=1,gameplay_context={ui_blocks_gameplay=function() return blocked end}}
+presentation.hand_side=function(role)
+    local roles=presentation.weapon_hand_roles
+    if roles then return roles.physical(role) end
+    return role=='support' and 'left' or 'right'
+end
 local tracking={authoring_enabled=true,right_aim_usable=true}
 local api=Display.install(mod,presentation,tracking)
 api.update(); assert(context_reads==0 and created==0,'Disabled preview acquired game state')

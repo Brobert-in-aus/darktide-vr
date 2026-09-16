@@ -85,7 +85,20 @@ is a single answer to "which side is dominant when we cannot tell".
 
 ## Suggested order, when the toggle is taken on
 
-1. One helper for the dominant/support fallback, replacing the seven copies.
+1. ~~One helper for the dominant/support fallback, replacing the seven
+   copies.~~ Done 16 September: `presentation.hand_side(role)`. It asks the
+   role policy when there is one, *including* letting it answer nothing for a
+   role it does not know, and only falls back to the right-dominant table when
+   the policy is missing altogether. That distinction matters: the melee
+   preview hides itself on an unknown role, and a fallback that answered
+   "right" regardless would have shown it instead. Five modules lost their
+   private copies of the table (`controller_aim`, `melee_live_probe`,
+   `melee_preview_display`, `online_rules`, `haptics`), and two dead
+   "module might be missing" branches went with them. Six tooling tests now
+   stub the query.
+   Left alone: `body_proxy.align_gun_hand`'s `destination = destination or
+   'right'`, which is a parameter default for a glove rather than a role
+   lookup, and the caller already passes a role-resolved side.
 2. The straightforward role swaps in the table above.
 3. The locomotion reference cluster: relabel, keep the stored value, move the
    reads to roles.

@@ -113,8 +113,7 @@ function Live.install(mod, presentation, tracking, game_mode)
             end
             return
         end
-        local hand = presentation.weapon_hand_roles and
-            presentation.weapon_hand_roles.physical("dominant") or "right"
+        local hand = presentation.hand_side("dominant")
         if state.transport_generation ~= tracking.last_transport_generation or
                 state.recenter_generation ~= tracking.head_recenter_generation or
                 state.hand ~= hand then
@@ -132,8 +131,7 @@ function Live.install(mod, presentation, tracking, game_mode)
             tracking[hand.."_grip_tracking_live"] == true and tracking.body_anchor_qw ~= nil
         local position, rotation
         if valid then
-            if presentation.weapon_grip_target then position, rotation = presentation.weapon_grip_target("dominant")
-            else position, rotation = presentation.controller_grip_target() end
+            position, rotation = presentation.weapon_grip_target("dominant")
         end
         valid = valid and position ~= nil and rotation ~= nil
         local pose

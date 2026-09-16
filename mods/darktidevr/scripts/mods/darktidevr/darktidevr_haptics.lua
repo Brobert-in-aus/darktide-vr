@@ -416,10 +416,7 @@ function Haptics.install(mod, presentation, send)
     function api.menu_sound(sound_event)
         local kind = Haptics.menu_kind(sound_event)
         if not kind or not (presentation.using_native_menu_input and presentation.using_native_menu_input()) then return end
-        local roles = presentation.weapon_hand_roles
-        local hand = roles and roles.physical("dominant")
-        if hand ~= "left" and hand ~= "right" then hand = "right" end
-        if api.pulse(hand, kind) then count(kind) end
+        if api.pulse(presentation.hand_side("dominant"), kind) then count(kind) end
     end
     if mod.hook_safe then
         local function observe(handler)

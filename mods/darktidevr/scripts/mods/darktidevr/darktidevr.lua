@@ -5758,6 +5758,20 @@ end
 -- attachments/effects and input rearming support a complete handedness option.
 presentation.weapon_hand_roles = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_weapon_hand_roles").new("right")
+-- One answer to "which physical side is this role", including when the role
+-- policy is somehow missing. Five modules each kept their own copy of the
+-- right-dominant fallback table, which is five places to correct when the
+-- handedness option lands (docs/phase1/handedness-audit-2026-09-16.md).
+-- Kept on presentation rather than as a local: the main chunk is at LuaJIT's
+-- 200-local ceiling.
+presentation.DEFAULT_HAND_SIDES = {dominant = "right", support = "left", left = "left", right = "right"}
+-- The policy answers when it is there, including answering nothing for a role
+-- it does not know; the table is only for its absence.
+function presentation.hand_side(role)
+    local roles = presentation.weapon_hand_roles
+    if roles then return roles.physical(role) end
+    return presentation.DEFAULT_HAND_SIDES[role]
+end
 presentation.online_rules = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_online_rules"
 ).install(mod, presentation, controller_observation, active_game_mode_name)

@@ -173,10 +173,7 @@ function controller_aim.install(mod, presentation, state)
 
     function controller_aim.target(side)
         side = side or "dominant"
-        if presentation.weapon_hand_roles then
-            side = presentation.weapon_hand_roles.physical(side)
-        elseif side == "dominant" then side = "right"
-        elseif side == "support" then side = "left" end
+        side = presentation.hand_side(side)
         if side ~= "left" and side ~= "right" then return nil, nil end
         if not state.authoring_enabled then return nil, nil end
         local mode_allowed = presentation.is_controller_aim_mode and

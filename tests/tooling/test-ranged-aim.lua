@@ -73,9 +73,18 @@ local mod = {
     echo=function(_,format,...) echoes[#echoes+1]=string.format(format,...) end,
 }
 local aim = assert(loadfile(arg[1]))()
-aim.install(mod, {controller_aim_target = function()
+-- The mod resolves a role to a physical side in one place
+-- (presentation.hand_side, docs/phase1/handedness-audit-2026-09-16.md); with
+-- no role policy set it answers right-dominant, as the mod does.
+local aim_presentation = {controller_aim_target = function()
     if enabled then return 20, 100 end
-end}, {authoring_enabled = true, last_sequence = 1})
+end}
+aim_presentation.hand_side = function(role)
+    local roles = aim_presentation.weapon_hand_roles
+    if roles then return roles.physical(role) end
+    return role == 'support' and 'left' or 'right'
+end
+aim.install(mod, aim_presentation, {authoring_enabled = true, last_sequence = 1})
 local actual_muzzle = aim.third_person_muzzle
 aim.third_person_muzzle = function() return nil end
 local shared = {position = 1, rotation = 10, other = "unchanged"}

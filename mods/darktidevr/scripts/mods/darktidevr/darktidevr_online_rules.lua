@@ -189,9 +189,7 @@ function Rules.install(mod, presentation, state, mode_name)
         if not unit or not Unit.alive(unit) then return end
         local machine = ScriptUnit.has_extension(unit, "character_state_machine_system")
         if not machine or not controllable[machine:current_state_name()] then return end
-        local _, rotation
-        if presentation.weapon_aim_target then _, rotation = presentation.weapon_aim_target("dominant")
-        else _, rotation = presentation.controller_aim_target() end
+        local _, rotation = presentation.weapon_aim_target("dominant")
         if not rotation then return end
         local sway_fraction = Rules.sway_fraction(mod:get("vr_sway_cancel"))
         if sway_fraction > 0 then

@@ -12,7 +12,10 @@ ScriptUnit={has_extension=function(owner,name)
     assert(owner==unit and name=='first_person_system'); return first_person
 end}
 local observed,syncs=nil,0
-local presentation={online_rules={simulation_aim_active=function(owner) return online and owner==unit end},
+-- The mod resolves a role to a physical side in one place now
+-- (presentation.hand_side, docs/phase1/handedness-audit-2026-09-16.md).
+local presentation={hand_side=function(role) return role=='support' and 'left' or 'right' end,
+    online_rules={simulation_aim_active=function(owner) return online and owner==unit end},
     is_controller_aim_mode=function() return not online end,
     keyboard_mouse_aim_rotation=function() end,
     controller_aim_target=function() return {},hand end,

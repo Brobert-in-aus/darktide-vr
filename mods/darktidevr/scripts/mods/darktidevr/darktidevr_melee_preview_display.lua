@@ -54,8 +54,7 @@ function Display.install(mod,presentation,tracking)
         local player=Managers.player and Managers.player:local_player_safe(1)
         local unit=player and player.player_unit
         if not unit or not Unit.alive(unit) then hide(true); return end
-        local side='right'
-        if presentation.weapon_hand_roles then side=presentation.weapon_hand_roles.physical('dominant') end
+        local side=presentation.hand_side('dominant')
         if side~='left' and side~='right' then hide(true); return end
         if not tracking[side..'_aim_usable'] then hide(true,'tracking_unavailable'); return end
         local extension=ScriptUnit.has_extension(unit,'weapon_system')
