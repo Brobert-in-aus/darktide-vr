@@ -28,57 +28,12 @@ tracked eye).
 
 ## Items
 
-1. **Grab and throw the servo skull** (`c50bc04`; option "Grab
-   and throw the servo skull (experimental)", default off; Skitarius with the
-   flamethrower skull talented; Weapon hand holsters need not be on).
-   - The flamethrower skull hovers in view: stock side and height, brought
-     30 cm forward instead of 15 cm behind. The log shows
-     `DARKTIDEVR_SKULL_THROW rest_forward=0.30` once. Say where it sits and
-     where it should.
-   - Put the off hand on the skull (12 cm grab zone around it) and hold grip:
-     the flamethrower order aims as with the blitz button. Let go with a
-     throwing motion: the order is issued, the skull leaves your hand at your
-     throw's speed for the first 2/5 of its flight, then settles onto its
-     real path and arrives at the target.
-   - Log lines: `released target=valid`, `flight predicted_s=... node=<n>`
-     and `arrived predicted_s=... actual_s=...`. Compare the two times at
-     about 3 m and 10 m.
-   - Also: a release without a valid target does nothing; without the talent
-     there is no grab zone; the blitz button still works as before; turning
-     the option off returns the skull to its stock place.
-   - Unattended evidence: unit tests only. No run with the talent and a
-     grabbing hand is possible without the user.
-
-2. **Strafe wobble: eye from the current anchor** (restart; always on).
-   Weapon hand holsters on, gun out: strafe left and right, then walk forward
-   and back, looking at the forearm models. They should stay steady, no
-   longer turning back and forth between two poses while strafing. Also check
-   nothing else moved: the ammo counter on the gun, the wrist display, sight
-   ADS by raising the gun, and the crosshair on the iron sights.
-   - Evidence so far: static audit (`docs/phase1/animation-audit-2026-09-16.md`)
-     and the `tracked_eye_anchor` unit test; no worn or eye-render check.
-
-3. **Displays during melee swings** (restart; always on). With a melee
-   weapon's stock swing animation playing (button melee), the forearm
-   holster models, wrist display and ammo or charge count should stay with
-   your hands and not jump by a step while moving: the body anchor is now
-   refreshed on that path too. Unit test only (`melee_simulation_visual`).
-
-4. **Gun-hand glove held on the grip** (restart; always on). Draw each gun
-   and stand still with no action for about half a second (30 frames): the
-   log gains `DARKTIDEVR_IK gun_hand_grip template=<gun> samples=30`. From
-   then on the right glove stays put on the grip while strafing, running and
-   idling, instead of following the character's animation.
-   - Look for the glove at the wrong place on the grip. If the first capture
-     happened at an odd moment, restarting the game recaptures.
-   - Known trade-off: the gun hand no longer moves during reloads or
-     inspects; it stays on the grip.
-   - Unit test only (`gun_aim` grip capture).
-
-5. **Melee charge count beside the controller grip** (restart; needs "Ammo
-   count at the hand"). With a charge melee weapon (arc maul) out, the charge
-   count sits beside the gun hand as before, now placed from the controller
-   grip rather than the drawn wrist; it should not move while strafing.
+> Trimmed on the evening of 16 September to the items still untested. The
+> user's results for the others (1 to 5, 7, 10 to 12, 17 to 21) and the fixes
+> they led to are in
+> [the handover](../handoffs/2026-09-16-session.md) ("The evening: the worn
+> session"). Numbers are kept as they were, since the handover and changelog
+> cite them.
 
 6. **Viewer survives a zero field of view** (`a5a5ed5`; viewer
    `bin\darktidevr-xr-harness.exe` rebuilt, the alpha.1 package's copy kept as
@@ -87,11 +42,6 @@ tracked eye).
    starts. Taking the headset off at the title screen and putting it back on
    should no longer leave the viewer stopped. Unit test (`core_math`) only;
    the unattended runs that hit it are recorded in the handover.
-
-7. **Body heading seeded from the head** (restart; experimental full-body
-   mode only). On entering a level with the full-body body mode on, the body
-   starts facing where you look rather than where the character root faced.
-   Nothing changes in the default hands mode. Static change; suite only.
 
 8. **Calibration T-pose guidance** (restart; open the VR calibration). The
    T-pose instruction asks for arms straight out at shoulder height, fully
@@ -113,65 +63,6 @@ tracked eye).
    it: the same distance from the wall, not pulled back. Before the fix,
    entering sideways left the view about 8 cm too far back until you
    levelled your head. If nothing looks different either way, it passes.
-
-10. **Reach to interact** (restart; Experimental features, "Reach to
-    interact", default off, new 16 September). Put a hand on a door control,
-    a pickup or a downed team mate and press grip: it interacts without you
-    looking at it.
-    - In a mission: a door console, an ammo or health crate, a grimoire or
-      scripture, a team mate to revive. Reaching with either hand.
-    - The grip must keep its own binding (weapon special on the right, class
-      ability on the left) whenever nothing is in reach.
-    - The ordinary interact button must still target what you are *looking*
-      at until your hand actually arrives at something: a hand loosely near a
-      console while you look at a crate should still interact with the crate.
-    - A holster or the gun's second grip must still win the hand: with
-      "Weapon hand holsters" on too, reaching into a holster equips rather
-      than interacting.
-    - Nothing should come into reach that you could not have used by looking
-      at it: the game's own range and filters still choose.
-    - The log line `DARKTIDEVR_REACH armed hand=... distance_m=...` marks each
-      time something comes into reach, and `DARKTIDEVR_REACH probe found=...`
-      every two seconds says what the search found along each hand, so
-      "nothing was in reach" can be told from "the search never ran".
-    - A pulse on the hand (with vibration on) when something comes into reach,
-      the same one a foregrip or an armed holster gives.
-    - The stock interaction prompt should follow what your hand reaches: it
-      reads the interactor's target unit, which is what this changes, so no
-      separate marking was built. Note that the prompt still names the stock
-      interact binding rather than "grip"; say if that reads wrongly.
-    - Unit test `reach_interact` only; the feel is worn.
-
-11. **Inspect by bringing the weapon up** (restart; Experimental features,
-    "Inspect by bringing the weapon up", default off, new 16 September).
-    Hold the weapon up to your face, turned side on, for about a third of a
-    second: the stock inspect runs until you bring it down.
-    - Try it with a gun and with a melee weapon; check the animation starts and
-      that lowering the weapon ends it.
-    - It must not start while aiming down the sights (with "Sight to eye" on,
-      bring the sights to your eye and confirm nothing inspects).
-    - Swinging a weapon past your face must not inspect (the 0.35 s dwell).
-    - A pulse on the gun hand (with vibration on) when it starts;
-      `DARKTIDEVR_INSPECT enter` in the log.
-    - Not in the Mourningstar: the game offers no weapon inspection there, so
-      the gesture is off in the hub. Try it in the Psykhanium or a mission.
-    - Unit test `weapon_inspect` only; the thresholds are worn judgements, so
-      say if it takes too much or too little to start.
-
-12. **Push to talk with a hand at your mouth** (restart; Experimental
-    features, "Push to talk with a hand at your mouth", default off, new
-    16 September). Bring your off hand up in front of your mouth, hold for
-    about half a second: the microphone opens until you take the hand away.
-    - Check the microphone actually opens (the stock voice indicator) and
-      closes on dropping the hand.
-    - Your push to talk binding must still work as it does now.
-    - It must not fire while that hand is on the gun (two-hand support on),
-      nor from a hand passing the face.
-    - A pulse on that hand (with vibration on) when it opens;
-      `DARKTIDEVR_COMMS talk` in the log.
-    - The zone is a 20 cm ball 16 cm forward and 12 cm below the eye: say if
-      you have to hold your hand somewhere unnatural, or if it opens when you
-      did not mean it to.
 
 13. **Tag what your off hand points at** (restart; Experimental features,
     "Tag what your off hand points at", default off, new 16 September). Hold
@@ -232,129 +123,6 @@ tracked eye).
     - With keyboard and mouse: a melee swing's roll still follows the mouse,
       and a controller ray still overrides it.
     - Unit tests cover the resolution; the fire-action arming is worn-only.
-
-17. **Off-hand-relative movement** (restart; Movement direction, the same
-    "still works" family as 15 and 16). The option that was labelled
-    "Left-hand-relative" now reads "Off-hand-relative" and the code behind it
-    asks for the off hand rather than the left controller. While the weapon
-    hand is fixed at the right these are the same hand, so nothing should
-    change:
-    - With it selected, walking still follows where your off hand points, and
-      still falls back when that controller loses tracking.
-    - A setting saved before today must still be selected when you open the
-      menu (the stored value is unchanged; only the label moved).
-
-18. **Fingers stop following the animation** (restart; full-body/rigid-hand
-    drawn hands, animation audit item H). The drawn fingers take their curl
-    from the stock animation once per weapon, after about half a second of
-    standing still with no action, and then hold it.
-    - Stand still with a gun, then move and fire: the fingers should keep the
-      same grip rather than breathing with the idle or twitching through
-      actions.
-    - Switch weapons: each weapon should settle into its own grip.
-    - Melee swings: the fingers should still follow the swing, as the hands do.
-    - `DARKTIDEVR_IK finger_pose key=<weapon>/<hand> joints=N` in the log marks
-      each capture.
-    - Say if any weapon's held curl looks wrong for that grip: the capture
-      takes whatever the animation was showing at that moment.
-
-19. **Crosshair feedback unchanged, and the grip claims** (restart; part of
-    the same "still works" family as 15 to 17). Two refactors, both meant to
-    change nothing: The helper that rebuilds the crosshair's charge and
-    hit pieces in the world now lets another element ask for its own passes;
-    the crosshair keeps its existing filter. Charge bars and hit feedback
-    around the aim point should look exactly as they do now, at whatever
-    crosshair scale is set.
-    - The bindings' contextual claim can now name any button rather than only
-      the two grips; the grips resolve to the same bits as before and nothing
-      uses the wider mapping yet. Weapon hand holsters and the two-hand grip
-      should take and release the grip exactly as they do now.
-
-20. **Weapon charge at the weapon** (restart; Experimental features, "Weapon
-    charge at the weapon", default off, new 16 September). A weapon with
-    charge bars (force sword, shock maul) draws them just above the weapon,
-    facing you, as well as on the HUD panel.
-    - Charge the weapon's special: the bars above the weapon should fill and
-      empty exactly with the panel's copy.
-    - Are they the right size and in the right place? They sit 6 cm forward
-      and 9 cm above the weapon hand's grip at about 10 cm across; say if they
-      are in the way of the swing, sit too far away, or are too small to read.
-      Every weapon with charge bars is melee, so they follow the controller
-      grip rather than a gun pose.
-    - This is the A/B the todo asked for: with both copies visible, say
-      whether the panel's should hide while this is on.
-    - They must disappear when you stow the weapon, open a menu, or switch to
-      a weapon with no charge.
-    - `DARKTIDEVR_WEAPON_CHARGE drawn=N` logs once when they first draw, and
-      `DARKTIDEVR_WEAPON_CHARGE probe why=...` every three seconds says why
-      not: `no_counter_for_this_weapon` is the normal answer for most weapons,
-      while `no_element`, `element_stale`, `no_weapon_hand` or
-      `counter_has_no_charge_passes` each mean something else is wrong. If
-      nothing draws, that word is the answer to send back.
-    - This did not work at all when first written: it asked for a gun pose,
-      and every weapon with charge bars is melee, so it could never draw; and
-      the charge lives in the style's material values, which were not being
-      replayed, so the bar would have been frozen at its default. Both fixed
-      the same day.
-    - Seen drawing in the game since: a run as Robobert logged `drawn=8`, all
-      eight bars, with every probe reading `why=drawn` and no warnings. So the
-      bars render with their material values applied. What the synthetic run
-      cannot do is charge the weapon or judge placement, so this item is now
-      exactly the A/B: are they in the right place at the right size, do they
-      fill and empty with the panel's copy, and should the panel's copy hide.
-      (Getting here took two fixes today that each made it dead code: it asked
-      for a gun pose when every charge weapon is melee, and it looked a
-      material up instead of creating an instance.)
-
-21. **Item radial at your hand** (restart; Experimental features, "Item radial
-    at your hand", default off; built, withdrawn after review and rebuilt on
-    16 September). Hold the carried items control (Y by default): three labels
-    appear at your off hand.
-    - Flick the stick towards one and let go: you should take that item, and
-      *only* that item, with no swap on the press. The first build swapped on
-      press and again on release; that is the thing to watch for.
-    - Try all three sectors. The Device sector could not fire at all in the
-      first build.
-    - Tap it without moving the stick: it should cycle exactly as it always
-      did (one frame later than stock, which you will not see).
-    - Tap it mid snap-turn, with the stick already hard over: nothing should be
-      picked, since the stick has to pass through neutral first.
-    - While it is open the stick must not turn you; once closed, it must.
-    - Open it, then open the menu with it still held and let go: nothing
-      should be wielded when you come back.
-    - With "Weapon hand holsters" on too: reaching into a holster and pressing
-      the carried items control should not drop the holster claim, and the
-      holster should still take the grip first.
-    - `DARKTIDEVR_ITEM_RADIAL open control=y` and `... wield mask=N` in the log.
-
-## Suggested order
-
-Quickest first, then the ones that need a mission. Items 15 to 19 are all
-"nothing should look different" passes on refactors, so they need no separate
-sitting: if items 1 to 14 behave, those are covered.
-
-1. In the Psykhanium, from the menu: 8 (calibration T-pose guidance, worth a
-   fresh calibration first, since every arm length follows it), 11 (inspect),
-   12 (push to talk), 3 (melee swings), 4 (glove grip), 7 (body heading),
-   18 (fingers held).
-2. Still in the Psykhanium: 5 (melee charge count), 2 (strafe wobble),
-   9 (eye anchor: does the view sit where it did?), 19 (crosshair unchanged),
-   15 September item 30 (grab feedback along the gun), 32 (body holsters).
-3. As Robobert (the Skitarius), still in the Psykhanium: 20 (weapon charge at
-   the weapon, the A/B on whether the HUD panel's copy should hide) and the
-   two-handed ranged weapon for 15 September item 30 and checklist item 4.
-4. In a mission (SoloPlay is enough for most): 10 (reach to interact),
-   13 (tag by pointing), 16 (shooting still arms from the weapon hand),
-   17 (off-hand-relative movement), 21 (item radial, which wants a stim and a
-   carried item to pick between), 1 (servo skull, Skitarius with the
-   flamethrower blitz talented), 15 September item 19 (teammate status).
-5. Last, because it needs a flag written and removed: 14 (the body overlay).
-6. Added through the afternoon, all "nothing should look different": 28 (the
-   native rebuild) is the first thing to confirm at launch, before anything
-   else, since the proxy and capture DLL changed; 22 to 25 are covered by
-   items 1 to 21 behaving; 26 and 27 want one look at a world marker and the
-   interaction prompt on their planes while you turn your head, which the
-   Hub gives you on the way to anything.
 
 22. **Frame profiler wrapping** (restart; no option, nothing should look
     different; the same "still works" family as 15 to 19). Every per-frame
@@ -433,25 +201,6 @@ sitting: if items 1 to 14 behave, those are covered.
     labels, wrist display and world markers otherwise unchanged (a half
     texel is below what the eye can see).
 
-## Worn results (user, 16 September evening)
-
-1 not grabbable; changes asked: swap the skull's rest side, interpolate to
-  the real skull when it is sent, follow smoothly like the HUD rather than
-  locked to the body, and work with hand holsters on. 2 fixed. 3 works.
-4 yes. 5 works but sits over the ranged weapon: put it with the charge bars,
-  or one display with a toggle (both show the same). 6 unknown. 7 no
-  full-body toggle in the VR settings menu. 8 untested. 9 unclear text.
-10 does not work, and impractical (physical reach is far shorter than the
-  interaction distance). 11 does not work, and pointless with IK hands.
-12 works (a haptic fires); wants a constant very low vibration while
-  active. 13 untested; needs a second reticle if kept; usefulness doubted.
-17 label should read "left hand relative" and switch with handedness.
-18 fine. 19 nothing noticed. 20 see 5. 21 works, but a stick flick still
-  fires its binding (flick up switches weapon) while the radial is open,
-  and the pick should trigger on the flick.
-Also: a sliver of the wrist display beside the ammo count (item 29 fixes
-it); loading and menu boards move against the head (design question open).
-
 30. **Boards re-seat on a recenter** (restart; no option; from your first
     worn observation: loading screens and flat menus turning against the
     head). Tonight's viewer log showed thirteen runtime recenters in the
@@ -528,3 +277,17 @@ it); loading and menu boards move against the head (design question open).
     push to talk is held, a hit still buzzes both hands; a sent skull
     leaves your side smoothly and comes back smoothly; with the weapon
     charge display on "bars" or "off", a gun's ammo count still shows.
+
+## Suggested order
+
+1. First at launch: 28 (the native rebuild) and 34 (the boards), both on
+   the way to anything.
+2. In the Hub: 29 (no sliver beside the ammo count), 26 and 27 (a marker and
+   the interaction prompt on their planes while you turn your head), 33 (the
+   full-body toggle and the movement label in the menu).
+3. In the Psykhanium as Robobert: 35 (the skulls), 36 (the charge display),
+   31 (the radial on the flick), 32 (the hum while talking), 37 (a hit still
+   buzzes while talking; a gun's ammo count with the charge display on
+   "bars" or "off"), 6 (two-hand), 9 (the eye anchor, entering sideways).
+4. When convenient: 8 (the calibration guidance), 22 to 25 (covered if the
+   rest behaves), 14 to 16, and 13 only if you decide tag by pointing stays.
