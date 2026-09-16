@@ -37,6 +37,7 @@ Skull.ARRIVED_METRES = 0.15
 -- so the off hand reaching for it found the holster's zone first; the
 -- medical and regular skulls rest on the left. Mirroring the rest table's
 -- side axis puts the throwable one at the off hand and the others away.
+Skull.TEST_FLAG = "./../mods/darktidevr/darktidevr_skull_throw_test.flag"
 Skull.MIRROR_SIDE = true
 -- The drawn skull follows its real position smoothly, as the HUD follows
 -- the head, instead of sitting rigidly on the body: a time constant, and a
@@ -122,8 +123,23 @@ function Skull.install(mod, presentation)
     local function now() return Managers.time and Managers.time:has_timer("main") and Managers.time:time("main") or nil end
     local function array(v) return v and {Vector3.x(v), Vector3.y(v), Vector3.z(v)} or nil end
 
+    -- The unattended test flag turns the option on for a run, as the other
+    -- hand displays' flags do, polled every 300 calls.
+    local test_poll, test_enabled = 0, false
+    local function test_flag()
+        test_poll = test_poll - 1
+        if test_poll > 0 then return test_enabled end
+        test_poll = 300
+        local file = Mods and Mods.lua and Mods.lua.io and Mods.lua.io.open(Skull.TEST_FLAG, "r")
+        if not file then test_enabled = false; return false end
+        local value = file:read(32) or ""
+        file:close()
+        test_enabled = value:match("^%s*enabled%s*$") ~= nil
+        return test_enabled
+    end
     function api.enabled()
-        if not (mod.get and mod:get("vr_skull_throw") == true) or presentation.mode ~= 1 then return false end
+        local on = (mod.get and mod:get("vr_skull_throw") == true) or test_flag()
+        if not on or presentation.mode ~= 1 then return false end
         return not (presentation.current_game_mode_name and presentation.current_game_mode_name() == "hub")
     end
 
