@@ -545,8 +545,22 @@ That is the finding underneath the afternoon: **in the contended state the
 pipeline pins the game near 55 Hz regardless of scene load**, from three
 players to nineteen, which is what a GPU shared by time-slicing predicts
 and what the no-viewer control's 133 Hz confirms from the other side. The
-one 66 Hz run has no covariate to explain it; a third `high` run and a
-second normal control decide whether it was the class or the hour.
+one 66 Hz run has no covariate to explain it, and the third `high` run
+(`hub-gpuprio-high3`, class 4, applied) settles it: **22.5 ms per pair,
+56 Hz, a 25.3 ms pair period**, the same as normal. Two of three `high`
+runs show nothing; the first was an outlier of unknown cause. Verdict:
+the process GPU scheduling class has no demonstrated effect here,
+`realtime` harms, and both flags stay opt-in and unclaimed. Four
+normal-class arms sit at 22 to 23 ms, so no further control was launched.
+
+Where that leaves the engine question the user asked: everything within
+the mod's reach that touches the contended pipeline has now been measured
+at least once and, where it seemed to move, repeated — per-queue priority,
+per-process class, the visibility padding, frame generation, the viewer's
+layers — and none of it moves the pipeline, which pins the game near
+55 Hz from three players to nineteen. The engine alone does 133 Hz. The
+levers that remain are the user's settings, listed above, and the one
+system arm nobody has run: hardware GPU scheduling on.
 
 ## Experiments for the user, with the same instruments
 
