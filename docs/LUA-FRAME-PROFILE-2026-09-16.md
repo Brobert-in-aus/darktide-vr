@@ -486,8 +486,12 @@ GPU came in at 20.4 ms, but the viewer's session-average submission rate
 fell from 119 to 82 a second, the pair period at the viewer stretched from
 23.5 to 61 ms and the run delivered 3,040 fresh pairs against 6,027 at
 `high`. The game took the GPU and starved the compositor into delivering
-half as much. So `high` is the value and `realtime` is not to be used; if
-`high` proves too aggressive worn, `above_normal` is the step down.
+half as much. `above_normal` (`hub-gpuprio-abovenormal1`, class 3,
+applied) gives little: 21.9 ms per pair, 57 Hz, a 27.7 ms pair period, a
+step near the day's noise. So the effect lives at `high`, `realtime` is not
+to be used, and `above_normal` is the gentler fallback if `high` proves
+too aggressive worn. A second `high` run (`hub-gpuprio-high2`) confirms or
+denies the size of the effect against the day's tenth of noise.
 
 ## Experiments for the user, with the same instruments
 
