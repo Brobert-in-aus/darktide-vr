@@ -4,6 +4,32 @@ All notable user-facing changes to Darktide VR. Versions follow
 `major.minor.patch` with a pre-release suffix while the mod is in alpha; the
 runtime package records the exact source revision alongside the version.
 
+## Unreleased
+
+New, each an experimental option that is off until you turn it on:
+
+- **Reach to interact.** Put a hand on a door control, a pickup or a downed
+  team mate and press grip to use it, without looking at it. The game still
+  decides what counts and how far away it may be; your hand only says which
+  direction to look in.
+- **Inspect by bringing the weapon up.** Hold your weapon up to your face and
+  turn it side on to look at it. Pointing it where you look is aiming, so this
+  never starts while you aim down the sights.
+- **Push to talk with a hand at your mouth.** Bring your off hand up in front
+  of your mouth to open your microphone, and take it away to close it. It
+  works alongside your push to talk binding, and never while that hand is on
+  the gun.
+- **Tag what your off hand points at.** Hold your off hand out ahead and press
+  tag: the tag leaves that hand instead of your weapon, so you can point
+  something out while your gun is aimed elsewhere.
+
+Fixes:
+
+- The neutral eye position the view is built from is measured correctly
+  wherever your character happens to be facing when you enter a level. It was
+  measured against the recentred play space, so entering a level turned away
+  from it lost the forward part of the offset.
+
 ## 0.2.0-alpha.1 (15 September 2026)
 
 Fixes:
