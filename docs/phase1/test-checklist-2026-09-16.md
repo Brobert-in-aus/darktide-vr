@@ -227,3 +227,14 @@ Quickest first, then the ones that need a mission:
     - Sway cancellation (if on) still applies.
     - Unit tests cover the resolution itself, including that an unknown role
       still yields no side rather than defaulting to right.
+
+16. **The last role swaps** (restart; no option, nothing should look
+    different). Four more places that meant "the weapon hand" and named the
+    right one now ask for the role, including what arms the fire action.
+    Another "still works" pass:
+    - Shooting works at all, and stops working when the weapon hand's
+      tracking drops (put that controller down) rather than when the other
+      one does.
+    - With keyboard and mouse: a melee swing's roll still follows the mouse,
+      and a controller ray still overrides it.
+    - Unit tests cover the resolution; the fire-action arming is worn-only.

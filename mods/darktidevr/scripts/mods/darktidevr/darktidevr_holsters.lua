@@ -440,7 +440,7 @@ function Holsters.install(mod, presentation, observation)
                 presentation.haptics.pulse(hand, "zone", t)
             end
             haptic_zone[hand] = armed
-            if test_enabled and hand == "right" then
+            if test_enabled and hand == presentation.hand_side("dominant") then
                 api.trace_count = (api.trace_count or 0) + 1
                 if api.trace_count % 60 == 1 then
                     local state = api.hands[hand]

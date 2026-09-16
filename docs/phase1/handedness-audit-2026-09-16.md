@@ -99,7 +99,13 @@ is a single answer to "which side is dominant when we cannot tell".
    Left alone: `body_proxy.align_gun_hand`'s `destination = destination or
    'right'`, which is a parameter default for a glove rather than a role
    lookup, and the caller already passes a role-resolved side.
-2. The straightforward role swaps in the table above.
+2. ~~The straightforward role swaps in the table above.~~ Done 16 September.
+   `presentation.hand_aim_usable(role)` joins `hand_side`, since two of them
+   ("is the weapon hand's aim live") read a tracking channel rather than a
+   pose: it arms the primary fire action and gates the downstream aim audit.
+   The keyboard-and-mouse roll input, the attachment drift diagnostic and the
+   holster debug trace now ask for the dominant hand. Only the locomotion
+   cluster below is left.
 3. The locomotion reference cluster: relabel, keep the stored value, move the
    reads to roles.
 4. The authored grip: decide whether a left-dominant player re-measures grips

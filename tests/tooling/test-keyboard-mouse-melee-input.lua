@@ -61,7 +61,9 @@ local logged={}
 local presentation={keyboard_mouse=KeyboardMouse.install({get=function() return nil end,info=function() end},function() end)}
 presentation.keyboard_mouse_enabled=function() return true end
 presentation.hub_third_person_active=function() return false end
-presentation.controller_aim_target=function() return nil end
+-- The roll input asks for the weapon hand's ray, not the right controller's
+-- (docs/phase1/handedness-audit-2026-09-16.md).
+presentation.weapon_aim_target=function() return nil end
 presentation.gameplay_context={local_input_unit=function(handler) return handler.unit end}
 local chosen,running,weapon=math.rad(45),false,{name='sword'}
 presentation.keyboard_mouse.live=function() return true end
@@ -129,11 +131,11 @@ hook(handler,0.03,1.25,9)
 near(c[1][9],1,1e-9); near((c[2][9]+math.pi)%TAU-math.pi,math.rad(-10),1e-9); near(c[3][9],math.rad(45),1e-9)
 convention='measured'
 -- A controller ray authoring this frame keeps its own aim and roll.
-presentation.controller_aim_target=function() return 'hand','rotation' end
+presentation.weapon_aim_target=function(role) assert(role=='dominant'); return 'hand','rotation' end
 cache(10,2,0)
 hook(handler,0.03,1.3,10)
 assert(c[1][10]==2 and c[3][10]==0,'keyboard and mouse roll overwrote controller aim')
-presentation.controller_aim_target=function() return nil end
+presentation.weapon_aim_target=function() return nil end
 -- The roll input runs inside the single stock-input fixed_update hook, right
 -- after the online-rules capture, where foreign handlers are already rejected.
 do

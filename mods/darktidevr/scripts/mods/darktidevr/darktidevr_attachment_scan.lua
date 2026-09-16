@@ -304,7 +304,8 @@ function Scan.install(mod, presentation)
         drift.frame = drift.frame + 1
         if drift.frame % DRIFT_EVERY ~= 0 then return end
         drift.samples = drift.samples + 1
-        local right = presentation.controller_grip_target and presentation.controller_grip_target()
+        -- The gun hand's grip, as line 398 below already asks for.
+        local right = presentation.weapon_grip_target and presentation.weapon_grip_target("dominant")
         for _, entry in ipairs(units) do
             local u = entry.unit
             if u and Unit.alive(u) then

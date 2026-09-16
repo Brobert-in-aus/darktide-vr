@@ -5772,6 +5772,16 @@ function presentation.hand_side(role)
     if roles then return roles.physical(role) end
     return presentation.DEFAULT_HAND_SIDES[role]
 end
+
+-- Whether a role's hand is tracking well enough to author aim with. The
+-- callers meant "the weapon hand's aim is live" and read the right channel
+-- (docs/phase1/handedness-audit-2026-09-16.md).
+function presentation.hand_aim_usable(role)
+    local side = presentation.hand_side(role)
+    if side == "left" then return controller_observation.left_aim_usable == true end
+    if side == "right" then return controller_observation.right_aim_usable == true end
+    return false
+end
 presentation.online_rules = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_online_rules"
 ).install(mod, presentation, controller_observation, active_game_mode_name)
@@ -5847,7 +5857,7 @@ function presentation.inject_primary_action(self, main_t, input)
         return
     end
     if not controller_observation.authoring_enabled or
-            not controller_observation.right_aim_usable or
+            not presentation.hand_aim_usable("dominant") or
             controller_observation.last_sequence <= 0 then
         return
     end
@@ -6091,7 +6101,7 @@ end
 function presentation.keyboard_mouse_roll_input(handler, frame)
     local roll = presentation.keyboard_mouse_attack_roll
     if not roll or roll == 0 or not presentation.keyboard_mouse_enabled() or
-            presentation.controller_aim_target() then return end
+            presentation.weapon_aim_target("dominant") then return end
     local cache = handler._input_cache
     local index = handler._buffer_index and handler:_buffer_index(frame)
     local yaws, pitches, rolls = cache and cache[handler._yaw_index], cache and cache[handler._pitch_index],
@@ -11597,7 +11607,7 @@ mod:hook_safe(
     function(self, unit, dt, t, frame)
         if presentation.roomscale then presentation.roomscale.capture_base(unit, frame) end
         if not controller_observation.authoring_enabled or
-                not controller_observation.right_aim_usable or
+                not presentation.hand_aim_usable("dominant") or
                 controller_observation.last_sequence <
                     controller_observation.downstream_last_sequence + 120 then
             return
