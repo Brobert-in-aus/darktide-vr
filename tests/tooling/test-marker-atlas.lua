@@ -74,6 +74,23 @@ local instance = Atlas.material("handle", "frame", {ui_scale = {"set_scalar", 1,
 assert(instance == "queue_gui:frame" and Atlas.material("handle", "frame") == instance)
 assert(find("set_scalar")[1] == instance and find("set_scalar")[2] == "ui_scale" and find("set_scalar")[3] == 2)
 
+-- A stamp names the values' revision: replayed once, skipped while the stamp
+-- holds, replayed on a new stamp, and always replayed without one.
+local function count(name)
+    local n = 0
+    for _, c in ipairs(calls) do if c.name == name then n = n + 1 end end
+    return n
+end
+local sets = count("set_scalar")
+Atlas.material("handle", "frame", {ui_scale = {"set_scalar", 1, 3}}, 7)
+assert(count("set_scalar") == sets + 1 and find("set_scalar")[3] == 3, "the first stamp replays")
+Atlas.material("handle", "frame", {ui_scale = {"set_scalar", 1, 3}}, 7)
+assert(count("set_scalar") == sets + 1, "the same stamp skips the replay")
+Atlas.material("handle", "frame", {ui_scale = {"set_scalar", 1, 4}}, 8)
+assert(count("set_scalar") == sets + 2 and find("set_scalar")[3] == 4, "a new stamp replays")
+Atlas.material("handle", "frame", {ui_scale = {"set_scalar", 1, 4}})
+assert(count("set_scalar") == sets + 3, "no stamp: replayed as before")
+
 -- A map change drops the old world's GUI without calling into that world.
 local before = #calls
 Atlas.forget_world()
@@ -87,6 +104,7 @@ Atlas.destroy()
 assert(resource.render_target == "capture" and find("destroy_gui")[2] == "world_gui")
 assert(find("destroy_resource")[1] == "display" and find("destroy_world")[2] == "render_world")
 assert(state.resource == nil and not state.ready and #state.shown == 0)
+assert(next(state.applied) == nil, "the stamps die with the instances")
 assert(not Atlas.claim(3, {x = 0, y = 0, z = 0}))
 
 -- Camera updates without a marker frame release the atlas while its world

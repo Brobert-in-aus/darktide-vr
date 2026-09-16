@@ -27,7 +27,10 @@ local function new(options)
     Atlas.WIDTH, Atlas.HEIGHT, Atlas.CELLS = WIDTH, HEIGHT, COLUMNS * ROWS
 
     local state = {generation = 0, pending = {}, shown = {}, frame = 0, stamp = -math.huge,
-        materials = {}, skipped = 0}
+        materials = {}, skipped = 0,
+        -- Per instance, the caller's stamp for the values last replayed
+        -- onto it; dies with the instances.
+        applied = {}}
     Atlas.state = state
 
     -- `api` supplies Managers, UIRenderer, Renderer, World, ScriptWorld, Gui,
@@ -69,7 +72,7 @@ local function new(options)
         state.resource, state.queue, state.render_world, state.viewport_name = nil, nil, nil, nil
         state.capture, state.display, state.world, state.world_gui = nil, nil, nil, nil
         state.world_material, state.authored_t, state.ready = nil, nil, false
-        state.pending, state.shown, state.materials = {}, {}, {}
+        state.pending, state.shown, state.materials, state.applied = {}, {}, {}, {}
     end
 
     -- The game world is being torn down (map change): its world GUI and the
@@ -194,7 +197,11 @@ local function new(options)
     -- GUI gets its own instance per handle, with the handle's recorded values
     -- (material values, ui_scale) replayed every draw. `values` maps a key to
     -- {setter, n, ...}.
-    function Atlas.material(handle, name, values)
+    -- `stamp`, when given, names the revision of `values`: once replayed
+    -- onto the instance the same stamp skips the replay, which otherwise ran
+    -- for every primitive of every frame (profile doc). Without a stamp the
+    -- values are replayed as before.
+    function Atlas.material(handle, name, values, stamp)
         local resource = state.resource
         if not resource then return nil end
         local api = state.api
@@ -203,11 +210,15 @@ local function new(options)
             instance = api.Gui.create_material(resource.gui, name)
             state.materials[handle] = instance
         end
-        if values then
+        if values and (stamp == nil or state.applied[instance] ~= stamp) then
+            local profile = api.profile
+            local mark = profile and profile.begin()
             for key, record in pairs(values) do
                 local setter = api.Material[record[1]]
                 if setter then pcall(setter, instance, key, unpack(record, 3, record[2] + 2)) end
             end
+            if mark then profile.finish("marker.material_values", mark) end
+            if stamp ~= nil then state.applied[instance] = stamp end
         end
         return instance
     end

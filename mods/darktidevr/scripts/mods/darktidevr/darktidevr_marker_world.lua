@@ -71,7 +71,10 @@ end
 local state = {scope = nil, eye = nil, guis = {}, errors = 0, api = nil,
     surface = "atlas", text_mode = "slug", text_origin = "top", layer_base = 1000,
     material_names = setmetatable({}, {__mode = "k"}), world_materials = {},
-    material_values = setmetatable({}, {__mode = "k"}), atlas_skipped = 0}
+    material_values = setmetatable({}, {__mode = "k"}), atlas_skipped = 0,
+    -- Bumped on every recorded value, so a target that has applied a
+    -- handle's values can skip replaying them until they change.
+    material_revisions = setmetatable({}, {__mode = "k"})}
 MarkerWorld.state = state
 
 -- Diagnostics. `dump` logs every routed draw for the next frames; `probe`
@@ -152,6 +155,7 @@ function MarkerWorld.note_value(setter, handle, key, ...)
         state.material_values[handle] = values
     end
     values[key] = {setter, select("#", ...), ...}
+    state.material_revisions[handle] = (state.material_revisions[handle] or 0) + 1
 end
 
 local function world_material(scope, self, material, gui)
@@ -512,7 +516,10 @@ local function atlas_call(scope, self, func, ...)
     target.render_settings = self.render_settings
     target.scale = self.scale and self.scale * factor
     target.inverse_scale = target.scale and 1 / target.scale or self.inverse_scale
+    local profile = state.api.profile
+    local mark = profile and profile.begin()
     local results = pack(pcall(func, target, ...))
+    if mark then profile.finish("marker.atlas_call", mark) end
     target.render_settings, target.scale, target.inverse_scale = settings, scale, inverse
     if not results[1] then
         state.errors = state.errors + 1
@@ -537,7 +544,11 @@ local function atlas_material(scope, material)
         scaled.ui_scale = {ui_scale[1], ui_scale[2], (tonumber(ui_scale[3]) or 1) * factor}
         values = scaled
     end
-    local instance = scope.atlas.material(material, name, values)
+    -- At factor 1 `values` is the recorded table itself, so its revision
+    -- stamps the call and the atlas skips a replay it has already applied
+    -- (profile doc: the replay ran on every primitive of every frame).
+    local stamp = factor == 1 and state.material_revisions[material] or nil
+    local instance = scope.atlas.material(material, name, values, stamp)
     return instance, instance ~= nil
 end
 

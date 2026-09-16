@@ -15672,7 +15672,7 @@ do
     presentation.marker_world.configure({
         UIRenderer = UIRenderer, Vector2 = Vector2, Vector3 = Vector3,
         Color = Color, Gui = Gui, Gui2 = Gui2, World = World, Matrix4x4 = Matrix4x4,
-        Material = Material,
+        Material = Material, profile = presentation.frame_profile,
         UIFonts = require("scripts/managers/ui/ui_fonts"),
         log = function(line) mod:info(line) end,
         material_flags = function(renderer, flags)
@@ -15729,7 +15729,7 @@ presentation.marker_atlas_api = {
     Managers = Managers, UIRenderer = UIRenderer, Renderer = Renderer, World = World,
     ScriptWorld = ScriptWorld, Gui = Gui, Gui2 = Gui2, Material = Material,
     Matrix4x4 = Matrix4x4, Vector2 = Vector2, Vector3 = Vector3, Color = Color,
-    log = function(line) mod:info(line) end,
+    log = function(line) mod:info(line) end, profile = presentation.frame_profile,
 }
 presentation.marker_atlas.configure(presentation.marker_atlas_api)
 -- Hand overlays (ammo counter, wrist display, holster labels) in front of
@@ -15766,7 +15766,7 @@ end
 -- anchor's screen position in the primary eye as the pixel origin. Screen
 -- pixels the stock widget draws relative to that origin land on the plane
 -- at the size the primary projection gives them at the anchor's distance.
-function presentation.marker_plane_scope(ui_renderer, anchor, camera, t)
+function presentation.marker_plane_scope_untimed(ui_renderer, anchor, camera, t)
     if not presentation.marker_plane_enabled() then return nil, "disabled" end
     local left, right = presentation.lod_primary_camera, presentation.lod_right_camera
     camera = camera or left
@@ -15848,6 +15848,12 @@ function presentation.marker_plane_scope(ui_renderer, anchor, camera, t)
         return nil, "error"
     end
     return scope_or_reason, detail
+end
+-- The scope is built per widget per frame outside the widget's own section,
+-- so it is timed on its own (profile doc).
+function presentation.marker_plane_scope(ui_renderer, anchor, camera, t)
+    return presentation.frame_profile.section("render.marker_scope",
+        presentation.marker_plane_scope_untimed, ui_renderer, anchor, camera, t)
 end
 -- The atlas quad for one recorded anchor: the plane through it as seen from
 -- the head centre, faced toward the viewer as the HUD panel faces its quad.
