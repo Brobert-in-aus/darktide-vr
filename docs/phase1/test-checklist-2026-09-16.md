@@ -459,3 +459,17 @@ sitting: if items 1 to 14 behave, those are covered.
   and the pick should trigger on the flick.
 Also: a sliver of the wrist display beside the ammo count (item 29 fixes
 it); loading and menu boards move against the head (design question open).
+
+30. **Loading boards follow the head; menu boards re-seat on a recenter**
+    (restart; no option; from your first worn observation: loading screens
+    and flat menus turning against the head). Tonight's viewer log showed
+    thirteen runtime recenters in the session against one last night, each
+    moving the space the world-anchored boards live in. Now: loading
+    screens, videos and cutscenes are head-locked two metres ahead (nothing
+    on them is pointed at); interactive menus keep their spatial anchor for
+    the pointer and are re-seated in front of you whenever the runtime or
+    the game recenters. Check: a loading screen stays in front of you as
+    you look around; a menu stays where it opened while you look around and
+    jumps back in front only if you recenter. If a menu still drifts
+    against the head, the recenters themselves are the next question (the
+    headset's tracking, boundary or Virtual Desktop; the mod requests none).

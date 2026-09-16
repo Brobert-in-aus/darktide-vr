@@ -1939,6 +1939,7 @@ class OpenXrProbe {
               // current head and advances the recenter generation.
               if (recenter_request_tracker.observe(newest)) {
                 reference_space_recenter_pending_ = true;
+                flat_reanchor_pending_ = true;
                 std::cout << "openxr.head_recenter=game-request count="
                           << newest.recenter_request << '\n';
               }
@@ -2775,11 +2776,29 @@ class OpenXrProbe {
               (!flat_fallback_anchor_state ||
                !darktidevr::core::same_flat_panel_anchor_identity(
                    *flat_fallback_anchor_state, presentation_state));
+          const auto flat_reanchor =
+              flat_fallback_active && use_flat_capture && flat_reanchor_pending_;
           if (use_flat_capture != flat_fallback_active ||
-              flat_presentation_changed) {
+              flat_presentation_changed || flat_reanchor) {
             flat_fallback_active = use_flat_capture;
+            flat_reanchor_pending_ = false;
             ++flat_fallback_transitions;
-            if (flat_fallback_active && current_head_valid) {
+            // Loading boards, videos and cutscenes follow the head (view
+            // space, the default pose two metres ahead): nothing on them is
+            // pointed at, and a board fixed in the world during a load is
+            // looked at obliquely and moves with every recenter. Interactive
+            // menus keep their spatial anchor for the pointer.
+            const auto head_locked_board =
+                presentation_sequence != 0 &&
+                presentation_state.mode ==
+                    darktidevr::core::SharedPresentationMode::
+                        flat_loading_or_cinematic;
+            if (flat_fallback_active && head_locked_board) {
+              flat_fallback_pose = {{0.0F, 0.0F, 0.0F, 1.0F},
+                                    {0.0F, 0.0F, -2.0F}};
+              flat_fallback_pose_valid = false;
+              flat_fallback_anchor_state = presentation_state;
+            } else if (flat_fallback_active && current_head_valid) {
               const auto world_anchored =
                   presentation_state.mode == darktidevr::core::
                                                  SharedPresentationMode::
@@ -5452,6 +5471,7 @@ class OpenXrProbe {
         if (changed->session == session_ &&
             changed->referenceSpaceType == XR_REFERENCE_SPACE_TYPE_LOCAL) {
           reference_space_recenter_pending_ = true;
+          flat_reanchor_pending_ = true;
           std::cout << "openxr.head_recenter=runtime-pending\n";
         }
       } else if (event.type == XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING) {
@@ -5541,6 +5561,12 @@ class OpenXrProbe {
       latest_controller_sample_;
   std::optional<darktidevr::math::Pose> controller_recenter_pose_;
   bool reference_space_recenter_pending_{};
+  // Set with every recenter (the runtime's reference-space change or the
+  // game's request): the spatial flat board is re-seated from the current
+  // head at the next frame instead of being left where local space moved.
+  // Worn 16 September: thirteen runtime recenters in a session left the
+  // loading and menu boards off to the side and turning against the head.
+  bool flat_reanchor_pending_{};
   std::uint64_t controller_samples_{};
   std::array<bool, 2> controller_profile_logged_{};
   float runtime_ipd_metres_{};
