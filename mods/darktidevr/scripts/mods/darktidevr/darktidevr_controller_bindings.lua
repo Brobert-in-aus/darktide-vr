@@ -331,6 +331,9 @@ function Bindings.install(mod)
         api.prepare_context(mode)
         local wanted=masks[id]
         if not wanted or wanted==0 then return false end
+        -- Nothing held, which is most frames: no control can match, so the
+        -- walk below is skipped (profile doc, the sampler gates).
+        if (physical or 0)==0 then return false end
         for _,control in ipairs(Bindings.controls) do
             if not control.axis and bit.band(physical or 0,control.bit)~=0 and
                 bit.band(selection(control),wanted)==wanted then return true end

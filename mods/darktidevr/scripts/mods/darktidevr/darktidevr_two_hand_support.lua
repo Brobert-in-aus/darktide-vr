@@ -444,21 +444,29 @@ function Support.install(mod,presentation,observation)
         sweep=true,push=true,windup=true}
     local function vector(v) return v and {Vector3.x(v),Vector3.y(v),Vector3.z(v)} end
     local function quaternion(q) return q and {Quaternion.to_elements(q)} end
+    -- Fixed keys: this runs every frame, and concatenating them each time was
+    -- three string builds a frame for nothing (profile doc, the sampler gates).
+    local TRACKING_LIVE={left='left_grip_tracking_live',right='right_grip_tracking_live'}
+    local AIM_USABLE={left='left_aim_usable',right='right_aim_usable'}
     local function live()
         local dominant=presentation.weapon_hand_roles.physical('dominant')
         local support=presentation.weapon_hand_roles.physical('support')
         return (dominant=='left' or dominant=='right') and (support=='left' or support=='right') and
-            observation[dominant..'_grip_tracking_live']==true and
-            observation[support..'_grip_tracking_live']==true and observation[dominant..'_aim_usable']==true
+            observation[TRACKING_LIVE[dominant]]==true and
+            observation[TRACKING_LIVE[support]]==true and observation[AIM_USABLE[dominant]]==true
     end
     local function snapshot(unit,dt,handler)
-        if not unit or not live() or
-            not presentation.online_rules.simulation_aim_active(unit) then return nil end
-        local machine=ScriptUnit.has_extension(unit,'character_state_machine_system')
-        if not machine or not allowed_states[machine:current_state_name()] then return nil end
+        if not unit then return nil end
+        -- The gun test first: the cheapest gate, and the one that fails in
+        -- every zone and stance but a gunfight, so the tracking, online-rule
+        -- and state-machine questions are only asked when it passes. All four
+        -- gates are pure, so the order does not change the answer.
         local weapon=ScriptUnit.has_extension(unit,'weapon_system')
         local template=weapon and weapon:weapon_template()
         if not presentation.gun_aim.is_gun(template) then return nil end
+        if not live() or not presentation.online_rules.simulation_aim_active(unit) then return nil end
+        local machine=ScriptUnit.has_extension(unit,'character_state_machine_system')
+        if not machine or not allowed_states[machine:current_state_name()] then return nil end
         local action=weapon:running_action_settings()
         if action and not allowed_actions[action.kind] then return nil end
         local equipped=weapon:_wielded_weapon(weapon._inventory_component,weapon._weapons)
