@@ -336,6 +336,9 @@ if(BUILD_TESTING)
   add_test(NAME haptics COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-haptics.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_haptics.lua")
+  add_test(NAME haptics_sample COMMAND "${LUAJIT_VALIDATOR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-haptics-sample.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_haptics.lua")
   add_test(NAME holsters COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-holsters.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_holsters.lua")
