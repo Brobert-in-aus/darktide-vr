@@ -12,6 +12,7 @@ runtime package records the exact source revision alongside the version.
   asks for the game's D3D12 queues at high priority. Measured in the Hub on
   16 September: the process class at `high` took a third off the pair's GPU
   time; queue priority did nothing. Neither changes anything without its flag.
+
 New, each an experimental option that is off until you turn it on:
 
 - **Reach to interact.** Put a hand on a door control, a pickup or a downed
