@@ -394,6 +394,32 @@ queues at high priority is one hook on the device's `CreateCommandQueue`
 in the proxy, flag-gated (`darktidevr_queue_priority.flag`), and its effect
 is read off the same eye spans.
 
+## Queue priority: no effect (`hub-queue1`)
+
+Built, deployed and measured: with `darktidevr_queue_priority.flag` the
+proxy asked for every game queue at high priority (six raised, none
+refused, no errors) and the eye spans did not move.
+
+| Hub, viewer running | normal priority (render1) | high (queue1) |
+| --- | ---: | ---: |
+| GPU left / right, ms | 11.9 / 11.7 | 11.5 / 12.1 |
+| GPU per pair, ms | 23.5 | 23.6 |
+| game loop, Hz | 54 | 56 |
+
+So D3D12 queue priority is not what arbitrates between the game and the
+other processes on this machine with hardware GPU scheduling off; the
+lever is closed. The flag stays, default off and harmless, for a retry if
+hardware scheduling is ever turned on (which changes the arbitration, and
+which the 11 September handoff believed frame generation required, though
+today's engine log reports it off and frame generation delivering).
+
+What is left is the pipeline's own work: the runtime's per-vsync
+compositing of what the viewer submits (layer count and cadence) and the
+streamer's encoder, both proportional to submissions per second and pixels
+per submission. Those are the user's settings (refresh, resolution, codec)
+and the viewer's submission shape, and they are the next experiments; the
+engine side of the frame is measured and is not the problem.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one
