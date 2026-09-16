@@ -524,8 +524,29 @@ Markers alone do not explain the spread (`nopad1` had markers in one report
 of 22 and still 23.0 ms), and the stage span cannot separate scene load
 from priority because it is a contended wall time too. The public Hub's
 population changes between launches and is the uncontrolled variable of
-the afternoon; a population count from the game's own log is the
-covariate to add before any of these arms is repeated.
+the afternoon, so it was counted from the game's own log (peers connected
+to the host at the hold's midpoint):
+
+| run | GPU per pair, ms | loop, Hz | peers at mid-hold |
+| --- | ---: | ---: | ---: |
+| render1 | 23.2 | 53 | 19 |
+| queue1 | 22.5 | 56 | 18 |
+| nopad1 | 23.0 | 55 | 13 |
+| above_normal | 21.9 | 57 | 19 |
+| high, run 1 | 15.5 | 66 | 13 |
+| high, run 2 | 22.6 | 56 | 16 |
+| realtime | 21.5 | 64 | 15 |
+| wide2 (morning, no GPU profile) | | 57 | 3 |
+
+Population is not it either: `nopad1` had the same thirteen peers as the
+fast `high` run and cost 23.0 ms, and the morning's `wide2`, with three
+players in the whole Hub, held the same 57 Hz loop as runs with nineteen.
+That is the finding underneath the afternoon: **in the contended state the
+pipeline pins the game near 55 Hz regardless of scene load**, from three
+players to nineteen, which is what a GPU shared by time-slicing predicts
+and what the no-viewer control's 133 Hz confirms from the other side. The
+one 66 Hz run has no covariate to explain it; a third `high` run and a
+second normal control decide whether it was the class or the hour.
 
 ## Experiments for the user, with the same instruments
 
