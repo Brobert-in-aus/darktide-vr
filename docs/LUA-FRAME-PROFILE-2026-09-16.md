@@ -83,6 +83,24 @@ per unit, read each component once a frame, and recompute the template's
 melee flag only when the template changes. None of that changes what is read
 or when a pulse fires, so the same lock applies.
 
+## Step 2: read less (`hub-haptics2`)
+
+Same conditions. Means across all 18 windows of each run:
+
+| | mod ms/frame | haptics µs/frame | haptics max µs, median | worst |
+| --- | ---: | ---: | ---: | ---: |
+| baseline | 0.1473 | 58.7 | 190 | 515 |
+| step 1, no closures | 0.1411 | 54.5 | 176 | 280 |
+| step 2, fewer reads | 0.1407 | 54.1 | 145 | 247 |
+
+Step 2 moved the mean by 0.4 µs, which is noise. The spikes kept falling,
+which is worth having, but the nine reads it removed were cheap Lua table
+lookups, so the "engine reads at one to two microseconds each" model was
+wrong as well. Two models wrong in a row is the signal to stop modelling and
+measure inside `sample`: the profiler nests, so the next run carries
+sub-sections for the body read, the gauges, the melee and interaction reads,
+each of the five event comparisons, and the ammo step.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one
