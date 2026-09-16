@@ -270,10 +270,15 @@ local function new(options)
             local ok, tm, pixel_size = pcall(frame_for, record.anchor)
             if ok and tm and pixel_size then
                 local w, h = CELL_WIDTH * pixel_size, CELL_HEIGHT * pixel_size
-                local u0 = (record.x - CELL_WIDTH * 0.5) / WIDTH
-                local u1 = (record.x + CELL_WIDTH * 0.5) / WIDTH
-                local v0 = (record.y - CELL_HEIGHT * 0.5) / HEIGHT
-                local v1 = (record.y + CELL_HEIGHT * 0.5) / HEIGHT
+                -- A half-texel inset keeps the filter from blending the
+                -- neighbouring cell's edge texels into this one: the wrist
+                -- display's bars showed as a sliver beside the ammo count
+                -- (worn, 16 September evening).
+                local iu, iv = 0.5 / WIDTH, 0.5 / HEIGHT
+                local u0 = (record.x - CELL_WIDTH * 0.5) / WIDTH + iu
+                local u1 = (record.x + CELL_WIDTH * 0.5) / WIDTH - iu
+                local v0 = (record.y - CELL_HEIGHT * 0.5) / HEIGHT + iv
+                local v1 = (record.y + CELL_HEIGHT * 0.5) / HEIGHT - iv
                 -- Local x runs to the viewer's left, so U is reversed; local y
                 -- runs up, so V (top = 0) is reversed.
                 api.Gui2.bitmap_3d(state.world_gui, state.world_material, nil, tm, 1000,

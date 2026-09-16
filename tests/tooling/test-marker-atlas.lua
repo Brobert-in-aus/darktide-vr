@@ -59,7 +59,11 @@ local quad = find("bitmap_3d")
 local args = quad[6]
 assert(quad[2] == state.world_material and quad[4] == "tm" and quad[5] == 1000)
 assert(math.abs(args.size[1] - 2.048) < 1e-9 and math.abs(args.size[2] - 1.024) < 1e-9)
-assert(args.uv00[1] == 0.5 and args.uv00[2] == 0.5 and args.uv11[1] == 0 and args.uv11[2] == 0.25,
+-- The cell's UVs, inset by half a texel so the filter never samples the
+-- neighbouring cell.
+local iu, iv = 0.5 / Atlas.WIDTH, 0.5 / Atlas.HEIGHT
+assert(math.abs(args.uv00[1] - (0.5 - iu)) < 1e-9 and math.abs(args.uv00[2] - (0.5 - iv)) < 1e-9 and
+    math.abs(args.uv11[1] - iu) < 1e-9 and math.abs(args.uv11[2] - (0.25 + iv)) < 1e-9,
     "the third cell, U and V reversed as on the HUD panel quad")
 for i = 1, Atlas.CELLS do assert(Atlas.claim(2, {x = i, y = 2, z = 0})) end
 local none, why = Atlas.claim(2, {x = 0, y = 0, z = 0})

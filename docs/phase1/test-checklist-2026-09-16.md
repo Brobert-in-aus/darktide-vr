@@ -430,3 +430,13 @@ sitting: if items 1 to 14 behave, those are covered.
     queue_priority_requested=0 queue_priority=0`. If the
     game fails to start or the picture is missing, the first suspect is the
     proxy: `Darktide VR Mode.bat` status reports the proxy's state.
+
+29. **Atlas cells inset by half a texel** (restart; no option; from your
+    first worn observation this evening: a sliver of the wrist display's
+    health, toughness and stamina bars beside the ammo count on the gun
+    hand). The hand overlays and world markers share atlas cells whose quads
+    sampled exactly to the cell edge, so the filter blended in the
+    neighbour's edge texels. The quads now sample half a texel inside the
+    cell. Check: no sliver beside the ammo count; the ammo count, holster
+    labels, wrist display and world markers otherwise unchanged (a half
+    texel is below what the eye can see).
