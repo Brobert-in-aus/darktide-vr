@@ -263,3 +263,10 @@ Quickest first, then the ones that need a mission:
       each capture.
     - Say if any weapon's held curl looks wrong for that grip: the capture
       takes whatever the animation was showing at that moment.
+
+19. **Crosshair feedback unchanged** (restart; part of the same "still works"
+    family as 15 to 17). The helper that rebuilds the crosshair's charge and
+    hit pieces in the world now lets another element ask for its own passes;
+    the crosshair keeps its existing filter. Charge bars and hit feedback
+    around the aim point should look exactly as they do now, at whatever
+    crosshair scale is set.
