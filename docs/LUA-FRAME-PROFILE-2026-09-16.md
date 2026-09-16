@@ -60,6 +60,29 @@ Nine more sections sit below 3 µs each.
   world are not wrapped, and are where the larger Lua cost is likely to be.
   Widening coverage comes before optimising the small things above.
 
+## Step 1: haptics without per-frame closures (`hub-haptics1`)
+
+Same Hub conditions. Across 18 windows, `input.haptics` went from
+56.3-61.6 us a frame (baseline) to 51.6-57.2 (after): about 5 us, 7 % of the
+section, and the whole wrapped set from about 0.147 to 0.141 ms a frame. The
+spikes fell more than the mean: baseline maxima reached 390, 433 and 515 us;
+after, 280 at most. That is consistent with less garbage-collector pressure,
+which is what removing a dozen allocations a frame would do.
+
+So the closures were real but never the main cost. What remains, about 54 us,
+is the *number of engine reads*: each frame `sample` makes roughly 35 to 40
+calls into the stock unit data (`read_component`), the extension registry
+(`has_extension`, five of them, for extensions that do not change while the
+unit lives), the weapon template (fetched and its keyword list scanned every
+frame to learn whether it is melee), and the ammo readout. Several reads are
+duplicated within the frame: `block` twice, `action_module_charge` twice,
+`inventory` twice. At one to two microseconds a call that is the whole figure.
+
+Step 2 is therefore to read less, not to allocate less: cache the extensions
+per unit, read each component once a frame, and recompute the template's
+melee flag only when the template changes. None of that changes what is read
+or when a pulse fires, so the same lock applies.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one
