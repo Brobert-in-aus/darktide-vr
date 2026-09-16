@@ -353,6 +353,33 @@ Which of the three, and whether it is CPU contention or GPU contention, is
 the next measurement: the same run with the CPU render timing and the
 native GPU eye profile armed, with and without the viewer.
 
+## The frame is GPU time under contention (`hub-render1`)
+
+The same Hub run with the CPU render timing, the native GPU eye profile and
+the frame profiler all armed, through the viewer:
+
+| Hub, viewer running | per pair |
+| --- | ---: |
+| main-thread render calls (left + right + wrapper) | 0.19 ms |
+| GPU, left eye | 11.9 ms avg (p50 8.9, p95 18.9) |
+| GPU, right eye | 11.7 ms avg (p50 13.9, p95 17.0) |
+| GPU, both eyes | 23.5 ms |
+| game loop | 54 Hz |
+| fresh pairs at the viewer | 27.5/s |
+
+Nothing on the CPU side of the engine blocks: the render calls are two
+tenths of a millisecond. The GPU spends 23.5 ms on the two eyes, which is
+the 54 Hz loop; and the same targets ran at 118 Hz with no viewer, so the
+eye's GPU time at least triples when the viewer's reprojection at 111
+submissions a second and Virtual Desktop's encoder share the GPU. Hardware
+GPU scheduling is off on this machine, so the engines are time-sliced by
+the OS scheduler and priority. That is where the Hub's frame goes: not the
+engine's second eye, not the mod's Lua, but the pipeline's GPU work
+interleaved with the game's.
+
+`Application.get_frame_times` is nil in retail; the engine offers no frame
+time of its own to Lua.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one
