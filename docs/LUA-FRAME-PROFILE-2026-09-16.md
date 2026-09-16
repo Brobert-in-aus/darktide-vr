@@ -196,6 +196,33 @@ for a reason `boot_init.lua` does not state. So: a flag, an unattended Hub
 run with the profiler, the numbers and the error count, and the decision is
 the user's. Never on by default.
 
+## The heavy paths, measured (`hub-wide1`)
+
+With the post-animation body pass, the HUD panel draw, the marker-world
+widget replay, the input-manager hook and the stereo UI sync wrapped as well,
+the mod's Lua in the Hub is **0.30 ms per input frame**, about 2.7 % of the
+90 Hz budget (the earlier 0.15 was the samplers only). The order of cost:
+
+| Section | µs/frame | note |
+| --- | ---: | --- |
+| input.manager_update | 63.7 | the `InputManager.update` hook: input-service scan and the menu input probe, every gameplay frame |
+| input.haptics | 59.9 | on in the saved settings |
+| render.marker_widget | 41.2 | the HUD widget replay onto the stereo panel, once a frame here |
+| render.hud_panel | 17.2 | |
+| input.two_hand | 13.2 | |
+| input.communication | 11.2 | |
+| draw.ammo_readout | 8.2 | |
+| post.body_ik | 2.5 | the body pass is cheap in tracked-hands mode |
+| everything else | < 7 each | |
+
+`render.ui_stereo_sync` did not run in this context. About 7 us of the total
+is the profiler's own per-section overhead at 33 sections.
+
+The next target is the input-manager hook: a menu input scan during gameplay,
+every frame, is work that could run far less often or not at all while no
+menu is up, and it is the one place a reduction of tens of microseconds is
+available without touching what the player feels.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one
