@@ -3249,7 +3249,9 @@ presentation.native_startup = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_native_startup")
 -- Per-frame cost of the mod's own Lua by section, opt-in (frame profile flag).
 presentation.frame_profile = mod:io_dofile(
-    "darktidevr/scripts/mods/darktidevr/darktidevr_frame_profile").install(mod)
+    "darktidevr/scripts/mods/darktidevr/darktidevr_frame_profile").install(mod,
+    function() return tonumber(ui_native_capture.dtvr_qpc_ticks()) end,
+    function() return tonumber(ui_native_capture.dtvr_qpc_frequency()) end)
 function presentation.refresh_performance_profile_request()
     local startup = presentation.native_startup.read(Mods.lua.io.open)
     diagnostic_render_hooks_requested = startup.diagnostic_hooks

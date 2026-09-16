@@ -4,10 +4,12 @@
 -- Opt-in through darktidevr_frame_profile.flag; players never have it. Pure
 -- aggregation here, engine side below.
 --
--- Sections are timed with Application.time_since_launch, which the stock
--- scripts use as their high-resolution clock; os.clock is a millisecond on
--- Windows and useless for this. When the flag is off a section costs one
--- branch and a tail call.
+-- Sections are timed with the native module's QueryPerformanceCounter
+-- (dtvr_qpc_ticks / dtvr_qpc_frequency, which the render-timing diagnostic
+-- already uses). Not Application.time_since_launch: that is frame-quantised,
+-- and the first Hub run with it reported every section as exactly zero. Not
+-- os.clock either, which is a millisecond on Windows. When the flag is off a
+-- section costs one branch and a tail call.
 local Profile = {}
 
 Profile.FLAG = "./../mods/darktidevr/darktidevr_frame_profile.flag"
@@ -70,11 +72,18 @@ function Profile.report(acc, top)
 end
 
 -- Engine side.
-function Profile.install(mod)
+-- ticks() returns the counter, frequency() its rate per second; both come
+-- from the installer, since the native module handle is a local there.
+function Profile.install(mod, ticks, frequency)
     local api = {}
     local acc = Profile.new()
     local enabled, poll, reports, next_report = false, 0, 0, nil
-    local clock = Application and Application.time_since_launch
+    local clock, per_tick = ticks, nil
+    local function measure()
+        local ok, hz = pcall(frequency)
+        if ok and type(hz) == "number" and hz > 0 then per_tick = 1 / hz; return true end
+        return false
+    end
 
     local function flag()
         poll = poll - 1
@@ -84,7 +93,8 @@ function Profile.install(mod)
         local file = io_api and io_api.open(Profile.FLAG, "r")
         if not file then enabled = false; return false end
         local value = file:read("*all"); file:close()
-        enabled = type(value) == "string" and value:match("^%s*enabled%s*$") ~= nil and clock ~= nil
+        enabled = type(value) == "string" and value:match("^%s*enabled%s*$") ~= nil and
+            clock ~= nil and (per_tick ~= nil or measure())
         return enabled
     end
 
@@ -97,7 +107,7 @@ function Profile.install(mod)
         if not enabled then return fn(a, b, c, d, e, f, g, h) end
         local started = clock()
         local r1, r2, r3, r4 = fn(a, b, c, d, e, f, g, h)
-        Profile.add(acc, name, clock() - started)
+        Profile.add(acc, name, (clock() - started) * per_tick)
         return r1, r2, r3, r4
     end
 
@@ -113,7 +123,7 @@ function Profile.install(mod)
         end
         if not was then
             acc = Profile.new(); next_report = nil
-            mod:info("DARKTIDEVR_FRAME_PROFILE enabled clock=%s", tostring(clock ~= nil))
+            mod:info("DARKTIDEVR_FRAME_PROFILE enabled clock=qpc hz=%.0f", per_tick and 1 / per_tick or 0)
         end
         Profile.frame(acc)
         if type(t) ~= "number" then return end
