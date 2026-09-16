@@ -213,3 +213,17 @@ Quickest first, then the ones that need a mission:
    13 (tag by pointing), 1 (servo skull, Skitarius with the flamethrower
    blitz talented), 15 September item 19 (teammate status).
 4. Last, because it needs a flag written and removed: 14 (the body overlay).
+
+15. **Hand role resolution in one place** (restart; no option, nothing should
+    look different). Five modules each had their own copy of the
+    right-dominant fallback table and now ask `presentation.hand_side(role)`.
+    Nothing about behaviour is meant to change, so this is a "still works"
+    pass rather than a new thing to try:
+    - Aim, fire and melee with a gun and a melee weapon: the crosshair, the
+      drawn weapon and hit feedback follow the weapon hand as before.
+    - The melee preview (if on) still appears and still hides when tracking
+      drops.
+    - Menu haptics (with vibration on) still tick on the weapon hand.
+    - Sway cancellation (if on) still applies.
+    - Unit tests cover the resolution itself, including that an unknown role
+      still yields no side rather than defaulting to right.
