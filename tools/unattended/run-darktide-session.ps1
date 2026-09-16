@@ -212,9 +212,21 @@ try {
                     $adbCandidate = if ($adbCommand) { $adbCommand.Source } else { $null }
                 }
                 if ($adbCandidate) {
-                    $powerLines = @(& $adbCandidate shell dumpsys power 2>$null)
+                    # The Quest is usually two transports (USB and Wi-Fi), and a
+                    # bare `adb shell` refuses with "more than one device"; take
+                    # the first authorized serial, preferring the USB one (no
+                    # colon), as the preflight's transport resolver does.
+                    $serials = @(& $adbCandidate devices 2>$null |
+                        Select-String -Pattern '^(\S+)\s+device\s*$' |
+                        ForEach-Object { $_.Matches[0].Groups[1].Value })
+                    $serial = @($serials | Where-Object { $_ -notmatch ':' })[0]
+                    if (-not $serial) { $serial = $serials[0] }
+                    $adbArguments = @()
+                    if ($serial) { $adbArguments = @('-s', $serial) }
+                    $powerLines = @(& $adbCandidate @adbArguments shell dumpsys power 2>$null)
                     $wake = ($powerLines | Select-String -Pattern 'mWakefulness=(\w+)' | Select-Object -First 1)
                     if ($wake) { $summary.headset_wakefulness_mid = $wake.Matches[0].Groups[1].Value }
+                    $summary.headset_serial_mid = $serial
                 }
             } catch {}
             try {
