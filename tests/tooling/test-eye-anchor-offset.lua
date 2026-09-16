@@ -69,4 +69,16 @@ assert(presentation.cyclopean_eye_offset({yaw = 0, pitch = math.rad(10)}, offset
 assert(select(2, presentation.cyclopean_eye_offset(nil, offset_for(0))) == 'aim_unavailable')
 assert(select(2, presentation.cyclopean_eye_offset({yaw = 0, pitch = 0 / 0}, offset_for(0))) == 'aim_unavailable')
 
-print('eye_anchor_offset=pass aim_frame cyclopean pitch_defers')
+-- A capture deferred too long takes whatever pitch it can get: the fallback
+-- origin is about 8.5 cm behind the real one, and the jump when the player
+-- finally looks up is a world translation, which is visible in a headset.
+local late = presentation.cyclopean_eye_offset({yaw = 0, pitch = math.rad(40)}, offset_for(0), true)
+assert(late ~= nil, 'past the deadline the pitch gate is waived')
+near(Vector3.x(late), 0, 1e-9, 'still cyclopean when waived')
+assert(presentation.EYE_CAPTURE_DEADLINE > 0 and presentation.EYE_CAPTURE_DEADLINE <= 5,
+    'a couple of seconds, not a minute')
+-- Waiving the pitch gate does not waive the checks that mean "no usable aim".
+assert(presentation.cyclopean_eye_offset(nil, offset_for(0), true) == nil)
+assert(presentation.cyclopean_eye_offset({yaw = 0, pitch = 0 / 0}, offset_for(0), true) == nil)
+
+print('eye_anchor_offset=pass aim_frame cyclopean pitch_defers deadline')

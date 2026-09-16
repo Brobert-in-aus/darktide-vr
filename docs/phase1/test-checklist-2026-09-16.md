@@ -280,13 +280,21 @@ tracked eye).
     - Charge the weapon's special: the bars above the weapon should fill and
       empty exactly with the panel's copy.
     - Are they the right size and in the right place? They sit 6 cm forward
-      and 9 cm above the gun's attach point at about 10 cm across; say if they
-      cover the sights, sit too far away, or are too small to read.
+      and 9 cm above the weapon hand's grip at about 10 cm across; say if they
+      are in the way of the swing, sit too far away, or are too small to read.
+      Every weapon with charge bars is melee, so they follow the controller
+      grip rather than a gun pose.
     - This is the A/B the todo asked for: with both copies visible, say
       whether the panel's should hide while this is on.
     - They must disappear when you stow the weapon, open a menu, or switch to
       a weapon with no charge.
     - `DARKTIDEVR_WEAPON_CHARGE drawn=N` logs once when they first draw.
+    - This did not work at all when first written: it asked for a gun pose,
+      and every weapon with charge bars is melee, so it could never draw; and
+      the charge lives in the style's material values, which were not being
+      replayed, so the bar would have been frozen at its default. Both fixed
+      the same day, but neither has been seen working, so treat this item as
+      "does it work at all" rather than a fine judgement.
 
 ## Suggested order
 

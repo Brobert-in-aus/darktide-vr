@@ -40,4 +40,40 @@ assert(not Charge.fresh(100, 99), 'time running backwards is not fresh')
 assert(not Charge.fresh(nil, 100) and not Charge.fresh(100, nil))
 assert(Charge.fresh(100, 100.5, 1), "the limit is the caller's")
 
-print('weapon_charge_display=pass accept rebuild scale freshness')
+-- The charge itself lives in the style's material_values, not in the pass
+-- geometry, so those have to be replayed onto a material instance or the bar
+-- draws at the material's authored default for ever (review, 16 September).
+Vector2 = function(x, y) return {'v2', x, y} end
+Vector3 = function(x, y, z) return {'v3', x, y, z} end
+Quaternion = {from_elements = function(x, y, z, w) return {'v4', x, y, z, w} end}
+local set = {}
+local Material = {
+    set_scalar = function(m, k, v) set[#set + 1] = {'scalar', m, k, v} end,
+    set_vector2 = function(m, k, v) set[#set + 1] = {'vector2', m, k, v} end,
+    set_vector3 = function(m, k, v) set[#set + 1] = {'vector3', m, k, v} end,
+    set_vector4 = function(m, k, v) set[#set + 1] = {'vector4', m, k, v} end,
+    set_texture = function(m, k, v) set[#set + 1] = {'texture', m, k, v} end,
+}
+-- The shapes the stock templates use: a bare number, and tables of 1 to 4.
+local applied = Charge.apply_material_values(Material, 'handle', {
+    progress = 0.25, amount = {0.75}, arc_top_bottom = {0.1, 0.9},
+    fillcolor = {1, 0.5, 0}, glow = {1, 2, 3, 4}, texture = 'some/texture',
+    cleared = ''})
+assert(applied == 7, 'every value applied: ' .. tostring(applied))
+local kinds = {}
+for _, entry in ipairs(set) do kinds[entry[1]] = (kinds[entry[1]] or 0) + 1 end
+assert(kinds.scalar == 2, 'a bare number and a one-entry table are both scalars')
+assert(kinds.vector2 == 1 and kinds.vector3 == 1 and kinds.vector4 == 1)
+assert(kinds.texture == 2, 'a name and an empty string, which clears it')
+for _, entry in ipairs(set) do
+    if entry[3] == 'cleared' then assert(entry[4] == nil, 'an empty string clears the texture') end
+    if entry[3] == 'progress' then assert(entry[4] == 0.25) end
+end
+-- Nothing usable is not an error; it just applies nothing.
+assert(Charge.apply_material_values(Material, 'handle', nil) == 0)
+assert(Charge.apply_material_values(nil, 'handle', {a = 1}) == 0)
+assert(Charge.apply_material_values(Material, nil, {a = 1}) == 0)
+assert(Charge.apply_material_values(Material, 'handle', {ignored = true}) == 0,
+    'a value of a kind the engine has no setter for')
+
+print('weapon_charge_display=pass accept rebuild scale freshness material_values')

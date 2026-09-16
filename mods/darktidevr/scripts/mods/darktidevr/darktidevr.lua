@@ -4933,11 +4933,20 @@ presentation.MAX_EYE_CAPTURE_PITCH = math.rad(15)
 -- it can be applied in the recenter basis. A cyclopean camera has no
 -- anatomical lateral offset, so only depth and height are kept. nil with a
 -- reason when the aim is pitched too far to measure from.
-function presentation.cyclopean_eye_offset(aim_rotation, offset)
+-- A capture deferred this long takes whatever pitch it can get. Waiting for a
+-- level view is right at first, but a player who spends a minute looking down
+-- would otherwise sit on the fallback origin, which is about 8.5 cm behind the
+-- real one; and the jump when they finally look up is a world translation, not
+-- a rotation, which is visible in a headset.
+presentation.EYE_CAPTURE_DEADLINE = 2
+
+function presentation.cyclopean_eye_offset(aim_rotation, offset, allow_pitch)
     if not aim_rotation or not offset then return nil, "aim_unavailable" end
     local ok, pitch = pcall(Quaternion.pitch, aim_rotation)
     if not ok or type(pitch) ~= "number" or pitch ~= pitch then return nil, "aim_unavailable" end
-    if math.abs(pitch) > presentation.MAX_EYE_CAPTURE_PITCH then return nil, "aim_pitched" end
+    if not allow_pitch and math.abs(pitch) > presentation.MAX_EYE_CAPTURE_PITCH then
+        return nil, "aim_pitched"
+    end
     local yaw_only = Quaternion.from_yaw_pitch_roll(Quaternion.yaw(aim_rotation), 0, 0)
     local local_offset = presentation.rotate_vector(
         presentation.inverse_quaternion(yaw_only), offset)
@@ -4966,6 +4975,26 @@ function presentation.body_camera_anchor(unit)
             return head_position + Vector3.up() * 0.05,
                 "first_person_fallback", left_eye, right_eye, captured
         end
+        -- Measured in the aim's own yaw frame, so the avatar's facing (and
+        -- the root's turn to run at an angle) leaves the constant alone.
+        -- Before the dev-flag read below: while this refuses, the whole block
+        -- runs again every call, and that file was being opened three times a
+        -- frame for as long as the player kept looking down.
+        local waiting_since = observation.body_camera_eye_offset_since
+        local now = Managers and Managers.time and Managers.time:time("main")
+        if not waiting_since and now then
+            observation.body_camera_eye_offset_since = now
+            waiting_since = now
+        end
+        local overdue = now ~= nil and waiting_since ~= nil and
+            now - waiting_since >= presentation.EYE_CAPTURE_DEADLINE
+        local local_offset, refused = presentation.cyclopean_eye_offset(
+            component.rotation, model_eye - head_position, overdue)
+        if not local_offset then
+            return head_position + Vector3.up() * 0.05,
+                refused == "aim_pitched" and "aim_pitched" or "first_person_fallback",
+                left_eye, right_eye, captured
+        end
         local reverse_order_flag = Mods.lua.io.open(
             "./../mods/darktidevr/darktidevr_reverse_eye_order.flag",
             "r")
@@ -4983,15 +5012,6 @@ function presentation.body_camera_anchor(unit)
                 "DARKTIDEVR_STEREO reverse_eye_order=%s source=test_flag",
                 tostring(reverse_order_enabled))
         end
-        -- Measured in the aim's own yaw frame, so the avatar's facing (and
-        -- the root's turn to run at an angle) leaves the constant alone.
-        local local_offset, refused = presentation.cyclopean_eye_offset(
-            component.rotation, model_eye - head_position)
-        if not local_offset then
-            return head_position + Vector3.up() * 0.05,
-                refused == "aim_pitched" and "aim_pitched" or "first_person_fallback",
-                left_eye, right_eye, captured
-        end
         observation.body_camera_eye_offset_unit = unit
         observation.body_camera_eye_offset_x = Vector3.x(local_offset)
         observation.body_camera_eye_offset_y = Vector3.y(local_offset)
@@ -5002,9 +5022,9 @@ function presentation.body_camera_anchor(unit)
         local aim_yaw = Quaternion.yaw(component.rotation)
         local basis_yaw = Quaternion.yaw(active_base_rotation:unbox())
         mod:info("DARKTIDEVR_ANCHOR eye_capture depth_m=%.4f height_m=%.4f " ..
-            "aim_from_basis_deg=%.1f source=%s",
+            "aim_from_basis_deg=%.1f source=%s overdue=%s",
             Vector3.y(local_offset), Vector3.z(local_offset),
-            math.deg(aim_yaw - basis_yaw), tostring(eye_source))
+            math.deg(aim_yaw - basis_yaw), tostring(eye_source), tostring(overdue == true))
     end
     local basis = active_base_rotation and active_base_rotation:unbox() or
         Quaternion.identity()
@@ -16043,6 +16063,7 @@ mod.on_disabled = function()
     pcall(presentation.communication_input.cancel)
     presentation.push_to_talk.cancel()
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
+    if presentation.weapon_charge_display then pcall(presentation.weapon_charge_display.destroy) end
     if presentation.ammo_readout then pcall(presentation.ammo_readout.destroy) end
     if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
     if presentation.wrist_display then pcall(presentation.wrist_display.destroy) end
@@ -16069,6 +16090,7 @@ mod.on_unload = function()
     pcall(presentation.communication_input.cancel)
     presentation.push_to_talk.cancel()
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
+    if presentation.weapon_charge_display then pcall(presentation.weapon_charge_display.destroy) end
     if presentation.ammo_readout then pcall(presentation.ammo_readout.destroy) end
     if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
     if presentation.wrist_display then pcall(presentation.wrist_display.destroy) end
