@@ -215,6 +215,11 @@ return {
                         default_value = false,
                     },
                     {
+                        setting_id = "vr_weapon_charge",
+                        type = "checkbox",
+                        default_value = false,
+                    },
+                    {
                         setting_id = "vr_wrist_display",
                         type = "checkbox",
                         default_value = false,

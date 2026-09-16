@@ -5390,6 +5390,9 @@ local function update_stereo(manager)
             mod:error("DARKTIDEVR_MARKER_ATLAS draw_failed error=%s", tostring(atlas_error))
         end
     end
+    if presentation.weapon_charge_display then
+        presentation.weapon_charge_display.draw(world,clean_position,clean_rotation)
+    end
     if presentation.crosshair_feedback then
         presentation.crosshair_feedback.draw(world,clean_position,clean_rotation)
     end
@@ -14945,8 +14948,12 @@ presentation.read_desktop_mirror = function()
 end
 presentation.hud_panel.read_mirror = presentation.read_desktop_mirror
 presentation.hud_panel.install(mod)
-presentation.crosshair_feedback = mod:io_dofile(
-    "darktidevr/scripts/mods/darktidevr/darktidevr_crosshair_feedback"
+presentation.crosshair_feedback_module = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_crosshair_feedback")
+presentation.crosshair_feedback = presentation.crosshair_feedback_module.install(
+    mod,presentation,controller_observation)
+presentation.weapon_charge_display = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_weapon_charge_display"
 ).install(mod,presentation,controller_observation)
 presentation.gameplay_ui = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_gameplay_ui_input"

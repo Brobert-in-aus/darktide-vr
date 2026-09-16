@@ -270,3 +270,18 @@ Quickest first, then the ones that need a mission:
     the crosshair keeps its existing filter. Charge bars and hit feedback
     around the aim point should look exactly as they do now, at whatever
     crosshair scale is set.
+
+20. **Weapon charge at the weapon** (restart; Experimental features, "Weapon
+    charge at the weapon", default off, new 16 September). A weapon with
+    charge bars (force sword, shock maul) draws them just above the weapon,
+    facing you, as well as on the HUD panel.
+    - Charge the weapon's special: the bars above the weapon should fill and
+      empty exactly with the panel's copy.
+    - Are they the right size and in the right place? They sit 6 cm forward
+      and 9 cm above the gun's attach point at about 10 cm across; say if they
+      cover the sights, sit too far away, or are too small to read.
+    - This is the A/B the todo asked for: with both copies visible, say
+      whether the panel's should hide while this is on.
+    - They must disappear when you stow the weapon, open a menu, or switch to
+      a weapon with no charge.
+    - `DARKTIDEVR_WEAPON_CHARGE drawn=N` logs once when they first draw.
