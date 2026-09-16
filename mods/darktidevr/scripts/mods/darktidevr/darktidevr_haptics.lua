@@ -490,6 +490,19 @@ function Haptics.install(mod, presentation, send)
         return cached
     end
     local last_template, last_melee = nil, false
+    -- Sub-sections for the frame profiler (profile doc, step 3): where the
+    -- microseconds go inside one sample. A pass-through without it.
+    local function section(name, fn, a, b, c, d, e, f)
+        local profile = presentation.frame_profile
+        if profile then return profile.section(name, fn, a, b, c, d, e, f) end
+        return fn(a, b, c, d, e, f)
+    end
+    local function body_events_of(previous_body, body) return Haptics.body_events(previous_body, body) end
+    local function gauge_events_of(previous_gauges, gauges) return Haptics.gauge_events(previous_gauges, gauges) end
+    local function melee_events_of(previous_melee, reading) return Haptics.melee_events(previous_melee, reading) end
+    local function interaction_events_of(previous_interaction, interaction)
+        return Haptics.interaction_events(previous_interaction, interaction)
+    end
     local function read_body(unit, unit_data)
         local health = extension(unit, "health_system", "health")
         local toughness = extension(unit, "toughness_system", "toughness")
@@ -551,9 +564,9 @@ function Haptics.install(mod, presentation, send)
         -- Once, for the gauges and the ammo step both.
         local inventory = unit_data and component(unit_data, "inventory")
         if unit_data then
-            local body = read_body(unit, unit_data)
+            local body = section("haptics.read_body", read_body, unit, unit_data)
             -- The first event this mode plays; the rest of the frame is one pulse.
-            for _, event in ipairs(Haptics.body_events(previous_body, body)) do
+            for _, event in ipairs(section("haptics.body_events", body_events_of, previous_body, body)) do
                 if Haptics.plays(event[1], mode) then
                     if api.pulse("both", event[1], nil, event[2]) then count(event[1]) end
                     break
@@ -561,7 +574,7 @@ function Haptics.install(mod, presentation, send)
             end
             previous_body = body
             local wielded = field_of(inventory, "wielded_slot")
-            local charge_component = component(unit_data, "action_module_charge")
+            local charge_component = section("haptics.read_gauges", component, unit_data, "action_module_charge")
             local gauges = {
                 heat = type(wielded) == "string" and wielded:match("^slot_") and
                     component_field(unit_data, wielded, "overheat_current_percentage") or nil,
@@ -569,7 +582,7 @@ function Haptics.install(mod, presentation, send)
                 charge = field_of(charge_component, "charge_level"),
                 max_charge = field_of(charge_component, "max_charge"),
             }
-            for _, event in ipairs(Haptics.gauge_events(previous_gauges, gauges)) do
+            for _, event in ipairs(section("haptics.gauge_events", gauge_events_of, previous_gauges, gauges)) do
                 if Haptics.plays(event[1], mode) then
                     local hands = event[3] == "both" and "both" or gun_hands()
                     if hands and api.pulse(hands, event[1], nil, event[2]) then count(event[1]) end
@@ -578,8 +591,8 @@ function Haptics.install(mod, presentation, send)
             end
             previous_gauges = gauges
             local reading = {melee = false}
-            pcall(read_melee, reading, unit, unit_data, wielded)
-            for _, event in ipairs(Haptics.melee_events(previous_melee, reading)) do
+            section("haptics.read_melee", pcall, read_melee, reading, unit, unit_data, wielded)
+            for _, event in ipairs(section("haptics.melee_events", melee_events_of, previous_melee, reading)) do
                 if Haptics.plays(event[1], mode) then
                     local hands = gun_hands()
                     if hands and api.pulse(hands, event[1], nil, event[2]) then count(event[1]) end
@@ -588,8 +601,9 @@ function Haptics.install(mod, presentation, send)
             end
             previous_melee = reading
             local interaction = {t = reading.t}
-            pcall(read_interaction, interaction, unit_data)
-            for _, event in ipairs(Haptics.interaction_events(previous_interaction, interaction)) do
+            section("haptics.read_interaction", pcall, read_interaction, interaction, unit_data)
+            for _, event in ipairs(section("haptics.interaction_events", interaction_events_of,
+                    previous_interaction, interaction)) do
                 if Haptics.plays(event[1], mode) then
                     local hands = melee_hands()
                     if hands and api.pulse(hands, event[1], nil, event[2]) then count(event[1]) end
@@ -603,7 +617,7 @@ function Haptics.install(mod, presentation, send)
         -- which is the only behavioural difference and the safer one.)
         if not inventory or inventory.wielded_slot ~= "slot_secondary" then previous = nil; return end
         local values = presentation.ammo_readout and presentation.ammo_readout.slot_values and
-            presentation.ammo_readout.slot_values(unit)
+            section("haptics.ammo_slot_values", presentation.ammo_readout.slot_values, unit)
         local current = values and values.clip and {weapon = inventory.slot_secondary, clip = values.clip,
             clip_max = values.clip_max, reserve = values.reserve, reserve_max = values.reserve_max} or nil
         local event = Haptics.ammo_events(previous, current)
