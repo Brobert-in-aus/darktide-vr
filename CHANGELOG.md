@@ -6,6 +6,17 @@ runtime package records the exact source revision alongside the version.
 
 ## Unreleased
 
+- Worn results of 16 September, in the same evening: the item radial
+  picks on the flick (a flick-and-press no longer falls through to the stock
+  weapon cycle); push to talk hums faintly on the talking hand while held;
+  the melee charge count moves to where the charge bars sit and one
+  "Weapon charge display" option chooses count, bars or neither; "Full body
+  (experimental)" is in the settings menu; the movement option reads
+  "Left-hand-relative"; the flamethrower skull rests on the off-hand side
+  (the medical and regular skulls on the other) and every skull follows
+  with a small lag instead of sitting rigidly on the body; loading and
+  menu boards are re-seated in front of you after a recenter; a sliver of a
+  neighbouring cell beside the ammo count is gone.
 - Experimental, opt-in, off by default: `darktidevr_gpu_process_priority.flag`
   (`above_normal`, `high` or `realtime`) asks Windows for that GPU
   scheduling class for the game's process; `darktidevr_queue_priority.flag`
@@ -16,13 +27,10 @@ runtime package records the exact source revision alongside the version.
 
 New, each an experimental option that is off until you turn it on:
 
-- **Reach to interact.** Put a hand on a door control, a pickup or a downed
-  team mate and press grip to use it, without looking at it. The game still
-  decides what counts and how far away it may be; your hand only says which
-  direction to look in.
-- **Inspect by bringing the weapon up.** Hold your weapon up to your face and
-  turn it side on to look at it. Pointing it where you look is aiming, so this
-  never starts while you aim down the sights.
+- Reach to interact and inspect by bringing the weapon up were built, tried
+  worn on 16 September, and withdrawn from the menu: reach is impractical
+  (a hand's reach is far shorter than the interaction distance) and inspect
+  is pointless with IK hands. Their saved values are ignored.
 - **Push to talk with a hand at your mouth.** Bring your off hand up in front
   of your mouth to open your microphone, and take it away to close it. It
   works alongside your push to talk binding, and never while that hand is on

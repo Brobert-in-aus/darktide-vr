@@ -154,25 +154,6 @@ passed through, still counts; pressing grip on the item already in your hand
 gives a double tap (with vibration on) and does nothing else. They hide while
 you two-hand the gun or aim down its sights, and in the hub.
 
-### Reach to interact (experimental)
-
-Experimental features, "Reach to interact". Put a hand on a door control, a
-pickup or a downed team mate and press grip to interact with it, without
-looking at it. Your hand only says which direction to look in: the game still
-decides what counts as an interactable and how far from you it may be, so
-nothing comes into reach that you could not have used by looking at it. While
-nothing is in reach the grip keeps its own binding, and a holster or the gun's
-second grip always wants that hand first. Not in the hub.
-
-### Inspect by bringing the weapon up (experimental)
-
-Experimental features, "Inspect by bringing the weapon up". Hold your weapon
-up to your face and turn it side on, as if to look along it, and hold it there
-for about a third of a second: the game's own weapon inspection runs for as
-long as you keep it there, and stops when you bring the weapon down. Pointing
-it where you look is aiming, not inspecting, so this never starts while you aim
-down the sights. Not in the hub.
-
 ### Push to talk with a hand at your mouth (experimental)
 
 Experimental features, "Push to talk with a hand at your mouth". Bring your off

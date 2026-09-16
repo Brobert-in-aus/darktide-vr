@@ -108,19 +108,11 @@ tracked eye).
      saved result).
 
 9. **Neutral eye anchor measured in the aim frame** (restart; deployed
-   16 September, animation audit item K). The one-time model-eye offset used
-   as the camera's neutral origin is now measured in the avatar's own aim yaw
-   frame instead of the recenter basis, so the eye's forward depth (about
-   8.5 cm) survives a spawn facing across that basis; a pitched aim (more than
-   15 degrees up or down) defers the capture rather than baking a look-down
-   into the height, with the first-person fallback serving until then.
-   - Spawn into the Psykhanium and into a mission (SoloPlay) and check the
-     view height and fore-aft placement feel the same in both, and the same as
-     before this change. Entering a level looking sharply down or up should
-     settle to the same place a moment later.
-   - The character's turn to run at an angle must not move the view.
-   - Unit test `eye_anchor_offset` and the source invariant cover the
-     derivation; the placement itself is worn-only.
+   In plain terms: enter a level facing across the play space rather than
+   along it. Your eye should sit where it does when you enter facing along
+   it: the same distance from the wall, not pulled back. Before the fix,
+   entering sideways left the view about 8 cm too far back until you
+   levelled your head. If nothing looks different either way, it passes.
 
 10. **Reach to interact** (restart; Experimental features, "Reach to
     interact", default off, new 16 September). Put a hand on a door control,
