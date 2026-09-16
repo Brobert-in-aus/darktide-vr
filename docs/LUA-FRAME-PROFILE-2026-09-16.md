@@ -456,6 +456,33 @@ viewer's layers are each measured, and none of them is where the Hub's
 frame goes. What remains is the pipeline's own GPU work, which the user's
 settings shape.
 
+## The process GPU scheduling class: the lever that moved (`hub-gpuprio-high1`)
+
+Per-queue priority is one knob; the per-process GPU scheduling class
+(`D3DKMTSetProcessSchedulingPriorityClass`, the one VR compositors use to
+outrank games) is another, and it is the one the OS scheduler honours here.
+With `darktidevr_gpu_process_priority.flag` holding `high` the proxy asks
+for it at first device creation (`applied=1 status=0`):
+
+| Hub, viewer running | normal (render1) | high (gpuprio-high1) |
+| --- | ---: | ---: |
+| GPU per pair, ms | 23.5 | 15.8 |
+| game loop, Hz | 54 | 66 |
+| pair period at the viewer, ms | 32.6 | 23.5 |
+| fresh pairs over the run | 5,252 | 6,027 |
+| generated frames over the run | 5,220 | 6,012 |
+| viewer submissions/s | 111 | 119 |
+| pose mismatches, errors | 0, 0 | 0, 0 |
+
+A third off the pair's GPU time, a fifth more loop, a quarter shorter pair
+period, and the viewer kept its own cadence, so the compositor was not
+starved into dropping the viewer's frames. What the numbers cannot show
+is the headset: the runtime's compositing and the streamer's encoder are
+now outranked by the game, and whether that costs smoothness in the
+picture is the user's judgement, worn. Until then the flag stays opt-in.
+The `realtime` class is the next arm; it may need a privilege the process
+does not hold, and the status field says.
+
 ## Experiments for the user, with the same instruments
 
 Every arm below changes a setting the brief keeps out of unattended hands,
