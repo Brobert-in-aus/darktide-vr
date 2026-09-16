@@ -357,6 +357,12 @@ sitting: if items 1 to 14 behave, those are covered.
    carried item to pick between), 1 (servo skull, Skitarius with the
    flamethrower blitz talented), 15 September item 19 (teammate status).
 5. Last, because it needs a flag written and removed: 14 (the body overlay).
+6. Added through the afternoon, all "nothing should look different": 28 (the
+   native rebuild) is the first thing to confirm at launch, before anything
+   else, since the proxy and capture DLL changed; 22 to 25 are covered by
+   items 1 to 21 behaving; 26 and 27 want one look at a world marker and the
+   interaction prompt on their planes while you turn your head, which the
+   Hub gives you on the way to anything.
 
 22. **Frame profiler wrapping** (restart; no option, nothing should look
     different; the same "still works" family as 15 to 19). Every per-frame
