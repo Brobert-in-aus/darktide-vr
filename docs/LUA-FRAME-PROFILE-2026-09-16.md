@@ -515,6 +515,7 @@ and a second normal control follow.
 | high, run 1 | 15.5 | 66 | 23.5 |
 | high, run 2 | 22.6 | 56 | 25.9 |
 | realtime | 21.5 | 64 | 60.9 (viewer starved) |
+| FOV tangent 90 per cent (the user's setting; 1908x2076 per eye) | 21.2 | 59 | 31.2 |
 | no viewer (engine alone) | under 7 | 133 | none |
 
 What differed between the two `high` runs: the first had no player markers

@@ -86,7 +86,7 @@ the end), with the repository's measurements where they exist:
 | Boost Game Priority | Streamer (PC) | the game's Windows CPU process priority | "can help performance in some games... may cause lag in others"; not a GPU priority; untested here |
 | OpenXR runtime VDXR vs SteamVR | Streamer (PC) | one compositor instead of two | already VDXR |
 | Render resolution over 100 per cent (VD's `RenderResolution`) | Quest client | supersampling factor VDXR reports to the app | keep 100; "minimal visual gains" (Aboleth); the mod already renders at the recommended size |
-| FOV tangent (Virtual Desktop, per cent) | Quest client | the frustum the runtime recommends, so pixels per eye | user set 90 per cent on 16 September: the eye went from 2112x2304 to 1908x2076, 19 per cent fewer pixels per eye for both the game and the pipeline; the mod takes the narrower frustum from the runtime (projection, padding and marker plane all derive from it) |
+| FOV tangent (Virtual Desktop, per cent) | Quest client | the frustum the runtime recommends, so pixels per eye | user set 90 per cent on 16 September: the eye went from 2112x2304 to 1908x2076, 19 per cent fewer pixels per eye for both the game and the pipeline; the mod takes the narrower frustum from the runtime (projection, padding and marker plane all derive from it). Measured once (`hub-fov90-1`, headset awake): 21.2 ms of GPU per pair against 22.5 to 23.2 for the day's normal-class arms, loop 59 Hz against 53 to 56, the size the pixel count predicts; one run, unrepeated |
 
 The performance overlay (both thumbsticks clicked) splits latency into
 Game, Encoding, Networking and Decoding; the guides read "Game" as the GPU
