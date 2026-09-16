@@ -192,9 +192,35 @@ try {
         $summary.hold_seconds = $HoldSeconds
     }
     $holdEnd = (Get-Date).AddSeconds($HoldSeconds)
+    $holdMid = (Get-Date).AddSeconds($HoldSeconds / 2)
+    $midSampled = $false
     while ((Get-Date) -lt $holdEnd) {
         Start-Sleep -Seconds 2
         if ($game.HasExited) { throw 'Darktide exited during the hold.' }
+        if (-not $midSampled -and (Get-Date) -ge $holdMid) {
+            # The headset's wakefulness and the streamer's presence at the
+            # hold's midpoint: a run whose headset slept sees less encoder
+            # contention and is not comparable (16 September, hub-gpuprio-high1).
+            # Guarded: never fails the run, records 'unknown' when adb or the
+            # device is unavailable.
+            $midSampled = $true
+            $summary.headset_wakefulness_mid = 'unknown'
+            try {
+                $adbCandidate = Join-Path $env:LOCALAPPDATA 'Android\Sdk\platform-tools\adb.exe'
+                if (-not (Test-Path -LiteralPath $adbCandidate -PathType Leaf)) {
+                    $adbCommand = Get-Command adb -ErrorAction SilentlyContinue
+                    $adbCandidate = if ($adbCommand) { $adbCommand.Source } else { $null }
+                }
+                if ($adbCandidate) {
+                    $powerLines = @(& $adbCandidate shell dumpsys power 2>$null)
+                    $wake = ($powerLines | Select-String -Pattern 'mWakefulness=(\w+)' | Select-Object -First 1)
+                    if ($wake) { $summary.headset_wakefulness_mid = $wake.Matches[0].Groups[1].Value }
+                }
+            } catch {}
+            try {
+                $summary.streamer_processes_mid = @(Get-Process -Name 'VirtualDesktop.Streamer' -ErrorAction SilentlyContinue).Count
+            } catch {}
+        }
     }
 
     if ($End -ne 'LeaveRunning') {
