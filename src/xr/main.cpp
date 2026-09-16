@@ -2783,22 +2783,11 @@ class OpenXrProbe {
             flat_fallback_active = use_flat_capture;
             flat_reanchor_pending_ = false;
             ++flat_fallback_transitions;
-            // Loading boards, videos and cutscenes follow the head (view
-            // space, the default pose two metres ahead): nothing on them is
-            // pointed at, and a board fixed in the world during a load is
-            // looked at obliquely and moves with every recenter. Interactive
-            // menus keep their spatial anchor for the pointer.
-            const auto head_locked_board =
-                presentation_sequence != 0 &&
-                presentation_state.mode ==
-                    darktidevr::core::SharedPresentationMode::
-                        flat_loading_or_cinematic;
-            if (flat_fallback_active && head_locked_board) {
-              flat_fallback_pose = {{0.0F, 0.0F, 0.0F, 1.0F},
-                                    {0.0F, 0.0F, -2.0F}};
-              flat_fallback_pose_valid = false;
-              flat_fallback_anchor_state = presentation_state;
-            } else if (flat_fallback_active && current_head_valid) {
+            // Every board, loading screens included, is a spatial board in
+            // the world (the user's intent, 16 September); a recenter
+            // re-seats it from the current head rather than leaving it
+            // where local space moved.
+            if (flat_fallback_active && current_head_valid) {
               const auto world_anchored =
                   presentation_state.mode == darktidevr::core::
                                                  SharedPresentationMode::
