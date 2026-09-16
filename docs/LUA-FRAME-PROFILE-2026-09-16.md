@@ -439,6 +439,23 @@ under twelve per cent of the pair and lose half the displayed frames, so
 it stays; the runtime toggle the mod has for it goes through the user
 settings and was not used.
 
+## The visibility padding: no measurable cost (`hub-nopad1`)
+
+The cluster-light fix widens both cameras' frusta by 1.72 (the union of the
+two eyes' cones, since the second eye reuses the primary's light admission
+and culling), so each eye culls about three times its displayed area. One
+run with the fix's flag out of the installed `bin/` (no padding, the flag
+restored after): 22.9 ms of GPU per pair against 23.5 with it, loop 55 Hz
+against 54, fresh pairs 32.7 against 32. Within the noise; the padding
+stays, and the anisotropic version of it (about 1.72 by 1.43, a sixth less
+area) is not worth building.
+
+That closes the engine side from unattended reach: the second eye's
+preparation, the padding, queue priority, frame generation and the
+viewer's layers are each measured, and none of them is where the Hub's
+frame goes. What remains is the pipeline's own GPU work, which the user's
+settings shape.
+
 ## Experiments for the user, with the same instruments
 
 Every arm below changes a setting the brief keeps out of unattended hands,
