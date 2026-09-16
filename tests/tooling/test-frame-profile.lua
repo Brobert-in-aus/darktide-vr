@@ -48,4 +48,28 @@ local tr = Profile.report(tie)
 assert(tr[1].name == 'a' and tr[2].name == 'b')
 
 assert(Profile.REPORT_LINES <= 60, 'bounded, so a forgotten flag cannot fill a log')
-print('frame_profile=pass figures ordering top_cut bad_samples no_frames stable')
+-- The engine side's begin/finish pair, driven with a fake clock: records the
+-- delta under the name, nothing when off, nothing without a mark.
+do
+    local ticks = 0
+    local logged = {}
+    local api = Profile.install({info = function(_, ...) logged[#logged + 1] = string.format(...) end},
+        function() return ticks end, function() return 1000 end)
+    assert(api.begin() == nil, 'off: no mark')
+    api.finish('x', 7) -- off: ignored
+    -- Turn it on through the flag poll: a fake Mods.lua.io that reports enabled.
+    Mods = {lua = {io = {open = function() return {read = function() return 'enabled' end, close = function() end} end}}}
+    api.frame(0)
+    assert(api.enabled(), 'flag read')
+    ticks = 100
+    local mark = api.begin()
+    ticks = 1100
+    api.finish('big', mark)
+    api.finish('big', nil) -- no mark: ignored
+    -- A frame past the report window prints the section.
+    api.frame(Profile.REPORT_SECONDS + 1)
+    local found = false
+    for _, line in ipairs(logged) do if line:find('section=big') and line:find('mean_us=1000.0') then found = true end end
+    assert(found, 'begin/finish recorded 1000 ticks at 1 kHz as 1000 us')
+end
+print('frame_profile=pass figures ordering top_cut bad_samples no_frames stable begin_finish')

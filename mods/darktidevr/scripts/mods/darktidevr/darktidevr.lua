@@ -5414,7 +5414,8 @@ local function update_stereo(manager)
             effective_half_ipd, presentation.hud_panel.distance,
             presentation.hud_panel.height, 2 * presentation.hud_panel.distance)
     end
-    presentation.hud_panel.draw(world, clean_position, clean_rotation, hud_width, hud_center)
+    presentation.frame_profile.section("render.hud_panel", presentation.hud_panel.draw,
+        world, clean_position, clean_rotation, hud_width, hud_center)
     if presentation.hand_overlay then
         local overlay_ok, overlay_error = pcall(presentation.hand_overlay.draw, world)
         if not overlay_ok and not presentation.hand_overlay_error_logged then
@@ -5502,6 +5503,7 @@ mod:hook(
     end)
 
 mod:hook_safe("InputManager", "update", function(self)
+    local input_mark = presentation.frame_profile.begin()
     presentation.scan_input_services(self)
     presentation.update_menu_input_probe(self)
     if presentation.system_view_trace_pending and ui_native_capture then
@@ -5529,6 +5531,7 @@ mod:hook_safe("InputManager", "update", function(self)
             mod:info("DARKTIDEVR_MENU_TRACE stopped reason=baseline_budget")
         end
     end
+    presentation.frame_profile.finish("input.manager_update", input_mark)
 end)
 
 -- Gameplay and rendering share the cyclopean heading built from the immutable
@@ -11866,7 +11869,7 @@ mod:hook_safe(
                     "upper_body" or "tracked_hands")
         end
         local ik_start = presentation_start
-        local ok, error_message = pcall(
+        local ok, error_message = presentation.frame_profile.section("post.body_ik", pcall,
             presentation.apply_body_ik,
             proxy_unit or player_unit,
             controller_observation.last_sequence,
@@ -14331,6 +14334,7 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
     if presentation.render_world_census then presentation.render_world_census.observe(world) end
     if presentation.hud_panel then presentation.hud_panel.observe_render(world) end
     if world == ui_stereo_world and ui_stereo_spawner then
+        local ui_mark = presentation.frame_profile.begin()
         update_ui_alternating_full()
         update_ui_full_origin_ab()
         update_ui_rect_matrix()
@@ -14345,7 +14349,7 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
                 tostring(error_message)
             )
         end
-
+        presentation.frame_profile.finish("render.ui_stereo_sync", ui_mark)
     end
 
     if world == active_world and active and ui_native_capture_active and
@@ -15867,9 +15871,11 @@ mod:hook(require("scripts/managers/ui/ui_widget"), "draw", function(func, widget
         -- The world surface already serves both eyes; the screen surface
         -- draws the right eye's projection in the replay.
         if scope.surface ~= "screen" then return end
-        return presentation.marker_world.draw(scope, "right", func, widget, ui_renderer)
+        return presentation.frame_profile.section("render.marker_widget",
+            presentation.marker_world.draw, scope, "right", func, widget, ui_renderer)
     end
-    return presentation.marker_world.draw(scope, "left", func, widget, ui_renderer)
+    return presentation.frame_profile.section("render.marker_widget",
+        presentation.marker_world.draw, scope, "left", func, widget, ui_renderer)
 end)
 mod:command("dtvr_marker_plane",
     "World-surface markers: on, off, flip, surface <atlas|screen|world>, text <slug|rect|2d>, origin <top|bottom>, layer <n>, drop <fraction>, dump, probe, status",

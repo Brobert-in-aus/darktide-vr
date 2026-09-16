@@ -114,6 +114,19 @@ function Profile.install(mod, ticks, frequency)
         return r1, r2, r3, r4
     end
 
+    -- For a body too large to pass as one call (a whole hook): begin returns
+    -- a mark, finish records the section. A path that leaves without finish
+    -- records nothing for that call, which is why callers put finish on every
+    -- return. Off, begin returns nil and finish is one branch.
+    function api.begin()
+        if not enabled then return nil end
+        return clock()
+    end
+    function api.finish(name, mark)
+        if mark == nil or not enabled then return end
+        Profile.add(acc, name, (clock() - mark) * per_tick)
+    end
+
     -- Once per input frame. Polls the flag, counts the frame, and every
     -- REPORT_SECONDS logs the top sections; bounded to REPORT_LINES reports a
     -- session, so a forgotten flag cannot fill a log.
