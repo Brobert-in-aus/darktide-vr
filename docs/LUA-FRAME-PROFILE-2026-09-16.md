@@ -14,10 +14,11 @@ Virtual Desktop pipeline as the one to measure on. All runs below are the
 unattended Hub session on that pipeline, synthetic controller path, 90 s hold,
 QPC at 10 MHz, about 56 input frames per second.
 
-## Baseline: every option off (`hub-defaults2`)
+## Baseline: the user's own settings (`hub-defaults2`)
 
-What every player pays on the wrapped paths, since every new option defaults
-off. Stable across 18 five-second windows: **0.143 to 0.155 ms per input
+The run carries the user's saved settings, as every unattended run does: the
+day's new options are all off (they default off), and `vr_haptics_mode` is
+`informative`, so haptics is on. Stable across 18 five-second windows: **0.143 to 0.155 ms per input
 frame**, 21 sections. Against an 11.1 ms budget at 90 Hz that is about 1.3 %,
 so these paths are not the Hub's frame-time problem. Last window:
 
@@ -40,9 +41,13 @@ Nine more sections sit below 3 µs each.
 
 ## What the baseline says
 
-- **Haptics is 38 % of the total with its option off.** Whatever `sample` does
-  before it checks the option costs 57 µs a frame for every player. The one
-  clear target.
+- **Haptics is 38 % of the total, and it is on** (`informative` in the saved
+  settings; I first wrote "with its option off", which was an assumption and
+  wrong). Its `sample` allocates, every frame, about ten closures for pcall'd
+  component reads, six tables (gauges, the melee reading, the interaction, the
+  ammo state, and the event lists), and an empty table for a missing keyword
+  list. 57 µs is the cost of that allocation and call overhead, not of the
+  reads themselves. The one clear target, and a behaviour-preserving one.
 - **The maxima are spiky where the means are small**: holsters 96 µs against a
   6 µs mean, sight ADS 76 against 7, weapon charge 43 against 3, comms 31
   against 3. Several of today's modules poll their test flag by opening a file
