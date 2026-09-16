@@ -130,8 +130,11 @@ function Inspect.install(mod, presentation)
         if engaged and not api.engaged then
             entries = entries + 1
             if entries <= 10 then mod:info("DARKTIDEVR_INSPECT enter entries=%d", entries) end
-            if presentation.haptics and type(t) == "number" then
-                pcall(presentation.haptics.pulse, "right", "zone", t)
+            -- The hand holding the weapon, whichever that is.
+            local side = presentation.weapon_hand_roles and
+                presentation.weapon_hand_roles.physical("dominant")
+            if presentation.haptics and type(t) == "number" and side then
+                pcall(presentation.haptics.pulse, side, "zone", t)
             end
         end
         api.engaged = engaged
