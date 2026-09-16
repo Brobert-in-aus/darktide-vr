@@ -52,12 +52,14 @@ void write_bootstrap_log(const char* message) {
   CloseHandle(file);
 }
 
-bool text_flag_enabled(const std::wstring& path) {
+// The flag's text: at most 31 bytes, the whole file, trimmed and
+// lower-cased; empty when absent, over-long or unreadable.
+std::string text_flag_value(const std::wstring& path) {
   const auto file = CreateFileW(path.c_str(), GENERIC_READ,
                                 FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (file == INVALID_HANDLE_VALUE) {
-    return false;
+    return {};
   }
   std::array<char, 32> text{};
   DWORD bytes_read{};
@@ -69,7 +71,7 @@ bool text_flag_enabled(const std::wstring& path) {
   const auto at_end = ReadFile(file, &extra, 1, &extra_read, nullptr) && extra_read == 0;
   CloseHandle(file);
   if (!read || !at_end) {
-    return false;
+    return {};
   }
   std::size_t begin{};
   while (begin < bytes_read &&
@@ -83,20 +85,34 @@ bool text_flag_enabled(const std::wstring& path) {
           text[end - 1] == '\r' || text[end - 1] == '\n')) {
     --end;
   }
-  constexpr char enabled[] = "enabled";
-  if (end - begin != sizeof(enabled) - 1) {
-    return false;
-  }
-  for (std::size_t index = 0; index < sizeof(enabled) - 1; ++index) {
-    auto value = text[begin + index];
-    if (value >= 'A' && value <= 'Z') {
-      value = static_cast<char>(value - 'A' + 'a');
+  std::string value;
+  for (std::size_t index = begin; index < end; ++index) {
+    auto character = text[index];
+    if (character >= 'A' && character <= 'Z') {
+      character = static_cast<char>(character - 'A' + 'a');
     }
-    if (value != enabled[index]) {
-      return false;
-    }
+    value.push_back(character);
   }
-  return true;
+  return value;
+}
+
+// The GPU scheduling class the process asks the OS for
+// (D3DKMT_SCHEDULINGPRIORITYCLASS values), or -1 for none. Opt-in through
+// darktidevr_gpu_process_priority.flag: the headset path's compositor and
+// encoder share the GPU with the game at equal priority (16 September
+// profile), and per-queue priority moved nothing; this is the per-process
+// knob VR compositors themselves use.
+int gpu_process_priority_class(const std::string& value) {
+  if (value == "above_normal") return 3;
+  if (value == "high") return 4;
+  if (value == "realtime") return 5;
+  return -1;
+}
+
+using SetProcessSchedulingPriorityClassFn = LONG(WINAPI*)(HANDLE, int);
+
+bool text_flag_enabled(const std::wstring& path) {
+  return text_flag_value(path) == "enabled";
 }
 
 BOOL CALLBACK initialize_real_d3d12(PINIT_ONCE, PVOID, PVOID*) {
@@ -202,6 +218,24 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID parameter, PVOID*) {
       mod_bin_path + L"..\\darktidevr_billboard_pixel_shader_probe.flag");
   const auto queue_priority_requested = text_flag_enabled(
       mod_bin_path + L"..\\darktidevr_queue_priority.flag");
+  const auto gpu_priority_value =
+      text_flag_value(mod_bin_path + L"..\\darktidevr_gpu_process_priority.flag");
+  const auto gpu_priority_class = gpu_process_priority_class(gpu_priority_value);
+  long gpu_priority_status = 0;
+  int gpu_priority_applied = 0;
+  if (gpu_priority_class >= 0) {
+    const auto gdi = LoadLibraryW(L"gdi32.dll");
+    const auto set_class =
+        gdi ? reinterpret_cast<SetProcessSchedulingPriorityClassFn>(
+                  GetProcAddress(gdi, "D3DKMTSetProcessSchedulingPriorityClass"))
+            : nullptr;
+    if (set_class) {
+      gpu_priority_status = set_class(GetCurrentProcess(), gpu_priority_class);
+      gpu_priority_applied = gpu_priority_status == 0 ? 1 : 0;
+    } else {
+      gpu_priority_status = -1;
+    }
+  }
   path = mod_bin_path + L"darktidevr_native_capture.dll";
   const auto native = LoadLibraryW(path.c_str());
   if (!native) {
@@ -266,7 +300,8 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID parameter, PVOID*) {
   // wsprintfA is unbounded; the buffer is sized well past the line.
   char message[640]{};
   wsprintfA(message,
-            "native_results queue_priority_requested=%d queue_priority=%d "
+            "native_results gpu_process_priority_class=%d applied=%d status=0x%08lX "
+            "queue_priority_requested=%d queue_priority=%d "
             "diagnostic_requested=%d diagnostics=%d "
             "substitution_requested=%d substitution=%d "
             "shader_dump_requested=%d shader_dump=%d "
@@ -275,6 +310,8 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID parameter, PVOID*) {
             "cluster_trace_requested=%d cluster_trace=%d "
             "cluster_light_fix_requested=%d cluster_light_fix=%d "
             "basis=%d install=%d",
+            gpu_priority_class, gpu_priority_applied,
+            static_cast<unsigned long>(gpu_priority_status),
             queue_priority_requested ? 1 : 0, queue_priority_result,
             diagnostic_hooks_requested ? 1 : 0, diagnostics_result,
             billboard_shader_substitution_requested ? 1 : 0,
