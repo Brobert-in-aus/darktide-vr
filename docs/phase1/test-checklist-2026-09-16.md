@@ -325,3 +325,17 @@ sitting: if items 1 to 14 behave, those are covered.
    17 (off-hand-relative movement), 1 (servo skull, Skitarius with the
    flamethrower blitz talented), 15 September item 19 (teammate status).
 5. Last, because it needs a flag written and removed: 14 (the body overlay).
+
+21. **Item radial at your hand** (restart; Experimental features, "Item radial
+    at your hand", default off, new 16 September). Hold the carried items
+    control (Y by default): three labels appear at your off hand.
+    - Flick the stick towards one and let go: you should take that item.
+    - Let go without moving the stick: the control should cycle as it always
+      did. This is the important one, since it is what keeps the option safe
+      to leave on.
+    - While it is open the stick must not turn you.
+    - Are the labels the right size and place, in front of the off hand? Say
+      if they sit in the way or are hard to read.
+    - `DARKTIDEVR_ITEM_RADIAL open` and `... wield mask=N` in the log.
+    - With "Weapon hand holsters" on as well, the two should not interfere:
+      the holsters are reached for, the radial is chosen.
