@@ -101,6 +101,45 @@ measure inside `sample`: the profiler nests, so the next run carries
 sub-sections for the body read, the gauges, the melee and interaction reads,
 each of the five event comparisons, and the ammo step.
 
+## Step 3: pcall only where a read can throw (`hub-haptics3`, `hub-haptics4`)
+
+The stock read proxy's `__index` does `config[field].type`, so an undeclared
+field throws, while `read_component` returns nil for an unknown name. Of the
+fields the sample reads only the two weapon-slot ones are outside the static
+config, so only those keep an index guard (the lock now has a slot proxy that
+throws on them). The other seventeen pcalls went. Measured with nesting on:
+60.5 to 59.6 us. About one microsecond. The third wrong model in a row.
+
+But the nested run (`hub-haptics4`, report cut raised so nothing falls off)
+finally says where the time is:
+
+| sub-section | us/frame |
+| --- | ---: |
+| haptics.read_body | 14.0 |
+| haptics.read_melee | 3.3 |
+| haptics.body_events | 2.7 |
+| haptics.gauge_events | 2.5 |
+| haptics.read_interaction | 1.9 |
+| haptics.melee_events | 1.3 |
+| haptics.interaction_events | 1.0 |
+| haptics.read_gauges | 0.9 |
+| sum | 27.4 |
+| input.haptics | 59.6 |
+
+Three things follow. `read_gauges` wraps a single `read_component` and costs
+0.9 us with the section overhead, so a component read is about 0.4 us, and
+DMF's `mod:get` is two table lookups: neither is the cost. `read_body` at 14 us
+is therefore mostly its five stock extension method calls (`current_health`,
+`max_health`, `current_toughness_percent`, `remaining_ability_charges` twice),
+about two microseconds each: real work in stock code, not plumbing. And about
+20 us sit outside every sub-section, in code that does almost nothing, while
+the spike profile fell every time an allocation went. That is the shape of
+the incremental garbage collector being charged to whoever allocates: `sample`
+still builds six tables a frame (body, gauges, the melee reading, the
+interaction, and four event lists that are almost always empty). Step 4 is to
+stop allocating them: double-buffer the four readings against their
+`previous`, and return a shared empty list when there are no events.
+
 ## Method notes
 
 - A section returns up to four values and allocates nothing; off, it is one
