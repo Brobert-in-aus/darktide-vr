@@ -209,6 +209,9 @@ local function new(options)
         if not instance then
             instance = api.Gui.create_material(resource.gui, name)
             state.materials[handle] = instance
+            -- No instance: the primitive is skipped by the caller, as before;
+            -- the stamp must not be recorded against nil (review, 16 September).
+            if not instance then return nil end
         end
         if values and (stamp == nil or state.applied[instance] ~= stamp) then
             local profile = api.profile

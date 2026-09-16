@@ -90,6 +90,13 @@ Atlas.material("handle", "frame", {ui_scale = {"set_scalar", 1, 4}}, 8)
 assert(count("set_scalar") == sets + 2 and find("set_scalar")[3] == 4, "a new stamp replays")
 Atlas.material("handle", "frame", {ui_scale = {"set_scalar", 1, 4}})
 assert(count("set_scalar") == sets + 3, "no stamp: replayed as before")
+-- A material the GUI cannot create: nil back, nothing replayed, no throw
+-- (the stamp must not be recorded against a nil instance).
+local create = api.Gui.create_material
+api.Gui.create_material = function() return nil end
+assert(Atlas.material("orphan", "frame", {ui_scale = {"set_scalar", 1, 5}}, 9) == nil)
+assert(count("set_scalar") == sets + 3 and next(state.applied) ~= nil, "nothing replayed for a nil instance")
+api.Gui.create_material = create
 
 -- A map change drops the old world's GUI without calling into that world.
 local before = #calls
