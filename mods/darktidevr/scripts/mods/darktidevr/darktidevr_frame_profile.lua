@@ -22,12 +22,16 @@ Profile.TOP = 40
 
 -- A fresh accumulator. Pure.
 function Profile.new()
-    return {sections = {}, order = {}, frames = 0}
+    return {sections = {}, order = {}, frames = 0, top = 0}
 end
 
--- Record one timed call of a section. Pure.
-function Profile.add(acc, name, seconds)
+-- Record one timed call of a section. Pure. A nested section (one timed
+-- inside another) keeps its own row but is left out of the total, which
+-- would otherwise count its time twice; until hub-marker1 every total with
+-- the haptics sub-sections in it did.
+function Profile.add(acc, name, seconds, nested)
     if type(seconds) ~= "number" or seconds ~= seconds or seconds < 0 then return end
+    if not nested then acc.top = acc.top + seconds end
     local entry = acc.sections[name]
     if not entry then
         entry = {name = name, calls = 0, total = 0, max = 0}
@@ -62,8 +66,9 @@ function Profile.report(acc, top)
         if a.total_ms ~= b.total_ms then return a.total_ms > b.total_ms end
         return a.name < b.name
     end)
-    local all = 0
-    for _, row in ipairs(rows) do all = all + row.total_ms end
+    -- The total is the top-level sections only; the rows still list every
+    -- section, nested ones included.
+    local all = acc.top * 1000
     local limit = top or Profile.TOP
     if #rows > limit then
         local kept = {}
@@ -106,11 +111,19 @@ function Profile.install(mod, ticks, frequency)
     -- Run fn with its arguments, timing it under name when the profile is
     -- on. Up to four results are returned, which covers every call site;
     -- more would need a table per call and this must not allocate.
+    -- `depth` is how many sections are open, so a section that closes
+    -- inside another is recorded as nested. An error thrown through a
+    -- section leaves it open; frame() resets the depth, so the damage is
+    -- the rest of that frame.
+    local depth = 0
     function api.section(name, fn, a, b, c, d, e, f, g, h)
         if not enabled then return fn(a, b, c, d, e, f, g, h) end
+        depth = depth + 1
         local started = clock()
         local r1, r2, r3, r4 = fn(a, b, c, d, e, f, g, h)
-        Profile.add(acc, name, (clock() - started) * per_tick)
+        local seconds = (clock() - started) * per_tick
+        depth = depth - 1
+        Profile.add(acc, name, seconds, depth > 0)
         return r1, r2, r3, r4
     end
 
@@ -120,11 +133,14 @@ function Profile.install(mod, ticks, frequency)
     -- return. Off, begin returns nil and finish is one branch.
     function api.begin()
         if not enabled then return nil end
+        depth = depth + 1
         return clock()
     end
     function api.finish(name, mark)
         if mark == nil or not enabled then return end
-        Profile.add(acc, name, (clock() - mark) * per_tick)
+        local seconds = (clock() - mark) * per_tick
+        depth = depth - 1
+        Profile.add(acc, name, seconds, depth > 0)
     end
 
     -- Once per input frame. Polls the flag, counts the frame, and every
@@ -132,6 +148,7 @@ function Profile.install(mod, ticks, frequency)
     -- session, so a forgotten flag cannot fill a log.
     function api.frame(t)
         local was = enabled
+        depth = 0
         flag()
         if not enabled then
             if was then acc = Profile.new(); next_report = nil end

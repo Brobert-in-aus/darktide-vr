@@ -15766,6 +15766,97 @@ end
 -- anchor's screen position in the primary eye as the pixel origin. Screen
 -- pixels the stock widget draws relative to that origin land on the plane
 -- at the size the primary projection gives them at the anchor's distance.
+function presentation.marker_plain(v)
+    return {x = Vector3.x(v), y = Vector3.y(v), z = Vector3.z(v)}
+end
+-- The head's frame for the marker plane: the centre between the eyes, its
+-- right and up as plain tables, and the tangent of one primary pixel.
+-- Every marker in a frame asks for the same one, so it is computed once per
+-- frame and phase and shared; the HUD draw and the camera update are
+-- separate phases because the cameras move between them. The key is the
+-- frame-quantised launch clock (and `t` where the caller has one), so a new
+-- frame never sees the last frame's head. Plane.create copies what it is
+-- given, so sharing is safe (profile doc: render.marker_scope).
+presentation.marker_head_frames = {}
+function presentation.marker_head_frame(phase, left, right, t)
+    local stamp = Application.time_since_launch()
+    local cached = presentation.marker_head_frames[phase]
+    if cached and cached.stamp == stamp and cached.t == t and cached.left == left and
+            cached.right == right then
+        return cached
+    end
+    local center = (ScriptCamera.local_position(left) + ScriptCamera.local_position(right)) * 0.5
+    local rotation = ScriptCamera.local_rotation(left)
+    local _, height = Application.back_buffer_size()
+    local frame = {stamp = stamp, t = t, left = left, right = right,
+        center = presentation.marker_plain(center),
+        right_axis = presentation.marker_plain(Quaternion.right(rotation)),
+        up = presentation.marker_plain(Quaternion.up(rotation)),
+        tangent = 2 * math.tan(Camera.vertical_fov(left) * 0.5) /
+            (height * (presentation.render_visibility_scale or 1))}
+    presentation.marker_head_frames[phase] = frame
+    return frame
+end
+-- The scope body, a named function so no closure is built per marker per
+-- frame; called under pcall by marker_plane_scope_untimed.
+function presentation.marker_plane_scope_body(ui_renderer, anchor, camera, t, left, right)
+    local head = presentation.marker_head_frame("hud", left, right, t)
+    local geometry, reason = presentation.marker_world.geometry(
+        presentation.marker_plane_module, presentation.marker_plain(anchor), head.center,
+        head.right_axis, head.up, head.tangent, presentation.marker_plane_flip)
+    if not geometry then return nil, reason end
+    local surface = presentation.marker_world.state.surface
+    local ps = geometry.pixel_size
+    if surface == "atlas" then
+        -- Stock 2D draw into an atlas cell; the quad is drawn at the
+        -- camera update (presentation.marker_atlas_frame).
+        local atlas = presentation.marker_atlas
+        if not atlas.ensure(ui_renderer.world) then return nil, "atlas" end
+        local screen = presentation.world_marker_screen_position(camera, anchor)
+        local x, y = atlas.claim(t, presentation.marker_plain(anchor))
+        if not x then return nil, y end
+        return {renderer = ui_renderer, surface = "atlas", atlas = atlas,
+            atlas_x = x, atlas_y = y,
+            origin_x = Vector3.x(screen), origin_y = Vector3.y(screen),
+            pixel_size = ps, distance = geometry.distance}
+    end
+    local x_axis = Vector3(geometry.right.x * ps, geometry.right.y * ps, geometry.right.z * ps)
+    local y_axis = Vector3(geometry.up.x * ps, geometry.up.y * ps, geometry.up.z * ps)
+    if surface == "screen" then
+        -- Each eye's projection of the plane into the overlay GUI: the
+        -- anchor's screen position and the screen vectors of one plane
+        -- pixel along the plane's right and up (measured over 64 pixels
+        -- for precision). The overlay's 3D transforms map local x to
+        -- screen x and local z to screen y.
+        local function eye_frame(eye_camera)
+            local s0 = presentation.world_marker_screen_position(eye_camera, anchor)
+            local k = 64
+            local su = presentation.world_marker_screen_position(eye_camera, anchor + x_axis * k)
+            local sv = presentation.world_marker_screen_position(eye_camera, anchor + y_axis * k)
+            local eye_tm = Matrix4x4.identity()
+            Matrix4x4.set_right(eye_tm, Vector3((Vector3.x(su) - Vector3.x(s0)) / k, 0,
+                (Vector3.y(su) - Vector3.y(s0)) / k))
+            Matrix4x4.set_up(eye_tm, Vector3((Vector3.x(sv) - Vector3.x(s0)) / k, 0,
+                (Vector3.y(sv) - Vector3.y(s0)) / k))
+            Matrix4x4.set_forward(eye_tm, Vector3(0, 1, 0))
+            Matrix4x4.set_translation(eye_tm, Vector3(Vector3.x(s0), 0, Vector3.y(s0)))
+            return {tm = eye_tm, origin_x = Vector3.x(s0), origin_y = Vector3.y(s0)}
+        end
+        return {renderer = ui_renderer, surface = "screen",
+            eyes = {left = eye_frame(camera), right = eye_frame(right)},
+            pixel_size = ps, distance = geometry.distance}
+    end
+    local screen = presentation.world_marker_screen_position(camera, anchor)
+    local tm = Matrix4x4.identity()
+    Matrix4x4.set_right(tm, Vector3(geometry.right.x, geometry.right.y, geometry.right.z))
+    Matrix4x4.set_forward(tm, Vector3(geometry.forward.x, geometry.forward.y, geometry.forward.z))
+    Matrix4x4.set_up(tm, Vector3(geometry.up.x, geometry.up.y, geometry.up.z))
+    Matrix4x4.set_translation(tm, Vector3(geometry.anchor.x, geometry.anchor.y, geometry.anchor.z))
+    local gui = presentation.marker_world.gui_for(ui_renderer)
+    return {renderer = ui_renderer, surface = "world", gui = gui, tm = tm,
+        origin_x = Vector3.x(screen), origin_y = Vector3.y(screen),
+        pixel_size = ps, distance = geometry.distance}
+end
 function presentation.marker_plane_scope_untimed(ui_renderer, anchor, camera, t)
     if not presentation.marker_plane_enabled() then return nil, "disabled" end
     local left, right = presentation.lod_primary_camera, presentation.lod_right_camera
@@ -15774,71 +15865,8 @@ function presentation.marker_plane_scope_untimed(ui_renderer, anchor, camera, t)
             not ui_renderer.world then
         return nil, "cameras"
     end
-    local ok, scope_or_reason, detail = pcall(function()
-        local center = (ScriptCamera.local_position(left) +
-            ScriptCamera.local_position(right)) * 0.5
-        local rotation = ScriptCamera.local_rotation(left)
-        local head_right, head_up = Quaternion.right(rotation), Quaternion.up(rotation)
-        local _, height = Application.back_buffer_size()
-        local tangent = 2 * math.tan(Camera.vertical_fov(left) * 0.5) /
-            (height * (presentation.render_visibility_scale or 1))
-        local function plain(v) return {x = Vector3.x(v), y = Vector3.y(v), z = Vector3.z(v)} end
-        local geometry, reason = presentation.marker_world.geometry(
-            presentation.marker_plane_module, plain(anchor), plain(center),
-            plain(head_right), plain(head_up), tangent, presentation.marker_plane_flip)
-        if not geometry then return nil, reason end
-        local surface = presentation.marker_world.state.surface
-        local ps = geometry.pixel_size
-        if surface == "atlas" then
-            -- Stock 2D draw into an atlas cell; the quad is drawn at the
-            -- camera update (presentation.marker_atlas_frame).
-            local atlas = presentation.marker_atlas
-            if not atlas.ensure(ui_renderer.world) then return nil, "atlas" end
-            local screen = presentation.world_marker_screen_position(camera, anchor)
-            local x, y = atlas.claim(t, plain(anchor))
-            if not x then return nil, y end
-            return {renderer = ui_renderer, surface = "atlas", atlas = atlas,
-                atlas_x = x, atlas_y = y,
-                origin_x = Vector3.x(screen), origin_y = Vector3.y(screen),
-                pixel_size = ps, distance = geometry.distance}
-        end
-        local x_axis = Vector3(geometry.right.x * ps, geometry.right.y * ps, geometry.right.z * ps)
-        local y_axis = Vector3(geometry.up.x * ps, geometry.up.y * ps, geometry.up.z * ps)
-        if surface == "screen" then
-            -- Each eye's projection of the plane into the overlay GUI: the
-            -- anchor's screen position and the screen vectors of one plane
-            -- pixel along the plane's right and up (measured over 64 pixels
-            -- for precision). The overlay's 3D transforms map local x to
-            -- screen x and local z to screen y.
-            local function eye_frame(eye_camera)
-                local s0 = presentation.world_marker_screen_position(eye_camera, anchor)
-                local k = 64
-                local su = presentation.world_marker_screen_position(eye_camera, anchor + x_axis * k)
-                local sv = presentation.world_marker_screen_position(eye_camera, anchor + y_axis * k)
-                local eye_tm = Matrix4x4.identity()
-                Matrix4x4.set_right(eye_tm, Vector3((Vector3.x(su) - Vector3.x(s0)) / k, 0,
-                    (Vector3.y(su) - Vector3.y(s0)) / k))
-                Matrix4x4.set_up(eye_tm, Vector3((Vector3.x(sv) - Vector3.x(s0)) / k, 0,
-                    (Vector3.y(sv) - Vector3.y(s0)) / k))
-                Matrix4x4.set_forward(eye_tm, Vector3(0, 1, 0))
-                Matrix4x4.set_translation(eye_tm, Vector3(Vector3.x(s0), 0, Vector3.y(s0)))
-                return {tm = eye_tm, origin_x = Vector3.x(s0), origin_y = Vector3.y(s0)}
-            end
-            return {renderer = ui_renderer, surface = "screen",
-                eyes = {left = eye_frame(camera), right = eye_frame(right)},
-                pixel_size = ps, distance = geometry.distance}
-        end
-        local screen = presentation.world_marker_screen_position(camera, anchor)
-        local tm = Matrix4x4.identity()
-        Matrix4x4.set_right(tm, Vector3(geometry.right.x, geometry.right.y, geometry.right.z))
-        Matrix4x4.set_forward(tm, Vector3(geometry.forward.x, geometry.forward.y, geometry.forward.z))
-        Matrix4x4.set_up(tm, Vector3(geometry.up.x, geometry.up.y, geometry.up.z))
-        Matrix4x4.set_translation(tm, Vector3(geometry.anchor.x, geometry.anchor.y, geometry.anchor.z))
-        local gui = presentation.marker_world.gui_for(ui_renderer)
-        return {renderer = ui_renderer, surface = "world", gui = gui, tm = tm,
-            origin_x = Vector3.x(screen), origin_y = Vector3.y(screen),
-            pixel_size = ps, distance = geometry.distance}
-    end)
+    local ok, scope_or_reason, detail = pcall(presentation.marker_plane_scope_body,
+        ui_renderer, anchor, camera, t, left, right)
     if not ok then
         presentation.marker_plane_note("error")
         if not marker_plane_log.error_logged then
@@ -15860,15 +15888,9 @@ end
 function presentation.marker_atlas_frame(anchor)
     local left, right = presentation.lod_primary_camera, presentation.lod_right_camera
     if not left or not right then return nil end
-    local center = (ScriptCamera.local_position(left) + ScriptCamera.local_position(right)) * 0.5
-    local rotation = ScriptCamera.local_rotation(left)
-    local _, height = Application.back_buffer_size()
-    local tangent = 2 * math.tan(Camera.vertical_fov(left) * 0.5) /
-        (height * (presentation.render_visibility_scale or 1))
-    local function plain(v) return {x = Vector3.x(v), y = Vector3.y(v), z = Vector3.z(v)} end
+    local head = presentation.marker_head_frame("camera", left, right, nil)
     local geometry = presentation.marker_world.geometry(presentation.marker_plane_module,
-        anchor, plain(center), plain(Quaternion.right(rotation)), plain(Quaternion.up(rotation)),
-        tangent, false)
+        anchor, head.center, head.right_axis, head.up, head.tangent, false)
     if not geometry then return nil end
     local tm = Matrix4x4.identity()
     Matrix4x4.set_right(tm, Vector3(-geometry.right.x, -geometry.right.y, -geometry.right.z))

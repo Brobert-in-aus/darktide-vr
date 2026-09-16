@@ -47,6 +47,16 @@ Profile.add(tie, 'b', 0.001); Profile.add(tie, 'a', 0.001); Profile.frame(tie)
 local tr = Profile.report(tie)
 assert(tr[1].name == 'a' and tr[2].name == 'b')
 
+-- A nested section keeps its row and stays out of the total.
+local nest = Profile.new()
+Profile.add(nest, 'outer', 0.001)
+Profile.add(nest, 'inner', 0.0004, true)
+Profile.frame(nest)
+local nr, ns = Profile.report(nest)
+assert(#nr == 2 and nr[1].name == 'outer' and nr[2].name == 'inner', 'both rows listed')
+near(ns.total_ms, 1.0, 1e-9, 'the total counts the outer section only')
+near(nr[2].per_frame_ms, 0.4, 1e-9, 'the nested row keeps its own figure')
+
 assert(Profile.REPORT_LINES <= 60, 'bounded, so a forgotten flag cannot fill a log')
 -- The engine side's begin/finish pair, driven with a fake clock: records the
 -- delta under the name, nothing when off, nothing without a mark.
@@ -72,4 +82,32 @@ do
     for _, line in ipairs(logged) do if line:find('section=big') and line:find('mean_us=1000.0') then found = true end end
     assert(found, 'begin/finish recorded 1000 ticks at 1 kHz as 1000 us')
 end
-print('frame_profile=pass figures ordering top_cut bad_samples no_frames stable begin_finish')
+-- Engine side: a section timed inside another is nested by depth, for both
+-- the section wrapper and the begin/finish pair, and the report's total
+-- counts the outer one only.
+do
+    local ticks = 0
+    local logged = {}
+    local api = Profile.install({info = function(_, ...) logged[#logged + 1] = string.format(...) end},
+        function() return ticks end, function() return 1000 end)
+    Mods = {lua = {io = {open = function() return {read = function() return 'enabled' end, close = function() end} end}}}
+    api.frame(0)
+    local outer = api.begin()          -- ticks 0
+    ticks = 100
+    api.section('inner_section', function() ticks = ticks + 300 end) -- 300 ticks, nested
+    local inner = api.begin()          -- ticks 400
+    ticks = 600
+    api.finish('inner_pair', inner)    -- 200 ticks, nested
+    ticks = 1000
+    api.finish('outer', outer)         -- 1000 ticks, top
+    api.frame(Profile.REPORT_SECONDS + 1)
+    local head
+    for _, line in ipairs(logged) do if line:find('mod_ms_per_frame=') then head = line end end
+    assert(head and head:find('mod_ms_per_frame=500.000', 1, true), 'two frames, one top-level second at the 1 kHz fake clock: ' .. tostring(head))
+    local rows = 0
+    for _, line in ipairs(logged) do
+        if line:find('section=inner_section') or line:find('section=inner_pair') then rows = rows + 1 end
+    end
+    assert(rows == 2, 'nested rows are still reported')
+end
+print('frame_profile=pass figures ordering top_cut bad_samples no_frames stable begin_finish nested')
