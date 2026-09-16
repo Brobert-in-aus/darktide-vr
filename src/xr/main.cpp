@@ -1940,6 +1940,7 @@ class OpenXrProbe {
               if (recenter_request_tracker.observe(newest)) {
                 reference_space_recenter_pending_ = true;
                 flat_reanchor_pending_ = true;
+                flat_reanchor_after_ = 0;
                 std::cout << "openxr.head_recenter=game-request count="
                           << newest.recenter_request << '\n';
               }
@@ -2776,12 +2777,16 @@ class OpenXrProbe {
               (!flat_fallback_anchor_state ||
                !darktidevr::core::same_flat_panel_anchor_identity(
                    *flat_fallback_anchor_state, presentation_state));
+          // A re-seat needs a head this frame and the runtime's change to
+          // have taken effect; until then the request is kept.
           const auto flat_reanchor =
-              flat_fallback_active && use_flat_capture && flat_reanchor_pending_;
+              flat_fallback_active && use_flat_capture && flat_reanchor_pending_ &&
+              current_head_valid &&
+              frame_state.predictedDisplayTime >= flat_reanchor_after_;
           if (use_flat_capture != flat_fallback_active ||
               flat_presentation_changed || flat_reanchor) {
             flat_fallback_active = use_flat_capture;
-            flat_reanchor_pending_ = false;
+            if (flat_reanchor) { flat_reanchor_pending_ = false; }
             ++flat_fallback_transitions;
             // Every board, loading screens included, is a spatial board in
             // the world (the user's intent, 16 September); a recenter
@@ -5461,6 +5466,7 @@ class OpenXrProbe {
             changed->referenceSpaceType == XR_REFERENCE_SPACE_TYPE_LOCAL) {
           reference_space_recenter_pending_ = true;
           flat_reanchor_pending_ = true;
+          flat_reanchor_after_ = changed->changeTime;
           std::cout << "openxr.head_recenter=runtime-pending\n";
         }
       } else if (event.type == XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING) {
@@ -5556,6 +5562,11 @@ class OpenXrProbe {
   // Worn 16 September: thirteen runtime recenters in a session left the
   // loading and menu boards off to the side and turning against the head.
   bool flat_reanchor_pending_{};
+  // The runtime announces a reference-space change before it takes
+  // effect (changeTime); a re-seat before then would seat the board from
+  // the old head and the space would move under it. Zero for a game
+  // request, which is applied at once.
+  XrTime flat_reanchor_after_{};
   std::uint64_t controller_samples_{};
   std::array<bool, 2> controller_profile_logged_{};
   float runtime_ipd_metres_{};
