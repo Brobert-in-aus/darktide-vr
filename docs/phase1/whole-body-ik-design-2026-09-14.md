@@ -1,5 +1,8 @@
 # Whole-body IK for the third-person body: design (14 September 2026)
 
+> Status (18 September 2026): superseded. The successor design below is
+> implemented and shipped; read it, not this, for what the mod does.
+>
 > Revised on 15 September by
 > [full-body-ik-design-2026-09-15.md](full-body-ik-design-2026-09-15.md).
 > The revision copies stock legs instead of stepping them procedurally,

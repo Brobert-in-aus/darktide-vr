@@ -1,6 +1,11 @@
 # Two-handed aim and the virtual stock: design (15 September 2026)
 
-Status: design. Nothing here is implemented yet, except the offline
+Status (18 September 2026): **implemented and released** in 0.2.0-alpha.1 as
+the experimental option "Two-hand support" with the virtual stock; see the
+changelog's 0.2.0-alpha.1 section. What remains open here is tuning worn, not
+the design.
+
+Original status: design. Nothing here is implemented yet, except the offline
 measurement in "Why the right hand feels off". Todo item 7 in
 [todo-2026-09-15.md](todo-2026-09-15.md). The full-body design (item 8) shares
 its shoulder estimate; see

@@ -1,7 +1,16 @@
 # Virtual holsters: design (14 September 2026)
 
-Status: core logic and wiring behind the experimental option "Virtual
-holsters" (`vr_holsters`, default off). Not worn-tested. Zone placement, sizes
+Status (18 September 2026): two different things share this document's
+name. The **forearm** holsters (a line above the gun hand's forearm) shipped
+in 0.2.0-alpha.1 as "Weapon hand holsters" (`vr_forearm_holsters`). The
+**body** holsters this design is mostly about (hip, chest and shoulder zones)
+are built but withheld: `Holsters.BODY_AVAILABLE = false` in
+`darktidevr_holsters.lua` ignores the saved option and the option itself is
+out of the menu, pending the worn check and the restore recipe in
+[todo-2026-09-16.md](todo-2026-09-16.md).
+
+Original status: core logic and wiring behind the experimental option
+"Virtual holsters" (`vr_holsters`, default off). Not worn-tested. Zone placement, sizes
 and accidental triggering are the evening's worn checks; nothing here claims a
 good feel.
 

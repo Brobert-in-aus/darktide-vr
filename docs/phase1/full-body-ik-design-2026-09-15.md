@@ -1,6 +1,18 @@
 # Full-body IK on the player's own character: design (15 September 2026)
 
-Status: design only; nothing is implemented. Todo item 8 in
+Status (18 September 2026): **implemented** as the body-mirror module's
+`overlay` mode and shipped behind the experimental option "Full body"
+(`vr_full_body_experimental`, default off; `6e220e8`). Milestones 1 to 3 are
+in: the spawned profile, the copied pose, the arm solve to the tracked
+wrists, the clavicle swing, protraction and the soft stretch. Open against
+this design: the legs (milestone 6) -- the root sinks about 10 cm where the
+neck target now sits, which this design accepts until they are solved; the
+uniform scale to the neck, which the arm-length design would replace with
+true arm lengths; and near-eye mesh hiding, which has never actually hidden a
+mesh (every run logs `hidden=0`). The two neck constants are what worn
+checklist item 52 is measuring.
+
+Original status: design only; nothing is implemented. Todo item 8 in
 [todo-2026-09-15.md](todo-2026-09-15.md). This builds on and partly revises
 the [whole-body IK design of 14 September](whole-body-ik-design-2026-09-14.md)
 (revisions listed at the end). It shares its shoulder estimate with the

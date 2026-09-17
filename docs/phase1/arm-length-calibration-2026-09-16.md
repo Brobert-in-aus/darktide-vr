@@ -1,5 +1,13 @@
 # Arm length from the height and arm calibration: design (16 September 2026)
 
+Status (18 September 2026): **open, and the next real step for the body.**
+The calibration records the span and its T-pose problems and the derivation
+is unit-tested, but the lengths are applied only in the dev mode
+`overlayarmlength`; the shipped "Full body" still scales the whole copy
+uniformly until its neck reaches the head, which enlarges it 17 to 24 per
+cent and its arms with it. Step 3 of this document is what would replace
+that. See the 18 September detailed list, section C.
+
 User request, 16 September: use the height and arm calibration to set arm
 length properly, following industry practice; do not re-enable the old
 arms-forward reach pose unless practice recommends it. Research and sources:
