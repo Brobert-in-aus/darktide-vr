@@ -109,6 +109,37 @@ Open, each with the user's words and what is to be done:
     earlier comment". The fix (commit `85f5517`) was not deployed while the
     user tested; it is the next thing to try worn.
 
+## What was done, the same evening
+
+All committed, tested (274 pass), reviewed by a second reader, deployed with
+the game closed, and listed for the next worn round as checklist items 39 to
+46. None had an unattended run: the user was at the headset.
+
+- Boards (10): deployed first; the user: "board fix worked".
+- Tag by pointing (2): out of the menu, saved value ignored (`e135fd3`).
+- Talk zone (6): 0.135 m in, 0.19 m out (`e135fd3`).
+- Charge display (8): count and bars ahead of the grip and toward the
+  midline as the eye sees it; above the grip they landed on the forearm
+  holster's count, 13 cm up (`e135fd3`).
+- Sliver (4): the wrist bars' left ends, 243 px left of their cell's centre,
+  4 px outside the 477 px cell of the 1908-wide eye target the 90 per cent
+  FOV tangent gives (inside the 528 px cell at 2112). The second thing that
+  setting broke, after the boards. The wrist panel's scale fits the cell;
+  overlay rectangles are clipped to their cell (`e135fd3`).
+- Radial (5): both symptoms were one cause, two-hand support's idle claim
+  offer every frame a gun is out; the radial yields only to a request that
+  is acquiring, approaching, or already held (`af5d8a4`).
+- Skulls (9): the first-person body reports third person, so the stock
+  movement reads the third_person rest table; both are mirrored now, by
+  handedness. The follower holds the skull relative to a lazy heading,
+  tracks the head's position, leads the run by up to 0.3 m, covers every
+  skull of the player, and writes the skull's root (the child node it moved
+  before was never seen to move anything) (`0a7423a`, `9741baa`).
+- Full body (7) and the mirror key (3): the option selected the older
+  headless body; it now selects the body mirror module's `overlay` mode.
+  F8 toggles its `mirror` mode in the Psykhanium (`6e220e8`, `9741baa`).
+- Calibration (1): waiting for the user's note.
+
 ## Order of work
 
 Deploy the board fix first (the game is closed). Then, smallest first: tag

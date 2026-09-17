@@ -162,19 +162,11 @@ microphone opens, as if you were speaking into a vox bead, and closes when you
 take the hand away. It works alongside your push to talk binding rather than
 instead of it, and never while that hand is holding the gun.
 
-### Tag what your off hand points at (experimental)
-
-Experimental features, "Tag what your off hand points at". Hold your off hand
-out ahead of you and press tag: the tag leaves that hand instead of your
-weapon, so you can point something out while your gun is aimed elsewhere. With
-the hand down, or holding the gun, or up at your mouth to talk, tagging follows
-the weapon as usual. Not in the hub.
-
 ### Item radial at your hand (experimental)
 
 Experimental features, "Item radial at your hand". Hold the carried items
 control and three choices appear at your off hand: your carried item, your stim
-and your device. Flick the stick towards one and let go to take it. Let go
+and your device. Flick the stick towards one to take it. Let go
 without choosing and the control cycles through them as it always did, so
 nothing is lost by turning this on. While the radial is open the stick picks
 rather than turns you. Not in the Mourningstar.

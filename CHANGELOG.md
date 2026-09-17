@@ -6,6 +6,19 @@ runtime package records the exact source revision alongside the version.
 
 ## Unreleased
 
+- Worn results of 17 September, the same evening: the sliver of the wrist
+  bars beside the ammo count is gone (with Virtual Desktop's FOV tangent
+  below 100 per cent the smaller eye target let the bars spill into the next
+  overlay cell); the melee charge count and bars sit left of the weapon,
+  like the ammo count; the item radial stays open with a gun out and an
+  empty sector no longer switches weapon; the push-to-talk zone is a third
+  smaller; the servo skulls' sides really swap, and they hold their place as
+  you glance around, swing round after you when you turn and move up to
+  30 cm ahead as you run; "Full body (experimental)" now shows the body
+  scaled to your height with arms solved to your controllers (it used to
+  turn on an older mode whose head floated above the body); F8 stands a
+  copy of your character in front of you in the Psykhanium; "Tag what your
+  off hand points at" is withdrawn.
 - Loading screens and menus no longer turn against your head or compress
   with Virtual Desktop's FOV tangent below 100 per cent: the viewer draws
   the board and the menu pointer itself, from the same eye poses and field
