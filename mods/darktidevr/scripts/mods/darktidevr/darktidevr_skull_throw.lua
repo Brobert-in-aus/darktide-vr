@@ -51,6 +51,24 @@ Skull.FOLLOW_SNAP = 2.0
 -- is drawn as it is (a chase at 10 m/s would trail by metres); when it
 -- returns, the follower resumes from the flight's last real position.
 Skull.BRIDGE_SECONDS = 0.35
+-- Worn, 17 September: neither the swapped sides nor the follower showed. The
+-- first-person body deliberately reports third person to the equipment code,
+-- so the stock movement reads each rule's third_person table (flamethrower
+-- 0.55 m to the right, the medical skull to the left), not the first_person
+-- one that was mirrored: both are mirrored now. And the stock skull is placed
+-- from the head's look rotation, so a drawn skull chasing it 0.2 s behind
+-- still read as locked to the head. The drawn skull now keeps its place
+-- relative to a lazy heading (the head's yaw behind a dead zone, as the body
+-- frame's is), follows the head's position exactly as the HUD does, and
+-- leans up to LEAD_METRES ahead along the player's run so it is easy to find
+-- (user: "try to stay ~0.3m ahead of me as I run").
+Skull.YAW_DEAD_ZONE = math.rad(20)
+Skull.YAW_SETTLED = math.rad(2)
+Skull.YAW_CATCH_UP_SECONDS = 0.35
+Skull.OFFSET_TAU = 0.25
+Skull.LEAD_METRES = 0.3
+Skull.LEAD_FULL_SPEED = 4.0
+Skull.LEAD_MIN_SPEED = 0.5
 
 local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
 
@@ -114,6 +132,45 @@ function Skull.bridge_position(from, real, elapsed, duration)
         from[3] + (real[3] - from[3]) * w}, false
 end
 
+local function wrap(a) return (a + math.pi) % (2 * math.pi) - math.pi end
+
+-- The lazy heading after a frame: it holds while the head stays within the
+-- dead zone of it, then catches the head up and settles. state is
+-- {yaw, turning} or nil; returns the new state. Stingray yaw. Pure.
+function Skull.lazy_yaw(state, head_yaw, dt)
+    if not finite(head_yaw) then return state end
+    if type(state) ~= "table" or not finite(state.yaw) or not finite(dt) or dt < 0 or dt > 0.5 then
+        return {yaw = head_yaw, turning = false}
+    end
+    local yaw, turning = state.yaw, state.turning == true
+    local diff = wrap(head_yaw - yaw)
+    if math.abs(diff) > Skull.YAW_DEAD_ZONE then turning = true end
+    if turning then
+        yaw = wrap(yaw + diff * (1 - math.exp(-dt / Skull.YAW_CATCH_UP_SECONDS)))
+        if math.abs(wrap(head_yaw - yaw)) < Skull.YAW_SETTLED then turning = false end
+    end
+    return {yaw = yaw, turning = turning}
+end
+
+-- Where the drawn skull wants to be relative to the eye: the real skull's
+-- offset from the eye turned from the head's yaw to the lazy heading (about
+-- the vertical), plus a lead along the player's horizontal velocity that
+-- grows to LEAD_METRES at a run. 3-arrays (velocity may be nil). Pure.
+function Skull.follow_offset(real, eye, head_yaw, heading, velocity)
+    local a = (finite(head_yaw) and finite(heading)) and wrap(heading - head_yaw) or 0
+    local dx, dy = real[1] - eye[1], real[2] - eye[2]
+    local c, s = math.cos(a), math.sin(a)
+    local x, y = dx * c - dy * s, dx * s + dy * c
+    if type(velocity) == "table" and finite(velocity[1]) and finite(velocity[2]) then
+        local speed = math.sqrt(velocity[1] * velocity[1] + velocity[2] * velocity[2])
+        if speed > Skull.LEAD_MIN_SPEED then
+            local lead = Skull.LEAD_METRES * math.min(1, speed / Skull.LEAD_FULL_SPEED) / speed
+            x, y = x + velocity[1] * lead, y + velocity[2] * lead
+        end
+    end
+    return {x, y, real[3] - eye[3]}
+end
+
 -- The drawn position smoothed toward the real one: exponential with the
 -- time constant, snapping when there is no drawn position yet, no time has
 -- passed since a snap is harmless, or the two are further apart than snap.
@@ -172,31 +229,42 @@ function Skull.install(mod, presentation)
         if on and not originals then
             originals = {}
             local seen = {}
+            local tables = 0
             for rule, entry in pairs(rules) do
-                local position = type(entry) == "table" and entry.first_person and entry.first_person.position
-                -- Two rules sharing one table would be mirrored twice.
-                if type(position) == "table" and not seen[position] then
-                    seen[position] = true
-                    local saved, plain = {}, {}
-                    for name, box in pairs(position) do
-                        saved[name] = box
-                        local v = box:unbox()
-                        plain[name] = {Vector3.x(v), Vector3.y(v), Vector3.z(v)}
-                    end
-                    originals[rule] = saved
-                    local forward = rule == Skull.RULE and Skull.FORWARD or nil
-                    for name, offset in pairs(Skull.rest_offsets(plain, forward, Skull.MIRROR_SIDE)) do
-                        position[name] = Vector3Box(offset[1], offset[2], offset[3])
+                originals[rule] = {}
+                -- Both views' tables: the stock extension picks one by
+                -- is_in_first_person_mode(), which the first-person body
+                -- reports as third person.
+                for _, view in ipairs({"first_person", "third_person"}) do
+                    local position = type(entry) == "table" and entry[view] and entry[view].position
+                    -- Two rules sharing one table would be mirrored twice.
+                    if type(position) == "table" and not seen[position] then
+                        seen[position] = true
+                        local saved, plain = {}, {}
+                        for name, box in pairs(position) do
+                            saved[name] = box
+                            local v = box:unbox()
+                            plain[name] = {Vector3.x(v), Vector3.y(v), Vector3.z(v)}
+                        end
+                        originals[rule][view] = saved
+                        local forward = rule == Skull.RULE and Skull.FORWARD or nil
+                        for name, offset in pairs(Skull.rest_offsets(plain, forward, Skull.MIRROR_SIDE)) do
+                            position[name] = Vector3Box(offset[1], offset[2], offset[3])
+                        end
+                        tables = tables + 1
                     end
                 end
             end
-            mod:info("DARKTIDEVR_SKULL_THROW rest_forward=%.2f mirror=%s", Skull.FORWARD, tostring(Skull.MIRROR_SIDE))
+            mod:info("DARKTIDEVR_SKULL_THROW rest_forward=%.2f mirror=%s tables=%d", Skull.FORWARD,
+                tostring(Skull.MIRROR_SIDE), tables)
         elseif not on and originals then
-            for rule, saved in pairs(originals) do
+            for rule, views in pairs(originals) do
                 local entry = rules[rule]
-                local position = type(entry) == "table" and entry.first_person and entry.first_person.position
-                if type(position) == "table" then
-                    for name, box in pairs(saved) do position[name] = box end
+                for view, saved in pairs(views) do
+                    local position = type(entry) == "table" and entry[view] and entry[view].position
+                    if type(position) == "table" then
+                        for name, box in pairs(saved) do position[name] = box end
+                    end
                 end
             end
             originals = nil
@@ -295,12 +363,74 @@ function Skull.install(mod, presentation)
             end
         end
     end
-    local follow = {}
-    local function restore(skull)
-        unplace(throw, skull)
-        throw = nil
-        unplace(follow, skull)
-        follow = {}
+    -- One follower record per skull of the local player (the flamethrower
+    -- skull's also carries the bridge to and from a flight).
+    local followers = setmetatable({}, {__mode = "k"})
+    local function follower(skull)
+        local record = followers[skull]
+        if not record then record = {}; followers[skull] = record end
+        return record
+    end
+    local function restore(skull, keep_throw)
+        if not keep_throw then
+            unplace(throw, skull)
+            throw = nil
+        end
+        unplace(followers[skull], skull)
+        followers[skull] = nil
+    end
+
+    -- The owner's eye, head yaw and horizontal velocity this frame, shared by
+    -- every skull: {eye, head_yaw, heading, velocity}, or nil without a head.
+    local heading_state, shared, shared_t
+    local function owner_frame(owner, t)
+        if shared_t == t then return shared end
+        local dt = shared_t and t - shared_t or nil
+        shared_t, shared = t, nil
+        local eye, rotation
+        if presentation.eye_pose then eye, rotation = presentation.eye_pose(owner) end
+        if not eye or not rotation then heading_state = nil; return nil end
+        local forward = Quaternion.forward(rotation)
+        local fx, fy = Vector3.x(forward), Vector3.y(forward)
+        local head_yaw = (fx * fx + fy * fy > 0.04) and math.atan2(-fx, fy) or (heading_state and heading_state.head_yaw)
+        if not head_yaw then return nil end
+        heading_state = Skull.lazy_yaw(heading_state, head_yaw, dt)
+        heading_state.head_yaw = head_yaw
+        local velocity
+        local unit_data = ScriptUnit.has_extension(owner, "unit_data_system")
+        local locomotion = unit_data and unit_data:read_component("locomotion")
+        if locomotion and locomotion.velocity_current then
+            velocity = array(locomotion.velocity_current)
+        end
+        shared = {eye = array(eye), head_yaw = head_yaw, heading = heading_state.yaw, velocity = velocity}
+        return shared
+    end
+
+    -- The follower for one skull while it follows at the player's side.
+    local function follow_skull(extension, skull, follow, owner, t, name)
+        local real = array(Unit.world_position(skull, 1))
+        local dt = follow.t and t - follow.t or 0
+        follow.t = t
+        follow.node = follow.node or child_node(skull)
+        local frame = owner_frame(owner, t)
+        if not frame or not follow.node then return real end
+        local eye = frame.eye
+        -- Back from a flight it resumes from the flight's last real position,
+        -- so the return to the mirrored rest is a glide, not a jump.
+        if not follow.offset and follow.last_real then
+            follow.offset = {follow.last_real[1] - eye[1], follow.last_real[2] - eye[2], follow.last_real[3] - eye[3]}
+        end
+        follow.last_real, follow.bridge = nil, nil
+        local target = Skull.follow_offset(real, eye, frame.head_yaw, frame.heading, frame.velocity)
+        follow.offset = Skull.smoothed(follow.offset, target, dt, Skull.OFFSET_TAU)
+        follow.position = {eye[1] + follow.offset[1], eye[2] + follow.offset[2], eye[3] + follow.offset[3]}
+        place(extension, skull, follow, follow.position)
+        if not follow.logged then
+            follow.logged = true
+            mod:info("DARKTIDEVR_SKULL_THROW follow node=%d state=%s thrower=%s", follow.node, tostring(name),
+                tostring(follow.thrower == true))
+        end
+        return real
     end
 
     -- After the stock movement extension placed the skull this frame.
@@ -308,13 +438,32 @@ function Skull.install(mod, presentation)
         -- Every frame, so turning the option off restores the stock offsets.
         apply_forward(api.enabled())
         local owner = local_player_unit()
-        -- The husk extension keeps no rule field: match the owner's skull unit.
-        if not owner or extension._owner_unit ~= owner or companion(owner) ~= skull then return end
+        if not owner or extension._owner_unit ~= owner then return end
         local name = state_name(extension)
-        api.following = name == "following" or name == "following_shooting" or name == "following_shooting_ability"
-        if not api.enabled() then restore(skull); pending = nil; return end
+        local following = name == "following" or name == "following_shooting" or name == "following_shooting_ability"
+        -- The husk extension keeps no rule field: match the owner's skull unit.
+        local thrower = companion(owner) == skull
+        if thrower then api.following = following end
+        if not api.enabled() then
+            restore(skull, not thrower)
+            if thrower then pending = nil end
+            return
+        end
         local t = now()
         if not t then return end
+        local follow = follower(skull)
+        follow.thrower = thrower
+        if not thrower then
+            -- The medical and regular skulls: the follower only; away on an
+            -- order they are drawn as they are.
+            if following then
+                follow_skull(extension, skull, follow, owner, t, name)
+            else
+                unplace(follow, skull)
+                followers[skull] = nil
+            end
+            return
+        end
         local flying = name == "flamethrower"
         if pending and flying and not throw and t - pending.t <= Skull.RELEASE_WINDOW then
             local from = array(Unit.world_position(skull, 1))
@@ -330,33 +479,19 @@ function Skull.install(mod, presentation)
             pending = nil
         end
         if not throw then
-            local real = array(Unit.world_position(skull, 1))
-            local dt = follow.t and t - follow.t or 0
-            follow.t = t
-            follow.node = follow.node or child_node(skull)
             if api.following then
-                -- The follower: the drawn skull chases the real one with the
-                -- HUD's kind of lag. Back from a flight it resumes from the
-                -- flight's last real position, so the return to the mirrored
-                -- rest is a glide, not a jump.
-                if not follow.position and follow.last_real then follow.position = follow.last_real end
-                follow.last_real, follow.bridge = nil, nil
-                follow.position = Skull.smoothed(follow.position, real, dt)
-                if follow.node then
-                    place(extension, skull, follow, follow.position)
-                    if not follow.logged then
-                        follow.logged = true
-                        mod:info("DARKTIDEVR_SKULL_THROW follow node=%d state=%s", follow.node, tostring(name))
-                    end
-                end
+                follow_skull(extension, skull, follow, owner, t, name)
             else
                 -- Sent, or on its way back: a short bridge from where the
                 -- follower had it to the real flight, then the real skull as
                 -- it is. The last real position seeds the follower's return.
+                local real = array(Unit.world_position(skull, 1))
+                follow.t = t
+                follow.node = follow.node or child_node(skull)
                 follow.last_real = real
                 if follow.position and not follow.bridge then
                     follow.bridge = {start = t, from = follow.position}
-                    follow.position = nil
+                    follow.position, follow.offset = nil, nil
                 end
                 if follow.bridge and follow.node then
                     local drawn, done = Skull.bridge_position(follow.bridge.from, real, t - follow.bridge.start)
@@ -371,7 +506,7 @@ function Skull.install(mod, presentation)
             return
         end
         -- A throw takes over from the follower cleanly.
-        if follow.base then unplace(follow, skull); follow = {} end
+        if follow.base then unplace(follow, skull); followers[skull] = nil end
         local elapsed = t - throw.start
         local real = array(Unit.world_position(skull, 1))
         if not throw.arrived and throw.target then
@@ -408,7 +543,11 @@ function Skull.install(mod, presentation)
         mod:hook_require("scripts/extension_systems/flying_companion_movement/flying_companion_husk_movement_extension", hook_class)
     end
 
-    function api.destroy() pending = nil; throw = nil; follow = {}; apply_forward(false) end
+    function api.destroy()
+        pending = nil; throw = nil; heading_state = nil; shared = nil; shared_t = nil
+        followers = setmetatable({}, {__mode = "k"})
+        apply_forward(false)
+    end
     return api
 end
 

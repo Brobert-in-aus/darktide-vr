@@ -51,4 +51,36 @@ assert(b2[1] == 2 and d2, 'nothing to bridge from: the real position, done')
 local b3, d3 = Skull.bridge_position({0, 0, 0}, {2, 0, 0}, 0, 0.35)
 assert(b3[1] == 0 and not d3, 'the first frame holds the last drawn position')
 assert(Skull.BRIDGE_SECONDS == 0.35)
+
+-- The lazy heading: holds inside the dead zone, catches up beyond it, then
+-- settles and holds again.
+local h = Skull.lazy_yaw(nil, 0.5, nil)
+assert(h.yaw == 0.5 and not h.turning, 'first sample takes the head yaw')
+h = Skull.lazy_yaw(h, 0.5 + math.rad(15), 0.016)
+assert(h.yaw == 0.5 and not h.turning, 'a glance inside the dead zone moves nothing')
+h = Skull.lazy_yaw(h, 0.5 + math.rad(40), 0.016)
+assert(h.turning and h.yaw > 0.5 and h.yaw < 0.5 + math.rad(40), 'beyond it the heading starts after the head')
+for _ = 1, 400 do h = Skull.lazy_yaw(h, 0.5 + math.rad(40), 0.016) end
+assert(not h.turning and math.abs(h.yaw - (0.5 + math.rad(40))) < math.rad(2.1), 'and settles on it')
+local across = Skull.lazy_yaw({yaw = math.pi - 0.1, turning = true}, -math.pi + 0.1, 0.1)
+assert(across.yaw > math.pi - 0.1 or across.yaw < -math.pi + 0.1, 'the short way round across the seam')
+assert(Skull.lazy_yaw(h, 0 / 0, 0.016) == h, 'no head yaw: unchanged')
+
+-- The offset the drawn skull wants from the eye. Head and heading agree and
+-- the player stands: the real skull's own offset.
+local o = Skull.follow_offset({1.5, 2.3, 1.4}, {1, 2, 1.6}, 0.3, 0.3, {0, 0, 0})
+assert(math.abs(o[1] - 0.5) < 1e-9 and math.abs(o[2] - 0.3) < 1e-9 and math.abs(o[3] + 0.2) < 1e-9)
+-- The head turned a quarter turn (Stingray yaw) while the heading stayed: a
+-- skull at the head's right is turned back to the heading's right.
+local turned = Skull.follow_offset({0, 1, 0}, {0, 0, 0}, math.pi / 2, 0, nil)
+assert(math.abs(turned[1] - 1) < 1e-9 and math.abs(turned[2]) < 1e-9, 'at the head right stays at the heading right')
+-- Running: a lead along the velocity, 0.3 m at a run, less at a walk, none
+-- when standing or drifting.
+local run = Skull.follow_offset({0, 0, 0}, {0, 0, 0}, 0, 0, {0, 5, 0})
+assert(math.abs(run[2] - 0.3) < 1e-9 and run[1] == 0, 'a full lead at a run')
+local walk = Skull.follow_offset({0, 0, 0}, {0, 0, 0}, 0, 0, {2, 0, 0})
+assert(math.abs(walk[1] - 0.15) < 1e-9, 'half the lead at half the speed')
+local drift = Skull.follow_offset({0, 0, 0}, {0, 0, 0}, 0, 0, {0.3, 0, 0})
+assert(drift[1] == 0, 'no lead below the minimum speed')
+assert(Skull.LEAD_METRES == 0.3)
 print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed')
