@@ -62,6 +62,30 @@ end
 -- are down, rising to 1 + percent/100 while they are up, with the 0.15 s time
 -- constant the viewer's focus vignette uses so the two move together.
 -- `previous` and the returned value are the eased 0..1 blend. Pure.
+-- Where a world point has to be published so that it lands, in the image the
+-- viewer submits, where it is actually seen.
+--
+-- The zoom is the game rendering a narrower cone across the same angle, and
+-- the viewer submits the runtime's own field of view unchanged -- that is what
+-- makes it a zoom. But it also means anything positioned by the submitted
+-- field of view (the reticle quad the runtime composites, or a quad the viewer
+-- draws into the eye images) is placed for an image that is not the one being
+-- shown: everything off the view's centre has moved outward by the
+-- magnification. Moving the published point outward by the same factor cancels
+-- it exactly.
+--
+-- OpenXR axes, -Z forward: the two components across the view scale, the depth
+-- does not. The axis is the head's, not each eye's, so the two eyes disagree
+-- by (m - 1) times half the IPD -- under 4 mm at a tenth magnification, which
+-- is a fiftieth of a degree at ten metres. Pure.
+function Projection.magnified_target(x, y, z, magnification)
+    local m = tonumber(magnification)
+    if not m or m ~= m or m <= 1.0001 or m > 4 then return x, y, z end
+    local ax, ay = tonumber(x), tonumber(y)
+    if not ax or not ay or ax ~= ax or ay ~= ay then return x, y, z end
+    return ax * m, ay * m, z
+end
+
 Projection.ZOOM_TAU = 0.15
 Projection.ZOOM_MAX_PERCENT = 30
 function Projection.zoom_blend(previous, active, dt)

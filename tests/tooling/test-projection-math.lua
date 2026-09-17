@@ -101,4 +101,24 @@ assert(math.abs(projection.zoom_magnification(12, 0.5) - 1.06) < 1e-12)
 assert(projection.zoom_magnification(0, 1) == 1 and projection.zoom_magnification(nil, 1) == 1)
 assert(projection.zoom_magnification(500, 1) == 1 + projection.ZOOM_MAX_PERCENT * 0.01, "clamped")
 assert(projection.zoom_magnification(0 / 0, 1) == 1 and projection.zoom_magnification(12, 0 / 0) == 1)
-print("projection_math=pass recentered visibility panel lod zoom")
+-- A world point published for a zoomed image: the reticle is placed by the
+-- field of view the viewer submits, which is not the one the pair was
+-- rendered with while the zoom is on, so everything off the view's centre has
+-- to move out by the magnification to stay where it is seen.
+local x, y, z = projection.magnified_target(0.3, -0.2, -10, 1.12)
+assert(math.abs(x - 0.336) < 1e-9 and math.abs(y + 0.224) < 1e-9, "across the view, scaled")
+assert(z == -10, "depth is along the axis and does not scale")
+x, y, z = projection.magnified_target(0, 0, -10, 1.12)
+assert(x == 0 and y == 0 and z == -10, "a point dead ahead does not move")
+-- The same tangents: that is what makes it cancel.
+local real_tangent = 0.3 / 10
+local published_tangent = select(1, projection.magnified_target(0.3, 0, -10, 1.12)) / 10
+assert(math.abs(published_tangent - real_tangent * 1.12) < 1e-12,
+    "the published tangent is the magnified one")
+for _, m in ipairs({1, 1.00005, 0, -2, 4.5, 0 / 0}) do
+    x, y, z = projection.magnified_target(0.3, -0.2, -10, m)
+    assert(x == 0.3 and y == -0.2 and z == -10, "magnification " .. tostring(m) .. " was applied")
+end
+x, y, z = projection.magnified_target(0 / 0, -0.2, -10, 1.12)
+assert(x ~= x and y == -0.2, "a point that is not a number is passed through untouched")
+print("projection_math=pass recentered visibility panel lod zoom magnified_target")

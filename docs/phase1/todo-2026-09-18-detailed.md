@@ -394,6 +394,38 @@ any reticle change. `summarize-hub-arms.py` reads the arms.
   freely but no id may be renamed without dropping the player's setting.
   Every entry needs its localisation pair in `darktidevr_localization.lua`.
 
+- **Body height and arm length should not be one number: what does everyone
+  else do?** (user, 18 September: "investigate industry best practices for
+  scaling the body height and arm length based on calibration - surely they
+  can be independent").
+
+  This is exactly what today's A/B ran into, from the other end. The body
+  copy is fitted to the player with a single uniform scale, so reaching the
+  neck up to the player's head (1.30, at its cap) drags the shoulders out and
+  up with it, and the arm solve then stretches 13 to 19 per cent to reach the
+  hands. Dropping the scale and using the calibrated arms instead
+  (`overlaytrue`) cures the arms -- worst stretch 0.42 m to 0.03 m -- and
+  leaves 18 cm of neck-to-head gap. One number cannot serve both, which is
+  the user's point.
+
+  *What to read*: how the established runtimes decompose a calibration --
+  eye height, arm span and shoulder width into independent limb scales rather
+  than one body scale. VRChat's IK calibration (per-bone scaling from a T
+  pose), Meta's Movement SDK body tracking retargeting, Unity/Unreal's
+  standard humanoid retarget rigs, OpenXR's body-tracking extensions, and the
+  anthropometric regressions these all lean on (stature to segment length).
+  The question to answer is which segments are scaled independently, from
+  which measurements, and what is done about the residual the way our 18 cm
+  is a residual.
+
+  *What we already have to work with*: `floor_eye_height` and `hand_span` from
+  the calibration, the derivation in
+  `docs/design/arm-length-calibration-2026-09-16.md`, and a measured A/B of
+  both extremes in
+  [the results](unattended-results-2026-09-18.md). What is missing is the
+  middle: spine and leg scaled to the height, arms scaled to the span, torso
+  width to the shoulders.
+
 ## D. Needs the user
 
 Checklist items 47 to 54 worn; the two body constants in centimetres; a

@@ -6496,6 +6496,9 @@ function presentation.ads_zoom_magnification()
     end
     local magnification = presentation.projection_math.zoom_magnification(
         percent, presentation.ads_zoom_blend)
+    -- Kept for readers that must not advance the blend a second time in one
+    -- frame (the aim publisher).
+    presentation.ads_zoom_value = magnification
     if (magnification > 1.0001) ~= (presentation.ads_zoom_logged == true) then
         presentation.ads_zoom_logged = magnification > 1.0001
         mod:info("DARKTIDEVR_AIM zoom=%s magnification=%.3f percent=%s",
@@ -8890,8 +8893,15 @@ function presentation.publish_gameplay_aim_state(active, hit, distance, world_po
         local player = Managers.player:local_player(1)
         local scale = presentation.calibrated_character_scale(player)
         local point = Quaternion.rotate(Quaternion.inverse(rotation),world_point-anchor)/scale
+        -- The aim zoom renders a narrower cone across the same angle, so
+        -- everything off the view's centre is further out in the image than
+        -- the submitted field of view says. The reticle is placed by that
+        -- field of view, so the point it is placed at has to move with it.
+        local ox, oy, oz = presentation.projection_math.magnified_target(
+            Vector3.x(point), Vector3.z(point), -Vector3.y(point),
+            presentation.ads_zoom_value)
         local result = publish(hit and 1 or 0, math.max(.05,math.min(200,distance/scale)),
-            Vector3.x(point), Vector3.z(point), -Vector3.y(point), sequence,
+            ox, oy, oz, sequence,
             controller_observation.body_anchor_pose_generation,
             controller_observation.body_anchor_recenter_generation)
         if tonumber(result) ~= 0 then

@@ -63,7 +63,10 @@ if arg[2] then
     local online=true
     local p={online_rules={enabled=function() return online end},calibrated_character_scale=function() return 2 end,
         keyboard_mouse_enabled=function() return keyboard_mouse end,keyboard_mouse_view_pitch=function() return 0 end,
-        native_gameplay_aim_target=function(...) packet={...}; return 0 end}
+        native_gameplay_aim_target=function(...) packet={...}; return 0 end,
+        -- The real module: the published point has to carry the aim zoom, or
+        -- the reticle is placed for an image the game did not render.
+        projection_math=dofile(assert(arg[3]))}
     local obs={body_anchor_x=10,body_anchor_y=20,body_anchor_z=30,body_anchor_pose_sequence=42,
         body_anchor_pose_generation=3,body_anchor_recenter_generation=8}
     local env=setmetatable({presentation=p,controller_observation=obs,Vector3=vec,Quaternion=quat,
@@ -87,5 +90,22 @@ if arg[2] then
     p.native_gameplay_aim_target=nil
     assert(not p.publish_gameplay_aim_state(true,true,12,vec(8,22,31)) and legacy[1]==0,
         'old DLL displayed the wrong ray as if it were the stock target')
+    -- With the aim zoom on, the game renders a narrower cone across the same
+    -- angle while the viewer submits the runtime's own field of view, so the
+    -- point the reticle is placed at moves out by the magnification. The
+    -- depth does not, and nothing moves when the zoom is off.
+    p.native_gameplay_aim_target=function(...) packet={...}; return 0 end
+    p.ads_zoom_value=1
+    assert(p.publish_gameplay_aim_state(true,true,12,vec(8,22,31)))
+    local flat={packet[3],packet[4],packet[5]}
+    p.ads_zoom_value=1.12
+    assert(p.publish_gameplay_aim_state(true,true,12,vec(8,22,31)))
+    assert(math.abs(packet[3]-flat[1]*1.12)<1e-9 and math.abs(packet[4]-flat[2]*1.12)<1e-9,
+        'the aim zoom did not reach the published point')
+    assert(packet[5]==flat[3],'the depth must not scale with the zoom')
+    assert(math.abs(packet[2]-6)<1e-9,'the distance is unchanged by the zoom')
+    p.ads_zoom_value=nil
+    assert(p.publish_gameplay_aim_state(true,true,12,vec(8,22,31)) and packet[3]==flat[1],
+        'no magnification recorded yet: publish the point as it is')
     print('PASS online reticle native seam: exact target, basis, character scale, pose identity and old-DLL clear')
 end
