@@ -88,11 +88,21 @@ end
 function Wrist.install(mod, presentation, observation)
     local api = {visible = false}
     local world, gui, failed, logged = nil, nil, false, false
-    local consecutive_failures = 0
+    local consecutive_failures, total_failures = 0, 0
     local UIFonts
-    function api.destroy()
+    -- Letting go of the world's resources, without touching the failure
+    -- count: the draw path does this after a bad frame and keeps counting.
+    local function teardown()
         if gui and world then pcall(World.destroy_gui, world, gui) end
         world, gui = nil, nil
+    end
+    -- The module is installed once for the whole session and destroyed at
+    -- every level load, so this is the only place a failure count can be
+    -- forgiven: a mission ending must not leave one or two failures behind
+    -- to be joined by an unrelated one next mission (review, 18 September).
+    function api.destroy()
+        teardown()
+        consecutive_failures, total_failures, failed = 0, 0, false
     end
     local function hide() api.visible = false; if gui then Gui.set_visible(gui, false) end end
     local test_poll, test_mode = 0, nil
@@ -202,10 +212,17 @@ function Wrist.install(mod, presentation, observation)
             return
         end
         consecutive_failures = consecutive_failures + 1
-        api.destroy()
-        failed = consecutive_failures >= 3
-        mod:warning("DARKTIDEVR_WRIST_DISPLAY error=%s consecutive=%d stopped=%s", tostring(err),
-            consecutive_failures, tostring(failed))
+        total_failures = total_failures + 1
+        teardown()
+        -- Three in a row is a broken display. So is a fault that fails every
+        -- other frame for a whole level: without the total, a success
+        -- between failures would reset the run for ever and warn on every
+        -- bad frame (review, 18 September).
+        failed = consecutive_failures >= 3 or total_failures >= 20
+        if total_failures <= 3 or failed then
+            mod:warning("DARKTIDEVR_WRIST_DISPLAY error=%s consecutive=%d total=%d stopped=%s",
+                tostring(err), consecutive_failures, total_failures, tostring(failed))
+        end
     end
     return api
 end
