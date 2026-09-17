@@ -50,6 +50,20 @@ In rough order of strength:
 5. **A review by a second reader** before anything is deployed for a worn
    test.
 
+## Where this list stood at the end of 18 September
+
+**Done and in the game** (four unattended runs, results in
+[unattended-results-2026-09-18.md](unattended-results-2026-09-18.md)): A1 the
+vignette, A2 the zoom, A3 the null-swapchain guard, A4 the claim slot (with a
+new `claim_arbitration` test), A5's haptics wrapper, A9's two body guards,
+A10 the documents, B1's instrumentation and its launch, B3 the streaming-rate
+measurement, and the runner's eye readbacks.
+
+**Left for another day**: A5's twelve `mod:hook` forwarders; A6's
+parameterised layout tests; A7 the displays that latch `failed`; A8's smaller
+presentation items; C's reticle-into-the-eye-images, which is the last piece
+of the FOV-tangent work; and the arm-length work, which today's A/B showed is
+blocked on the calibration's short span rather than on the mode itself.
 ## A. No launch, worth doing first
 
 ### A1. The ADS vignette: painted per image, sized from the real field of view — DONE (`9a17269`)
