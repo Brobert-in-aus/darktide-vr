@@ -598,6 +598,24 @@ if ($StreamlineStereoSubmitProbe) {
 # The native module and the Lua mod default to the accepted play configuration
 # when one of these flags is absent. A development launch that did not request
 # a probe must therefore say so explicitly, and the file goes away afterwards.
+# The viewer polls this file rather than an environment variable: the game is
+# started through Steam, which does not inherit this session's environment.
+$reticleInEyesFlagPath = Join-Path $GameRoot `
+    'mods\darktidevr\darktidevr_reticle_in_eyes.flag'
+$reticleInEyesFlagExisted = Test-Path -LiteralPath $reticleInEyesFlagPath -PathType Leaf
+if ($ReticleInEyes) {
+    if ($reticleInEyesFlagExisted) {
+        $reticleInEyesFlagOriginal = [IO.File]::ReadAllBytes($reticleInEyesFlagPath)
+    }
+    Set-Content -LiteralPath $reticleInEyesFlagPath -Value 'enabled' -Encoding ascii
+    $env:DTVR_XR_RETICLE_IN_EYES = '1'
+    Write-Output 'Gameplay reticle: drawn into the eye images, not as a quad layer.'
+}
+elseif ($reticleInEyesFlagExisted) {
+    # A leftover flag would silently turn it on for a run that did not ask.
+    Write-Output 'Removing a leftover darktidevr_reticle_in_eyes.flag.'
+    Remove-Item -LiteralPath $reticleInEyesFlagPath -Force
+}
 $playDefaultOffFlags = @()
 foreach ($playDefault in @(
         @{ Requested = [bool] $streamlineProbeFlagPath; Name = 'darktidevr_streamline_probe.flag'; Value = 'disabled' },
@@ -828,11 +846,6 @@ if ($offlineNoHeadset) {
 else {
     Write-Output 'Waiting for the Darktide splash window; XR will start as soon as it exists.'
 }
-if ($ReticleInEyes) {
-    # Inherited by the viewer started below (src/xr/main.cpp).
-    $env:DTVR_XR_RETICLE_IN_EYES = '1'
-    Write-Output 'Gameplay reticle: drawn into the eye images, not as a quad layer.'
-}
 if (-not $LegacyViewerTiming) {
     # Inherited by the viewer started below. Both were part of the 11 September
     # performance bundle; see docs/PERFORMANCE-BUNDLE-2026-09-11.md.
@@ -1017,6 +1030,18 @@ finally {
                 elseif (Test-Path -LiteralPath $playDefaultFlag.Path -PathType Leaf) {
                     Remove-Item -LiteralPath $playDefaultFlag.Path -Force
                 }
+            }
+        }
+    }
+    {
+        if (Test-Path -LiteralPath variable:reticleInEyesFlagPath) {
+            if ($reticleInEyesFlagExisted -and
+                    (Test-Path -LiteralPath variable:reticleInEyesFlagOriginal)) {
+                Restore-FlagOriginal -LiteralPath $reticleInEyesFlagPath `
+                    -Original $reticleInEyesFlagOriginal
+            }
+            elseif (Test-Path -LiteralPath $reticleInEyesFlagPath -PathType Leaf) {
+                Remove-Item -LiteralPath $reticleInEyesFlagPath -Force
             }
         }
     }

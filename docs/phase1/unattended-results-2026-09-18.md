@@ -252,3 +252,61 @@ by enlarging everything. So the honest position is:
 This is measurement, not a recommendation to change the default: `overlay`
 still ships and `overlaytrue` is a flag. The worn question for the user is
 which of the two looks less wrong, and that needs a head.
+
+## The projection anything drawn into the eye images has to use
+
+Preparing the reticle work turned up a plain arithmetic mismatch that nobody
+had checked. The theatre eye images are submitted to the runtime with a
+**recentered symmetric** projection (`main.cpp`,
+`recentered_symmetric_projection`), and the game renders the pair with the
+same one (`darktidevr_projection_math.lua: Projection.recentered_eye`). The
+tracked cuffs were drawn into those images with the runtime's own **off-axis**
+frustum and the un-composed pose. Those are not interchangeable.
+
+At the field of view Virtual Desktop reported in `hub-100hz-1`
+(`openxr.runtime_fov.eye0=-0.893445,0.648593,0.71549,-0.909609`, aspect
+1908/2076), a point on the eye's own optical axis lands at:
+
+| convention | NDC | off the rendered centre |
+|---|---|---|
+| recentered symmetric (what the image is) | 0.000, 0.000 | 0 |
+| raw runtime frustum (what the cuffs used) | **+0.120, +0.102** | **6.2 deg, 5.9 deg** |
+
+The optical centre is 7.0 degrees of yaw and 5.6 of pitch off the eye's
+forward, and the yaw has the opposite sign in each eye, so the horizontal
+error reverses between them: the two images disagree by about 12 degrees of
+disparity, which is a stereo cue claiming a depth the cuff is not at. The
+cuff overlay is a `--tracked-cuff-overlay` development switch and is off in
+play, which is why this has never been worn.
+
+Fixed by computing the submitted projection once, before the theatre command
+list, and having the cuffs, the new reticle draw and the layer all read that
+one answer. `core_math` pins both numbers above, so the two conventions
+cannot be quietly swapped again.
+
+## The reticle out of the quad layer (`DTVR_XR_RETICLE_IN_EYES`, default off)
+
+Built as the detailed list planned it: the panel renderer draws the reticle
+quad into the eye images beside the cuffs, from the same pose, size and texel
+rectangle the quad layer would have used, so it is the same sprite in the
+same place -- but placed by the projection the world is placed by, instead of
+by Virtual Desktop's compositor guessing at a cropped display.
+
+Four things it needed, and where each landed:
+
+1. **A texture to sample.** The sprite is painted into the flat swapchain
+   image, which is the runtime's, not ours. The same `CopyTextureRegion` now
+   also puts it in `PanelRenderer`'s board texture, in the command list that
+   paints it.
+2. **The right projection.** The hoisted arrays above.
+3. **The eye's own rectangle.** Both layouts handled: separate swapchains, or
+   the halves of one.
+4. **Resource states.** The draw sits inside the cuffs' existing
+   COPY_DEST -> RENDER_TARGET window.
+
+`openxr.gameplay_reticle layer=quad|eyes` says which path a run took, and the
+projected-eye readback now fires on a reticle-only frame, so an unattended run
+can finally **see** the reticle and check where it is -- which it never could
+while the reticle lived in a layer the runtime composites after us.
+
+Not yet run in the game. Default off until it has been worn.

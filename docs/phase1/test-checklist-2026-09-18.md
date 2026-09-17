@@ -88,9 +88,35 @@ better — a body that meets your head with long arms, or one with your own
 arms whose head sits high. That decides whether the next body work is the
 legs (to close the remaining 18 cm honestly) or something else.
 
+### 60. The reticle, if an unattended run has proved it first
+
+Only worth your time once the run below has shown it lands where it should;
+if this session has not said so, skip it.
+
+The reticle is a quad layer today, which means Virtual Desktop's compositor
+places it, and with your FOV tangent at 90 per cent it places quad layers
+with a projection that does not match the display -- the same fault that
+turned the loading boards. For the reticle that is roughly a degree ten
+degrees off centre, and it swims as you turn your head against your aim.
+Drawn into the eye images instead it is placed by the projection the world
+is placed by.
+
+Off by default. To try it, launch with `-ReticleInEyes`.
+
+- Aim at something ten metres off, hold the aim, and turn your head slowly
+  left and right without moving the gun. **The reticle should stay on the
+  thing you are aiming at.** Today it should drift off it and come back.
+- Put the reticle on a small distant target near the edge of your view, not
+  in the middle. Is it on the target, or beside it?
+- Anything wrong with the image itself -- a smeared corner, a square of game
+  window where the reticle should be -- matters more than placement. Say so
+  and turn the switch off.
+
 ## Suggested order
 
 1. In the Psykhanium with a ranged weapon: 55 and 56 together (aim, hold,
    release), then 57.
 2. Anywhere: 58, which is really "does anything look different that
    should not".
+3. 60 only if this session's notes say an unattended run saw the reticle in
+   the right place.

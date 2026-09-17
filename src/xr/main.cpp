@@ -992,10 +992,13 @@ class OpenXrProbe {
     // eye readback can finally see it. Off until it has been worn:
     // DTVR_XR_RETICLE_IN_EYES=1 turns it on.
     wchar_t reticle_in_eyes_value[2]{};
-    const bool reticle_in_eyes_requested =
+    const bool reticle_in_eyes_environment =
         GetEnvironmentVariableW(L"DTVR_XR_RETICLE_IN_EYES",
                                 reticle_in_eyes_value, 2) == 1 &&
         reticle_in_eyes_value[0] == L'1';
+    // Polled from the flag file below as well, so a run can turn it on and
+    // off while the game is up.
+    bool reticle_in_eyes_requested = reticle_in_eyes_environment;
     std::unique_ptr<darktidevr::harness::PanelRenderer> panel_renderer;
     std::array<XrSwapchain, 2> board_swapchains{XR_NULL_HANDLE, XR_NULL_HANDLE};
     std::array<std::vector<XrSwapchainImageD3D12KHR>, 2> board_images;
@@ -1460,6 +1463,11 @@ class OpenXrProbe {
     std::uint64_t projection_resume_ready_value{};
     std::uint64_t projection_resume_gameplay_generation{};
     const auto start = std::chrono::steady_clock::now();
+    // The gate's flag file lives in the same folder: an unattended run starts
+    // the game through Steam, so the viewer never sees the runner's
+    // environment and an environment-only switch could not be proved without
+    // a head on (18 September).
+    std::wstring reticle_in_eyes_flag;
     wchar_t reticle_scale_file[32768]{};
     const auto reticle_scale_path_length = GetEnvironmentVariableW(
         L"DTVR_RETICLE_SCALE_FILE", reticle_scale_file, 32768);
@@ -1480,6 +1488,8 @@ class OpenXrProbe {
           std::copy(candidate.begin(), candidate.end(), reticle_scale_file);
           reticle_scale_file[candidate.size()] = L'\0';
         }
+        reticle_in_eyes_flag = executable_directory +
+            L"..\\darktidevr_reticle_in_eyes.flag";
       }
     }
     float reticle_scale = 0.7F;
@@ -3078,6 +3088,19 @@ class OpenXrProbe {
           }
         }
         const auto reticle_scale_now = std::chrono::steady_clock::now();
+        if (enable_gameplay_reticle && reticle_scale_now >= next_reticle_scale_poll &&
+            !reticle_in_eyes_flag.empty()) {
+          // Presence is the switch; the file's contents are not read.
+          std::error_code flag_error;
+          const auto present = std::filesystem::exists(
+              std::filesystem::path{reticle_in_eyes_flag}, flag_error);
+          const auto wanted = reticle_in_eyes_environment ||
+                              (!flag_error && present);
+          if (wanted != reticle_in_eyes_requested) {
+            reticle_in_eyes_requested = wanted;
+            std::cout << "openxr.reticle_in_eyes=" << (wanted ? 1 : 0) << '\n';
+          }
+        }
         if (enable_gameplay_reticle && reticle_scale_file[0] && reticle_scale_now >= next_reticle_scale_poll) {
           next_reticle_scale_poll = reticle_scale_now + std::chrono::milliseconds(250);
           std::ifstream input{std::filesystem::path{reticle_scale_file}};
