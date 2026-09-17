@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateRange(5, 43200)]
     [int] $DurationSeconds = 28800,
@@ -125,6 +125,10 @@ param(
     # frame generation is not published). This switch restores the earlier
     # viewer behaviour for a comparison run.
     [switch] $LegacyViewerTiming,
+    # Draws the gameplay reticle into the eye images instead of handing the
+    # runtime a quad layer, which Virtual Desktop draws with a projection that
+    # does not match a cropped display. Off until it has been worn.
+    [switch] $ReticleInEyes,
 
     # Native stereo launches (no -DlssGeneratedStereo) publish originals through
     # the three-slot native ring by default since the 11 September bundle. This
@@ -823,6 +827,11 @@ if ($offlineNoHeadset) {
 }
 else {
     Write-Output 'Waiting for the Darktide splash window; XR will start as soon as it exists.'
+}
+if ($ReticleInEyes) {
+    # Inherited by the viewer started below (src/xr/main.cpp).
+    $env:DTVR_XR_RETICLE_IN_EYES = '1'
+    Write-Output 'Gameplay reticle: drawn into the eye images, not as a quad layer.'
 }
 if (-not $LegacyViewerTiming) {
     # Inherited by the viewer started below. Both were part of the 11 September

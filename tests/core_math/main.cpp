@@ -162,6 +162,58 @@ int main() {
           "recentered optical axis did not rotate left and down");
     }
 
+    // The eye images are submitted with the recentered projection and the
+    // game renders them with it, so anything the viewer draws INTO them --
+    // the tracked cuffs, the gameplay reticle -- must use it too. It is not
+    // interchangeable with the runtime's own off-axis frustum, which is what
+    // the cuffs used until 18 September. Virtual Desktop's left eye at the 90
+    // per cent tangent, from artifacts/unattended/hub-100hz-1.
+    const Fov vd_left{-0.893445F, 0.648593F, 0.71549F, -0.909609F};
+    const auto vd_recentered =
+        recentered_symmetric_projection(vd_left, 1908.0F / 2076.0F);
+    const auto ndc = [](Matrix4 matrix, Vec3 direction) {
+      const auto clip =
+          transform(matrix, {direction.x, direction.y, direction.z, 1.0F});
+      return std::array<float, 2>{clip[0] / clip[3], clip[1] / clip[3]};
+    };
+    // A point ten metres along the eye's own optical axis: the direction the
+    // rendered image is centred on.
+    const auto vd_axis = rotate(vd_recentered.orientation_offset,
+                                {0.0F, 0.0F, -1.0F});
+    const Vec3 ahead{vd_axis.x * 10.0F, vd_axis.y * 10.0F, vd_axis.z * 10.0F};
+    const auto submitted_ndc = ndc(
+        multiply(projection_d3d(vd_recentered.symmetric_fov, 0.025F, 100.0F),
+                 pose_matrix(inverse(Pose{vd_recentered.orientation_offset,
+                                          {0.0F, 0.0F, 0.0F}}))),
+        ahead);
+    expect_near(submitted_ndc[0], 0.0F, 0.0001F,
+                "the submitted projection centres its own optical axis");
+    expect_near(submitted_ndc[1], 0.0F, 0.0001F,
+                "the submitted projection centres its own optical axis");
+    // The raw frustum does not centre it: a ninth of the way to the edge
+    // horizontally and a tenth vertically, which is 6.2 and 5.9 degrees, and
+    // is what anything drawn the old way is displaced by. Worse, the
+    // horizontal error reverses in the other eye, so the two images disagree
+    // -- a stereo disparity claiming a depth the object is not at.
+    const auto raw_ndc = ndc(projection_d3d(vd_left, 0.025F, 100.0F), ahead);
+    expect_near(raw_ndc[0], 0.11955F, 0.001F,
+                "the runtime frustum's horizontal displacement");
+    expect_near(raw_ndc[1], 0.10212F, 0.001F,
+                "the runtime frustum's vertical displacement");
+    const Fov vd_right{-0.648593F, 0.893445F, 0.71549F, -0.909609F};
+    const auto right_axis =
+        rotate(recentered_symmetric_projection(vd_right, 1908.0F / 2076.0F)
+                   .orientation_offset,
+               {0.0F, 0.0F, -1.0F});
+    const auto right_raw_ndc =
+        ndc(projection_d3d(vd_right, 0.025F, 100.0F),
+            {right_axis.x * 10.0F, right_axis.y * 10.0F,
+             right_axis.z * 10.0F});
+    if (!(raw_ndc[0] * right_raw_ndc[0] < 0.0F)) {
+      throw std::runtime_error(
+          "the raw frustum's horizontal error should reverse between eyes");
+    }
+
     expect_near(linear_depth_forward(0.0F, 0.1F, 100.0F), 0.1F, 0.0001F,
                 "forward depth near");
     expect_near(linear_depth_forward(1.0F, 0.1F, 100.0F), 100.0F, 0.01F,
