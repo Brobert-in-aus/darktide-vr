@@ -112,5 +112,11 @@ assert(fed[1] == -0.55 and fed[2] == 0.15)
 -- Running to the right of the heading leads to the right: a smaller x.
 fed = Skull.fed_offset({0, 0, 0}, false, nil, {0.3, 0, 0}, 0)
 assert(math.abs(fed[1] + 0.3) < 1e-9 and math.abs(fed[2]) < 1e-9)
+-- The stock update multiplies a rest offset's x by the field-of-view factor:
+-- the lead is divided by it first so it stays a world distance; the stock
+-- rest keeps the factor's effect, as stock intends.
+fed = Skull.fed_offset({-0.55, 0.15, -0.25}, true, nil, {0.3, 0, 0}, 0, 1.25)
+assert(math.abs(fed[1] - (0.55 - 0.3 / 1.25)) < 1e-9, 'lead divided, rest not')
+assert(Skull.fed_offset({0, 0, 0}, false, nil, {0.3, 0, 0}, 0, 0)[1] == -0.3, 'a nonsense factor is 1')
 assert(Skull.HOLD_UP == 0.07)
 print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed stock_offset lead fed_offset')

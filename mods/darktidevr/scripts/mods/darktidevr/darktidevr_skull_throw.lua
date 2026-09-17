@@ -216,10 +216,14 @@ end
 
 -- The rest offset the stock extension is given for one skull this frame.
 -- rest: the stock offset {x, y, z}; mirror and forward as Skull.rest_offsets;
--- lead a world 3-array and heading the lazy yaw. Pure.
-function Skull.fed_offset(rest, mirror, forward, lead, heading)
+-- lead a world 3-array and heading the lazy yaw. The stock update multiplies
+-- a rest offset's x by the player's field-of-view setting over the default
+-- (fov, 1 when unset): the stock rest keeps that, the lead is an exact
+-- world distance and is divided by it first. Pure.
+function Skull.fed_offset(rest, mirror, forward, lead, heading, fov)
+    fov = (finite(fov) and fov > 0.1) and fov or 1
     local l = Skull.stock_offset(lead or {0, 0, 0}, heading)
-    return {(mirror and -rest[1] or rest[1]) + l[1], (forward or rest[2]) + l[2], rest[3]}
+    return {(mirror and -rest[1] or rest[1]) + l[1] / fov, (forward or rest[2]) + l[2], rest[3]}
 end
 
 -- While the off hand holds the skull it sits just above the hand.
@@ -412,10 +416,14 @@ function Skull.install(mod, presentation)
         return shared
     end
 
-    -- Feed the stock update: returns what to undo afterwards, or nil.
-    local function feed(extension, skull, record, owner, t, thrower)
+    -- Feed the stock update. What is changed is written into `undo` as it is
+    -- changed, so the caller can take everything back even when this errors
+    -- half way (the settings tables are shared by every player's skulls).
+    local function feed(extension, skull, record, owner, t, thrower, undo)
         local frame = owner_frame(owner, t)
-        if not frame then return nil end
+        if not frame then return end
+        local fov = tonumber(extension._fov_multiplier)
+        fov = (fov and fov > 0.1) and fov or 1
         local roles = presentation.weapon_hand_roles
         -- Stock rests the throwable skull on the right: the off-hand side
         -- already for a left-handed player.
@@ -427,7 +435,6 @@ function Skull.install(mod, presentation)
             hold = Skull.stock_offset({hand_track.position[1] - origin[1], hand_track.position[2] - origin[2],
                 hand_track.position[3] + Skull.HOLD_UP - origin[3]}, frame.heading)
         end
-        local undo = {first_person = frame.first_person, tables = {}}
         for _, field in ipairs({"_first_person_movement_settings", "_third_person_movement_settings"}) do
             local settings = extension[field]
             local position = type(settings) == "table" and settings.position
@@ -437,21 +444,30 @@ function Skull.install(mod, presentation)
                 for name, box in pairs(position) do
                     saved[name] = box
                     local v = box:unbox()
-                    local fed = hold or Skull.fed_offset({Vector3.x(v), Vector3.y(v), Vector3.z(v)}, mirror,
-                        thrower and Skull.FORWARD or nil, frame.lead, frame.heading)
+                    local fed = hold and {hold[1] / fov, hold[2], hold[3]} or
+                        Skull.fed_offset({Vector3.x(v), Vector3.y(v), Vector3.z(v)}, mirror,
+                            thrower and Skull.FORWARD or nil, frame.lead, frame.heading, fov)
                     local mine = record.boxes[field][name]
                     if not mine then mine = Vector3Box(0, 0, 0); record.boxes[field][name] = mine end
                     mine:store(Vector3(fed[1], fed[2], fed[3]))
                 end
-                for name in pairs(saved) do position[name] = record.boxes[field][name] end
+                -- Recorded before the swap, so an error during it is undone too.
                 undo.tables[#undo.tables + 1] = {position = position, saved = saved}
+                for name in pairs(saved) do position[name] = record.boxes[field][name] end
             end
         end
         -- Held: the stock smoothing of the offset would trail the hand by
-        -- half a second; its state is put on the hand.
-        local smoothing = extension._companion_position_offset
-        if hold and smoothing and smoothing.store then smoothing:store(Vector3(hold[1], hold[2], hold[3])) end
+        -- half a second, and its smoothing of the heading would swing the
+        -- offset off the hand whenever the lazy heading moves; both states
+        -- are put where they would settle (the offset's is kept after the
+        -- field-of-view factor, so it is not divided).
         local heading = frame.heading
+        local smoothing = extension._companion_position_offset
+        if hold and smoothing and smoothing.store then
+            smoothing:store(Vector3(hold[1], hold[2], hold[3]))
+            extension.smoothed_forward = Vector3Box(Vector3(-math.sin(heading), math.cos(heading), 0))
+        end
+        undo.first_person = frame.first_person
         undo.shadowed = rawget(frame.first_person, "extrapolated_rotation")
         rawset(frame.first_person, "extrapolated_rotation", function() return Quaternion(Vector3.up(), heading) end)
         if not record.logged then
@@ -463,11 +479,10 @@ function Skull.install(mod, presentation)
             record.hold_logged = true
             mod:info("DARKTIDEVR_SKULL_THROW held offset=%.2f,%.2f,%.2f", hold[1], hold[2], hold[3])
         end
-        return undo
     end
     local function unfeed(undo)
         if not undo then return end
-        rawset(undo.first_person, "extrapolated_rotation", undo.shadowed)
+        if undo.first_person then rawset(undo.first_person, "extrapolated_rotation", undo.shadowed) end
         for _, entry in ipairs(undo.tables) do
             for name, box in pairs(entry.saved) do entry.position[name] = box end
         end
@@ -536,7 +551,9 @@ function Skull.install(mod, presentation)
         -- One hook (a mod's second hook on a method is ignored): it wraps the
         -- stock update so the fed inputs are in place for its length only.
         mod:hook(class, "post_update", function(func, self, unit, ...)
-            if failed then return func(self, unit, ...) end
+            -- As the stock update's own first line: the system still calls
+            -- it for a unit already dead, and engine calls on one assert.
+            if failed or not ALIVE[unit] then return func(self, unit, ...) end
             local owner = local_player_unit()
             local t = now()
             if not owner or not t or self._owner_unit ~= owner then return func(self, unit, ...) end
@@ -550,12 +567,15 @@ function Skull.install(mod, presentation)
                 return func(self, unit, ...)
             end
             local record = record_of(unit)
-            local undo
+            local undo = {tables = {}}
             if following then
-                local ok, result = pcall(feed, self, unit, record, owner, t, thrower)
-                if ok then undo = result else
+                local ok, feed_err = pcall(feed, self, unit, record, owner, t, thrower, undo)
+                if not ok then
+                    -- Taken back at once: the stock update then runs unfed.
+                    pcall(unfeed, undo)
+                    undo = {tables = {}}
                     failed = true
-                    mod:warning("DARKTIDEVR_SKULL_THROW feed_error=%s", tostring(result))
+                    mod:warning("DARKTIDEVR_SKULL_THROW feed_error=%s", tostring(feed_err))
                 end
             end
             -- The stock update runs under pcall only so the fed inputs are
