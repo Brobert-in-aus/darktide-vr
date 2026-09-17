@@ -37,6 +37,54 @@ function Projection.recentered_eye(frustum, target_aspect_ratio)
     }
 end
 
+-- The same frustum seen through a magnifying glass: every edge's tangent
+-- divided by the magnification. The mod renders the eyes with the frustum it
+-- publishes, while the viewer submits that image to the runtime with the
+-- field of view the runtime itself reported, so a narrower rendered cone is
+-- shown across the same angle and everything in it looks larger. Asymmetry
+-- and the optical centre scale with it, which keeps both eyes' centres on the
+-- same world ray and the stereo comfortable. A magnification of 1 (or
+-- anything unusable) returns the frustum unchanged. Pure.
+function Projection.zoomed_frustum(frustum, magnification)
+    if type(frustum) ~= "table" then return frustum end
+    local m = tonumber(magnification)
+    if not m or m ~= m or m <= 1.0001 or m > 4 then return frustum end
+    local function edge(angle)
+        local a = tonumber(angle)
+        if not a or a ~= a then return angle end
+        return math.atan(math.tan(a) / m)
+    end
+    return {left = edge(frustum.left), right = edge(frustum.right),
+        down = edge(frustum.down), up = edge(frustum.up)}
+end
+
+-- The eased magnification from an aim-down-sights state: 1 while the sights
+-- are down, rising to 1 + percent/100 while they are up, with the 0.15 s time
+-- constant the viewer's focus vignette uses so the two move together.
+-- `previous` and the returned value are the eased 0..1 blend. Pure.
+Projection.ZOOM_TAU = 0.15
+Projection.ZOOM_MAX_PERCENT = 30
+function Projection.zoom_blend(previous, active, dt)
+    local target = active and 1 or 0
+    local p = tonumber(previous)
+    local step = tonumber(dt)
+    if not p or p ~= p then return target end
+    if not step or step ~= step or step <= 0 or step > 0.5 then return target end
+    local value = p + (target - p) * (1 - math.exp(-step / Projection.ZOOM_TAU))
+    if math.abs(target - value) < 0.005 then value = target end
+    return value
+end
+
+function Projection.zoom_magnification(percent, blend)
+    local p = tonumber(percent) or 0
+    if p ~= p then p = 0 end
+    if p < 0 then p = 0 elseif p > Projection.ZOOM_MAX_PERCENT then p = Projection.ZOOM_MAX_PERCENT end
+    local b = tonumber(blend) or 0
+    if b ~= b then b = 0 end
+    if b < 0 then b = 0 elseif b > 1 then b = 1 end
+    return 1 + p * 0.01 * b
+end
+
 function Projection.binocular_visibility_scale(left, right)
     -- Light admission must cover the union of the rendered eye cones. A fixed
     -- 20% tangent margin is smaller than their relative optical-axis yaw.

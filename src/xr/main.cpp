@@ -1471,7 +1471,15 @@ class OpenXrProbe {
     // Aim-down-sights focus: eased from the published aim state; tightens the
     // reticle and drives the vignette sprite alpha.
     float ads_blend = 0.0F;
-    float ads_painted_blend = -1.0F;
+    // The painted strength of each flat swapchain image. The sprite lives in
+    // a corner of that shared texture and every image keeps whatever was last
+    // written into it, so painting only when the strength changed wrote one
+    // image and left the rest holding stale pixels: the vignette showed, at
+    // best, on one frame in as many as the runtime has images (built 12
+    // September, never seen worn).
+    std::vector<float> ads_painted_blend(
+        flat_images.empty() ? std::size_t{1} : flat_images.size(), -1.0F);
+    bool ads_vignette_logged{};
     auto ads_last_tick = start;
     auto last_live_report = start;
     auto next_cached_pair_report = start;
@@ -3199,9 +3207,13 @@ class OpenXrProbe {
               const D3D12_BOX sprite{left, top, 0, left + 41, top + 41, 1};
               command_list->CopyTextureRegion(&destination, left, top, 0, &source, &sprite);
               // The ADS vignette sprite sits left of the reticle with a
-              // transparent gutter; repaint only when its alpha changed.
-              if (ads_painted_blend != ads_blend) {
-                ads_painted_blend = ads_blend;
+              // transparent gutter; repaint whenever THIS image's painted
+              // strength is not the current one.
+              const auto ads_image = flat_image_index < ads_painted_blend.size()
+                                         ? flat_image_index
+                                         : 0U;
+              if (ads_painted_blend[ads_image] != ads_blend) {
+                ads_painted_blend[ads_image] = ads_blend;
                 const UINT vignette_left = left - 66;
                 const UINT vignette_top = flat_capture_height - 66;
                 darktidevr::core::paint_vignette_atlas(
@@ -4550,8 +4562,13 @@ class OpenXrProbe {
         const auto ads_dt = std::clamp(
             std::chrono::duration<float>(frame_start - ads_last_tick).count(), 0.0F, 0.1F);
         ads_last_tick = frame_start;
+        const auto ads_blend_before = ads_blend;
         ads_blend += (ads_target - ads_blend) * (1.0F - std::exp(-ads_dt / 0.15F));
         if (std::abs(ads_target - ads_blend) < 0.005F) ads_blend = ads_target;
+        if ((ads_blend_before <= 0.0F) != (ads_blend <= 0.0F)) {
+          std::cout << "openxr.ads aiming=" << (ads_blend > 0.0F ? 1 : 0)
+                    << " target=" << ads_target << '\n';
+        }
       }
       const auto reticle_scale_now = std::chrono::steady_clock::now();
       if (enable_gameplay_reticle && reticle_scale_file[0] && reticle_scale_now >= next_reticle_scale_poll) {
@@ -4627,7 +4644,33 @@ class OpenXrProbe {
         ads_vignette_quad.subImage.imageRect.extent = {62, 62};
         ads_vignette_quad.pose.orientation = {0.0F, 0.0F, 0.0F, 1.0F};
         ads_vignette_quad.pose.position = {0.0F, 0.0F, -1.0F};
-        ads_vignette_quad.size = {3.6F, 3.6F};
+        // Sized from the runtime's own field of view, so the sprite's
+        // darkening reaches its peak at the edge of what the eye sees
+        // (core/reticle_atlas.h). A fixed 3.6 m put that peak at 61 degrees,
+        // outside the headset's view.
+        float vignette_half{};
+        for (const auto& view : located_views) {
+          vignette_half = (std::max)(
+              vignette_half,
+              darktidevr::core::vignette_half_extent(
+                  view.fov.angleLeft, view.fov.angleRight, view.fov.angleUp,
+                  view.fov.angleDown));
+        }
+        if (!(vignette_half > 0.1F) || !std::isfinite(vignette_half)) {
+          vignette_half = 1.8F;
+        }
+        ads_vignette_quad.size = {2.0F * vignette_half, 2.0F * vignette_half};
+        if (!ads_vignette_logged) {
+          ads_vignette_logged = true;
+          std::cout << "openxr.ads_vignette blend=" << ads_blend
+                    << " half_extent_m=" << vignette_half
+                    << " peak_deg="
+                    << std::atan(vignette_half) * 57.2957795F
+                    << " images=" << ads_painted_blend.size()
+                    << " sprite=" << ads_vignette_quad.subImage.imageRect.offset.x
+                    << ',' << ads_vignette_quad.subImage.imageRect.offset.y
+                    << '\n';
+        }
       }
       // The board and its pointer as a projection layer of their own, drawn
       // from this frame's located eyes with the runtime's own field of view

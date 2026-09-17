@@ -64,3 +64,41 @@ local ok = pcall(projection.update_lod_levels, function()
     error("fixture failure")
 end, world, camera, 1.6)
 assert(not ok and camera.fov == 2.2, "failed LOD update leaked the temporary FOV")
+
+-- Aim-down-sights zoom: the rendered frustum's tangents divided by the
+-- magnification, asymmetry and optical centre with them, so both eyes stay on
+-- the same world ray. The viewer submits the image with the field of view it
+-- always had, which is what turns a narrower cone into a magnified view.
+local wide = {left = -0.893445, right = 0.648593, down = -0.909609, up = 0.71549}
+local zoomed = projection.zoomed_frustum(wide, 1.12)
+for _, edge in ipairs({"left", "right", "down", "up"}) do
+    local expected = math.atan(math.tan(wide[edge]) / 1.12)
+    assert(math.abs(zoomed[edge] - expected) < 1e-12, "edge " .. edge .. " not divided by the magnification")
+    assert(math.abs(zoomed[edge]) < math.abs(wide[edge]), "edge " .. edge .. " did not narrow")
+end
+-- The optical centre keeps its share of the narrower cone.
+local centre_before = (math.tan(wide.left) + math.tan(wide.right)) * 0.5
+local centre_after = (math.tan(zoomed.left) + math.tan(zoomed.right)) * 0.5
+assert(math.abs(centre_after * 1.12 - centre_before) < 1e-12, "the optical centre did not scale with the cone")
+-- Unusable magnifications leave the frustum exactly as it was.
+for _, m in ipairs({1, 0.5, -3, 0 / 0, 9}) do
+    assert(projection.zoomed_frustum(wide, m) == wide, "magnification " .. tostring(m) .. " was applied")
+end
+assert(projection.zoomed_frustum(nil, 1.12) == nil)
+
+-- The eased blend and the magnification it produces.
+assert(projection.zoom_blend(nil, true, 0.016) == 1, "no previous blend: take the target")
+assert(projection.zoom_blend(0, true, nil) == 1, "no time step: take the target")
+local b = projection.zoom_blend(0, true, projection.ZOOM_TAU)
+assert(math.abs(b - (1 - math.exp(-1))) < 1e-9, "one time constant closes 63 per cent")
+for _ = 1, 200 do b = projection.zoom_blend(b, true, 0.016) end
+assert(b == 1, "the blend settles exactly on its target")
+for _ = 1, 200 do b = projection.zoom_blend(b, false, 0.016) end
+assert(b == 0, "and comes back to none")
+assert(math.abs(projection.zoom_magnification(12, 1) - 1.12) < 1e-12)
+assert(projection.zoom_magnification(12, 0) == 1, "no blend, no zoom")
+assert(math.abs(projection.zoom_magnification(12, 0.5) - 1.06) < 1e-12)
+assert(projection.zoom_magnification(0, 1) == 1 and projection.zoom_magnification(nil, 1) == 1)
+assert(projection.zoom_magnification(500, 1) == 1 + projection.ZOOM_MAX_PERCENT * 0.01, "clamped")
+assert(projection.zoom_magnification(0 / 0, 1) == 1 and projection.zoom_magnification(12, 0 / 0) == 1)
+print("projection_math=pass recentered visibility panel lod zoom")

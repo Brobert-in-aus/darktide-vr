@@ -2895,7 +2895,21 @@ local function apply_head_tracking(clean_position, clean_rotation)
             frustum.down < frustum.up
     end
     if valid_frustum(left_frustum) and valid_frustum(right_frustum) then
-        head_render_frusta = { left_frustum, right_frustum }
+        -- Aim down sights magnifies by rendering a narrower cone into the same
+        -- eye image (user, 18 September: "add a small zoom to ADS - maybe
+        -- 10-15%"). Every consumer of the frusta -- the eye cameras, the HUD
+        -- panel, the marker projection -- takes the zoomed pair, so the world
+        -- and everything drawn over it stay in register; only the viewer's
+        -- submitted field of view is unchanged, which is what makes it a zoom.
+        local zoom = presentation.ads_zoom_magnification()
+        head_render_frusta = {
+            presentation.projection_math.zoomed_frustum(left_frustum, zoom),
+            presentation.projection_math.zoomed_frustum(right_frustum, zoom)
+        }
+        if zoom > 1.0001 and head_render_vertical_fov then
+            head_render_vertical_fov =
+                2 * math.atan(math.tan(head_render_vertical_fov * 0.5) / zoom)
+        end
     end
     local runtime_ipd = tonumber(head_pose_values[19])
     controller_observation.body_follow_x = tonumber(head_pose_values[20])
@@ -6445,6 +6459,36 @@ function presentation.eye_pose(unit)
     local eye_unit = first_person and first_person:first_person_unit()
     if not eye_unit or not Unit.alive(eye_unit) then return nil end
     return Unit.world_position(eye_unit, 1), Unit.world_rotation(eye_unit, 1)
+end
+
+-- The magnification the rendered frusta carry this sample: 1 unless the
+-- sights are up and the zoom option is above zero, eased in and out with the
+-- vignette's time constant. State hangs off `presentation` because this
+-- chunk is at LuaJIT's local ceiling.
+presentation.ads_zoom_blend = 0
+function presentation.ads_zoom_magnification()
+    local percent = mod.get and mod:get("vr_ads_zoom") or 0
+    local focus = not mod.get or mod:get("ads_focus") ~= false
+    local active = presentation.ads_active == true and focus and
+        presentation.mode == 1 and (tonumber(percent) or 0) > 0
+    local now = Managers and Managers.time and Managers.time.has_timer and
+        Managers.time:has_timer("main") and Managers.time:time("main") or nil
+    if now then
+        local dt = presentation.ads_zoom_t and now - presentation.ads_zoom_t or nil
+        presentation.ads_zoom_t = now
+        presentation.ads_zoom_blend = presentation.projection_math.zoom_blend(
+            presentation.ads_zoom_blend, active, dt)
+    elseif not active then
+        presentation.ads_zoom_blend = 0
+    end
+    local magnification = presentation.projection_math.zoom_magnification(
+        percent, presentation.ads_zoom_blend)
+    if (magnification > 1.0001) ~= (presentation.ads_zoom_logged == true) then
+        presentation.ads_zoom_logged = magnification > 1.0001
+        mod:info("DARKTIDEVR_AIM zoom=%s magnification=%.3f percent=%s",
+            presentation.ads_zoom_logged and "on" or "off", magnification, tostring(percent))
+    end
+    return magnification
 end
 
 -- Aim-down-sights (alternate fire) on the wielded weapon. The viewer

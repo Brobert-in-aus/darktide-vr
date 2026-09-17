@@ -76,6 +76,16 @@ return {
                 function_name = "toggle_scanner_test",
             },
             {
+                -- User, 18 September: "add a small zoom to ADS - maybe
+                -- 10-15%". Per cent of magnification while the sights are up.
+                setting_id = "vr_ads_zoom",
+                type = "numeric",
+                default_value = 12,
+                range = {0, 30},
+                decimals_number = 0,
+                step_size_value = 1,
+            },
+            {
                 setting_id = "vr_gun_pitch",
                 type = "numeric",
                 default_value = -10,

@@ -57,6 +57,8 @@ return {
     vr_comms_gesture_description = {en = "Bring your off hand up in front of your mouth and hold it there for half a second to open your microphone, as if speaking into a vox bead; drop the hand to close it. Works alongside the push to talk binding, not instead of it, and never while that hand is on the gun."},
     vr_skull_throw_description = {en = "With the flamethrower servo skull talented, the skull hovers in view at your off-hand side. Grab it with your off hand to aim its flamethrower order, and let go to throw it: it flies from your hand to the target."},
     vr_forearm_holsters_description = {en = "Small holsters in a line above your gun hand's forearm, from the wrist: your other weapon, stim, carried item and device. Reach in with your other hand and press grip to equip. A small model of each item is always shown there; the one your hand is in grows and ticks (with Holster labels on, its name shows above it), the weapon shows its ammo or charges beneath it, and they hide while you two-hand the gun or aim down its sights."},
+    vr_ads_zoom = {en = "Aim zoom (%%)"},
+    vr_ads_zoom_description = {en = "How much closer the world looks while you aim down the sights, as a percentage. The zoom eases in with the aim and out again; 0 turns it off. It needs Aim focus on."},
     vr_wrist_display = {en = "Wrist display"},
     vr_wrist_display_scale = {en = "Wrist display size (%%)"},
     vr_sway_cancel = {en = "Cancel weapon sway (%%)"},
