@@ -121,3 +121,45 @@ body overlay. Scene reached, no crash, no mod errors.
   0.709 m reach, so the soft stretch ran on **every** frame
   (`unreachable_frames=25200` of 25200, `max_stretch_ratio` 1.13 to 1.19).
   That is the case for the arm-length work, in numbers.
+
+## The streaming rate: 120 Hz against 100 Hz in the Hub (the user's question)
+
+`hub-100hz-1`, a Hub arm with the frame-profile, cpu-render-timing and
+performance-profile flags, against the two arms of 16 September
+(`profile-20260916/hub-fov90-1`, `-2`). Same zone, same character, same
+90 per cent FOV tangent (`recommended_size=1908x2076` in all three), same
+flags; the only difference is Virtual Desktop's streaming rate, which the
+viewer records as `last_display_period_ms` (8 ms = 120 Hz, 10 ms = 100 Hz).
+
+| arm | rate | GPU per pair | game pairs a second |
+|---|---|---|---|
+| hub-fov90-1 (16 Sept) | 120 Hz | 21.2 ms | 59.2 |
+| hub-fov90-2 (16 Sept) | 120 Hz | 20.7 ms | 58.5 |
+| hub-100hz-1 (18 Sept) | 100 Hz | **19.6 ms** | **72.3** |
+
+**Lowering the streaming rate by a sixth raised the game's own frame rate by
+about 22 per cent**, and took 7 per cent off the GPU each pair costs. That is
+larger than every mod-side lever measured on 16 September put together (queue
+priority, process class, padding, frame generation: none moved it) and larger
+than the FOV tangent's own 10 per cent.
+
+Why, most likely: the compositor and the encoder take a share of the GPU for
+every frame they are handed, so handing them fewer leaves more for the game.
+The viewer's own submission rate supports that reading — at 120 Hz it
+submitted about 117 frames a second (repeating pairs to fill the cadence),
+at 100 Hz it submitted 72.9, exactly the rate fresh pairs arrived, and
+Virtual Desktop's own reprojection filled the rest.
+
+**What this does not say**: whether 90, 80 or 72 Hz is better still, and
+whether the smoothness of the headset's own reprojection at a lower rate is
+worth the extra rendered frames. Those need the rate changed in the
+headset's Virtual Desktop menu, which nothing on the PC can do: the rate is
+not in the streamer's registry or `%APPDATA%\Virtual Desktop`, and the Quest
+exposes no `debug.oculus.refreshRate` property to set (checked, empty).
+So the sweep below 100 Hz is either a worn task or needs the Virtual Desktop
+app driven over adb.
+
+**Tooling note**: `summarize-hub-arms.py` reads `viewer.log`, but a run with
+the game-started viewer writes `game-viewer.log`, so its pair and submission
+columns read zero for such a run. The numbers above come from the viewer log
+directly.
