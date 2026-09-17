@@ -5450,15 +5450,22 @@ local function update_stereo(manager)
     end
     presentation.frame_profile.section("render.hud_panel", presentation.hud_panel.draw,
         world, clean_position, clean_rotation, hud_width, hud_center)
+    -- Both of these show a whole atlas of cells on their quads, and both were
+    -- the only draws in the camera update outside a profiler section, so
+    -- every profile taken so far has been blind to them (survey, 18
+    -- September). The pcall stays inside the section, so a failure is still
+    -- caught and still reported once.
     if presentation.hand_overlay then
-        local overlay_ok, overlay_error = pcall(presentation.hand_overlay.draw, world)
+        local overlay_ok, overlay_error = presentation.frame_profile.section(
+            "render.hand_overlay", pcall, presentation.hand_overlay.draw, world)
         if not overlay_ok and not presentation.hand_overlay_error_logged then
             presentation.hand_overlay_error_logged = true
             mod:error("DARKTIDEVR_HAND_OVERLAY draw_failed error=%s", tostring(overlay_error))
         end
     end
     if presentation.marker_atlas then
-        local atlas_ok, atlas_error = pcall(presentation.marker_atlas.draw, world,
+        local atlas_ok, atlas_error = presentation.frame_profile.section(
+            "render.marker_atlas", pcall, presentation.marker_atlas.draw, world,
             presentation.marker_atlas_frame)
         if not atlas_ok and not presentation.marker_atlas_error_logged then
             presentation.marker_atlas_error_logged = true

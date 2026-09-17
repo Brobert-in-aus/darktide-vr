@@ -15,4 +15,20 @@ near(bars[1].fraction,.4); near(bars[2].fraction,.25)
 bars=Status.bars({toughness=2,health=300,max_health=200})
 assert(bars[1].fraction==1 and bars[2].fraction==1,'clamped')
 assert(#Status.bars({health=10,max_health=0})==0 and #Status.bars(nil)==0)
+-- The overlay anchor key belongs to the player, not to their place in an
+-- unordered iteration: the cell shows a frame late, so a key that moves when
+-- `pairs` re-orders draws one teammate's bars over another's head.
+local function player_with(fields) local p = {}; for k, v in pairs(fields) do p[k] = v end; return p end
+local by_account = player_with({account_id = function() return "acct-7" end, peer_id = function() return "peer-1" end})
+assert(Status.anchor_key(by_account, "unitA") == "teammate_acct-7", "the account identifies the player")
+local by_peer = player_with({peer_id = function() return "peer-9" end})
+assert(Status.anchor_key(by_peer, "unitB") == "teammate_peer-9", "the peer is the fallback")
+local plain = player_with({unique_id = "uid-3"})
+assert(Status.anchor_key(plain, "unitC") == "teammate_uid-3", "a plain field is used when there is no accessor")
+assert(Status.anchor_key(nil, "unitD") == "teammate_unitD", "no player object: the unit is stable enough")
+local throws = player_with({account_id = function() error("no account yet") end, peer_id = function() return "peer-2" end})
+assert(Status.anchor_key(throws, "unitE") == "teammate_peer-2", "an accessor that throws falls through")
+-- The same player keeps its key whatever order it is seen in.
+assert(Status.anchor_key(by_account, "unitA") == Status.anchor_key(by_account, "unitZ"),
+    "the key must not depend on the unit when the player identifies itself")
 print('teammate_status=pass state_label angular_size bars clamps')

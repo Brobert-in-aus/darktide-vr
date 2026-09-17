@@ -32,6 +32,26 @@ function Status.state_label(state_name)
 end
 
 -- Panel scale for a distance, or nil when too near to show. Pure.
+-- The overlay anchor key for one teammate: their account, peer or unit
+-- level id, whichever the player object offers, so it is stable across a
+-- frame's iteration order. Falls back to the unit itself, which is stable
+-- while they live. Pure.
+function Status.anchor_key(player, unit)
+    local id
+    if type(player) == "table" then
+        local function try(name)
+            if id or type(player[name]) ~= "function" then return end
+            local ok, value = pcall(player[name], player)
+            if ok and (type(value) == "string" or type(value) == "number") then id = value end
+        end
+        try("account_id")
+        try("peer_id")
+        try("unique_id")
+        id = id or player.unique_id or player.peer_id
+    end
+    return "teammate_" .. tostring(id or unit)
+end
+
 function Status.metres_per_pixel(distance)
     if not finite(distance) or distance < Status.HIDE_NEARER_THAN then return nil end
     return math.max(Status.MIN_DISTANCE, math.min(Status.MAX_DISTANCE, distance)) * Status.METRES_PER_PIXEL_PER_METRE
@@ -83,6 +103,11 @@ function Status.install(mod, presentation)
         local eye = presentation.eye_pose and presentation.eye_pose(local_unit)
         if not overlay or not eye then return end
         local players = Managers.player and Managers.player:players() or {}
+        -- The cell an anchor claims shows one frame late, so an anchor's key
+        -- must belong to the player, not to their place in an unordered
+        -- iteration: keyed by index, a join, a death or a respawn re-orders
+        -- `pairs` and draws one teammate's bars and name over another's head
+        -- for a frame.
         local index = 0
         for _, player in pairs(players) do
             local unit = player.player_unit
@@ -95,7 +120,7 @@ function Status.install(mod, presentation)
                 local mpp = Status.metres_per_pixel(Vector3.distance(anchor, eye))
                 if visible and mpp then
                     index = index + 1
-                    local canvas = overlay.canvas(world, "teammate_" .. index, anchor, mpp)
+                    local canvas = overlay.canvas(world, Status.anchor_key(player, unit), anchor, mpp)
                     if canvas then
                         local values = values_for(unit)
                         local y = 0
