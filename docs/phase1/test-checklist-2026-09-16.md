@@ -278,9 +278,29 @@ tracked eye).
     leaves your side smoothly and comes back smoothly; with the weapon
     charge display on "bars" or "off", a gun's ammo count still shows.
 
+38. **Boards drawn by the viewer, not by Virtual Desktop** (restart; no
+    option; from your 17 September report that the boards are locked in
+    space but turn against the head and compress, with no recenter in the
+    log). The cause, by the logs: every run since you set Virtual Desktop's
+    FOV tangent to 90 per cent has it, none before; the world (a projection
+    layer) is right and our boards (quad layers, drawn by Virtual Desktop's
+    compositor with its own projection) are not. The viewer now draws the
+    board and the menu pointer itself, from each frame's eye poses and the
+    runtime's own field of view, into a projection layer of their own
+    blended over the world. Check, with the FOV tangent still at 90 per
+    cent: a loading screen and the main menu hold still and keep their shape
+    as you turn and tilt your head, edges included; the pointer's ring sits
+    on the board where you point and clicks land there; with a menu open
+    over the game (the pause menu), the frozen world is still visible around
+    the board, not black; text is about as sharp as before. If anything is
+    worse, the old path is one environment variable away
+    (`DTVR_XR_BOARD_PROJECTION=0`) and I will take it from there. Not proven
+    unattended: you were in the headset; the renderer's geometry is proven
+    by a GPU test against Virtual Desktop's 90 per cent field of view.
+
 ## Suggested order
 
-1. First at launch: 28 (the native rebuild) and 34 (the boards), both on
+1. First at launch: 28 (the native rebuild), 34 and 38 (the boards), all on
    the way to anything.
 2. In the Hub: 29 (no sliver beside the ammo count), 26 and 27 (a marker and
    the interaction prompt on their planes while you turn your head), 33 (the

@@ -117,6 +117,17 @@ if(BUILD_TESTING)
   set_tests_properties(tracked_cuff_renderer PROPERTIES
     LABELS "phase1;openxr;hands;d3d12")
 
+  add_executable(darktidevr-panel-renderer-tests panel_renderer_tests.cpp)
+  target_compile_options(darktidevr-panel-renderer-tests PRIVATE
+    /W4 /WX /permissive-)
+  target_compile_definitions(darktidevr-panel-renderer-tests PRIVATE
+    NOMINMAX WIN32_LEAN_AND_MEAN)
+  target_link_libraries(darktidevr-panel-renderer-tests PRIVATE
+    darktidevr-panel-renderer d3d12 dxgi)
+  add_test(NAME panel_renderer COMMAND darktidevr-panel-renderer-tests)
+  set_tests_properties(panel_renderer PROPERTIES
+    LABELS "phase1;openxr;menu;d3d12")
+
   add_executable(darktidevr-window-capture-tests window_capture_tests.cpp)
   target_compile_options(darktidevr-window-capture-tests PRIVATE
     /W4 /WX /permissive-)

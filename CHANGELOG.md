@@ -6,6 +6,11 @@ runtime package records the exact source revision alongside the version.
 
 ## Unreleased
 
+- Loading screens and menus no longer turn against your head or compress
+  with Virtual Desktop's FOV tangent below 100 per cent: the viewer draws
+  the board and the menu pointer itself, from the same eye poses and field
+  of view as the world, instead of handing Virtual Desktop quad layers
+  (which it drew with a projection that did not match the cropped display).
 - Worn results of 16 September, in the same evening: the item radial
   picks on the flick (a flick-and-press no longer falls through to the stock
   weapon cycle); push to talk hums faintly on the talking hand while held;

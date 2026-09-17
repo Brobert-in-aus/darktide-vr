@@ -13,6 +13,7 @@
 #include "menu_input_injector.h"
 #include "synthetic_controller_path.h"
 #include "synthetic_head_path.h"
+#include "panel_renderer.h"
 #include "tracked_cuff_renderer.h"
 #include "window_capture.h"
 #include "capture_worker.h"
@@ -973,6 +974,89 @@ class OpenXrProbe {
       std::cout << "openxr.tracked_cuff_overlay=enabled depth_policy=overlay\n";
     }
 
+    // Play default: the flat board (loading screens, menus) and the menu
+    // pointer are drawn by the viewer into a projection layer of their own
+    // instead of being handed to the runtime as quad layers (see
+    // panel_renderer.h: Virtual Desktop draws quad layers wrongly with its
+    // FOV tangent below 100 per cent). DTVR_XR_BOARD_PROJECTION=0 restores
+    // the quad layers (a development override).
+    wchar_t board_projection_value[2]{};
+    const bool board_projection_requested = !(GetEnvironmentVariableW(
+        L"DTVR_XR_BOARD_PROJECTION", board_projection_value, 2) == 1 &&
+        board_projection_value[0] == L'0');
+    std::unique_ptr<darktidevr::harness::PanelRenderer> panel_renderer;
+    std::array<XrSwapchain, 2> board_swapchains{XR_NULL_HANDLE, XR_NULL_HANDLE};
+    std::array<std::vector<XrSwapchainImageD3D12KHR>, 2> board_images;
+    std::array<std::size_t, 2> board_rtv_base_offsets{};
+    ComPtr<ID3D12DescriptorHeap> board_rtv_heap;
+    ComPtr<ID3D12CommandAllocator> board_allocator;
+    ComPtr<ID3D12GraphicsCommandList> board_command_list;
+    XrExtent2Di board_eye_extent{};
+    if (board_projection_requested && stereo && views_.size() == 2 &&
+        flat_swapchain != XR_NULL_HANDLE &&
+        pointer_swapchain != XR_NULL_HANDLE) {
+      panel_renderer = std::make_unique<darktidevr::harness::PanelRenderer>(
+          device, static_cast<DXGI_FORMAT>(swapchain_format_),
+          flat_images.front().texture->GetDesc(),
+          pointer_images.front().texture->GetDesc());
+      board_eye_extent = {
+          static_cast<std::int32_t>(views_.front().recommendedImageRectWidth),
+          static_cast<std::int32_t>(views_.front().recommendedImageRectHeight)};
+      auto board_swapchain_info = swapchain_info;
+      board_swapchain_info.width =
+          static_cast<std::uint32_t>(board_eye_extent.width);
+      board_swapchain_info.height =
+          static_cast<std::uint32_t>(board_eye_extent.height);
+      std::size_t board_image_total{};
+      for (std::size_t eye = 0; eye < board_swapchains.size(); ++eye) {
+        check_xr(xrCreateSwapchain(session_, &board_swapchain_info,
+                                   &board_swapchains[eye]),
+                 "xrCreateSwapchain(board)");
+        std::uint32_t image_count{};
+        check_xr(xrEnumerateSwapchainImages(board_swapchains[eye], 0,
+                                            &image_count, nullptr),
+                 "xrEnumerateSwapchainImages(board count)");
+        board_images[eye].assign(image_count,
+                                 {XR_TYPE_SWAPCHAIN_IMAGE_D3D12_KHR});
+        check_xr(xrEnumerateSwapchainImages(
+                     board_swapchains[eye], image_count, &image_count,
+                     reinterpret_cast<XrSwapchainImageBaseHeader*>(
+                         board_images[eye].data())),
+                 "xrEnumerateSwapchainImages(board list)");
+        board_rtv_base_offsets[eye] = board_image_total;
+        board_image_total += image_count;
+      }
+      D3D12_DESCRIPTOR_HEAP_DESC board_heap_info{};
+      board_heap_info.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+      board_heap_info.NumDescriptors = static_cast<UINT>(board_image_total);
+      check(device->CreateDescriptorHeap(&board_heap_info,
+                                         IID_PPV_ARGS(&board_rtv_heap)),
+            "ID3D12Device::CreateDescriptorHeap(board)");
+      auto board_rtv = board_rtv_heap->GetCPUDescriptorHandleForHeapStart();
+      for (const auto& eye_images : board_images) {
+        for (const auto& image : eye_images) {
+          device->CreateRenderTargetView(image.texture, &rtv_view, board_rtv);
+          board_rtv.ptr += rtv_increment;
+        }
+      }
+      check(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                           IID_PPV_ARGS(&board_allocator)),
+            "ID3D12Device::CreateCommandAllocator(board)");
+      check(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                      board_allocator.Get(), nullptr,
+                                      IID_PPV_ARGS(&board_command_list)),
+            "ID3D12Device::CreateCommandList(board)");
+      check(board_command_list->Close(),
+            "ID3D12GraphicsCommandList::Close(board init)");
+    }
+    std::cout << "openxr.board_projection requested="
+              << board_projection_requested
+              << " enabled=" << (panel_renderer != nullptr) << '\n';
+    std::uint64_t board_projection_frames{};
+    // The renderer's board texture is drawn only once pixels have been
+    // copied into it; until then the quad layer carries the board.
+    bool board_texture_written{};
+
     std::unique_ptr<darktidevr::harness::WindowCapture> window_capture;
     ComPtr<ID3D12Resource> upload;
     std::byte* upload_pixels{};
@@ -1223,6 +1307,11 @@ class OpenXrProbe {
       }
       if (pointer_swapchain != XR_NULL_HANDLE) {
         xrDestroySwapchain(pointer_swapchain);
+      }
+      for (const auto swapchain : board_swapchains) {
+        if (swapchain != XR_NULL_HANDLE) {
+          xrDestroySwapchain(swapchain);
+        }
       }
       throw std::runtime_error("CreateEventW(theatre) failed");
     }
@@ -1830,7 +1919,7 @@ class OpenXrProbe {
                     << request_error.message() << '\n';
         }
       }
-      if (tracked_cuff_renderer &&
+      if ((tracked_cuff_renderer || panel_renderer) &&
           frame_start >= next_projected_eye_readback_request_poll) {
         next_projected_eye_readback_request_poll =
             frame_start + std::chrono::milliseconds(250);
@@ -2303,6 +2392,57 @@ class OpenXrProbe {
       bool menu_readback_copied_this_frame{};
       shared_eye_readback_copied_this_frame = false;
       projected_eye_readback_copied_this_frame = false;
+      // Writes the projected-eye readbacks copied this frame (the cuffs' eye
+      // images, or the board's own layer) as PPM files in %TEMP%.
+      const auto write_projected_eye_readback =
+          [&](const std::array<ID3D12Resource*, 2>& projected_eye_sources) {
+        const auto eye_description = projected_eye_sources[0]->GetDesc();
+        const std::array<const char*, 2> labels{"left", "right"};
+        for (std::size_t eye = 0; eye < theatre_swapchain_count; ++eye) {
+          void* mapped_pixels{};
+          D3D12_RANGE read_range{0, projected_eye_readback_total_bytes};
+          check(projected_eye_readbacks[eye]->Map(
+                    0, &read_range, &mapped_pixels),
+                "ID3D12Resource::Map(projected-eye readback)");
+          const auto diagnostic_path =
+              std::filesystem::temp_directory_path() /
+              (std::string("darktidevr-projected-eye-") + labels[eye] +
+               ".ppm");
+          std::ofstream diagnostic(diagnostic_path, std::ios::binary);
+          if (!diagnostic) {
+            projected_eye_readbacks[eye]->Unmap(0, nullptr);
+            throw std::runtime_error(
+                "Could not open projected-eye readback output");
+          }
+          diagnostic << "P6\n" << eye_description.Width << ' '
+                     << eye_description.Height << "\n255\n";
+          const auto* pixels =
+              static_cast<const std::uint8_t*>(mapped_pixels);
+          std::vector<std::uint8_t> row(
+              static_cast<std::size_t>(eye_description.Width) * 3);
+          for (std::uint32_t y = 0; y < eye_description.Height; ++y) {
+            const auto* source_row = pixels +
+                static_cast<std::size_t>(y) *
+                    projected_eye_readback_footprint.Footprint.RowPitch;
+            for (std::uint32_t x = 0; x < eye_description.Width; ++x) {
+              const auto* source =
+                  source_row + static_cast<std::size_t>(x) * 4;
+              auto* destination =
+                  row.data() + static_cast<std::size_t>(x) * 3;
+              destination[0] = source[0];
+              destination[1] = source[1];
+              destination[2] = source[2];
+            }
+            diagnostic.write(
+                reinterpret_cast<const char*>(row.data()),
+                static_cast<std::streamsize>(row.size()));
+          }
+          projected_eye_readbacks[eye]->Unmap(0, nullptr);
+          std::cout << "openxr.projected_eye_readback="
+                    << diagnostic_path.string() << '\n';
+        }
+        projected_eye_readback_requested = false;
+      };
       if (submit_layer) {
         XrSwapchainImageAcquireInfo acquire_info{
             XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
@@ -2995,6 +3135,13 @@ class OpenXrProbe {
             if (crop_right > crop_left && crop_bottom > crop_top) {
               command_list->CopyTextureRegion(&flat_destination, 0, 0, 0,
                                               &menu_source, &menu_crop);
+              if (panel_renderer) {
+                auto board_destination = flat_destination;
+                board_destination.pResource = panel_renderer->board_texture();
+                command_list->CopyTextureRegion(&board_destination, 0, 0, 0,
+                                                &menu_source, &menu_crop);
+                board_texture_written = true;
+              }
             }
             if (menu_readback && !menu_readback_logged) {
               D3D12_TEXTURE_COPY_LOCATION destination{};
@@ -3072,6 +3219,13 @@ class OpenXrProbe {
               consumed_capture.reset();
             } else {
               command_list->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+              if (panel_renderer && use_flat_capture) {
+                auto board_destination = destination;
+                board_destination.pResource = panel_renderer->board_texture();
+                command_list->CopyTextureRegion(&board_destination, 0, 0, 0,
+                                                &source, nullptr);
+                board_texture_written = true;
+              }
             }
           }
           std::swap(flat_barrier.Transition.StateBefore,
@@ -3482,52 +3636,7 @@ class OpenXrProbe {
           shared_eye_readback_requested = false;
         }
         if (projected_eye_readback_copied_this_frame) {
-          const auto eye_description = resources[0]->GetDesc();
-          const std::array<const char*, 2> labels{"left", "right"};
-          for (std::size_t eye = 0; eye < theatre_swapchain_count; ++eye) {
-            void* mapped_pixels{};
-            D3D12_RANGE read_range{0, projected_eye_readback_total_bytes};
-            check(projected_eye_readbacks[eye]->Map(
-                      0, &read_range, &mapped_pixels),
-                  "ID3D12Resource::Map(projected-eye readback)");
-            const auto diagnostic_path =
-                std::filesystem::temp_directory_path() /
-                (std::string("darktidevr-projected-eye-") + labels[eye] +
-                 ".ppm");
-            std::ofstream diagnostic(diagnostic_path, std::ios::binary);
-            if (!diagnostic) {
-              projected_eye_readbacks[eye]->Unmap(0, nullptr);
-              throw std::runtime_error(
-                  "Could not open projected-eye readback output");
-            }
-            diagnostic << "P6\n" << eye_description.Width << ' '
-                       << eye_description.Height << "\n255\n";
-            const auto* pixels =
-                static_cast<const std::uint8_t*>(mapped_pixels);
-            std::vector<std::uint8_t> row(
-                static_cast<std::size_t>(eye_description.Width) * 3);
-            for (std::uint32_t y = 0; y < eye_description.Height; ++y) {
-              const auto* source_row = pixels +
-                  static_cast<std::size_t>(y) *
-                      projected_eye_readback_footprint.Footprint.RowPitch;
-              for (std::uint32_t x = 0; x < eye_description.Width; ++x) {
-                const auto* source =
-                    source_row + static_cast<std::size_t>(x) * 4;
-                auto* destination =
-                    row.data() + static_cast<std::size_t>(x) * 3;
-                destination[0] = source[0];
-                destination[1] = source[1];
-                destination[2] = source[2];
-              }
-              diagnostic.write(
-                  reinterpret_cast<const char*>(row.data()),
-                  static_cast<std::streamsize>(row.size()));
-            }
-            projected_eye_readbacks[eye]->Unmap(0, nullptr);
-            std::cout << "openxr.projected_eye_readback="
-                      << diagnostic_path.string() << '\n';
-          }
-          projected_eye_readback_requested = false;
+          write_projected_eye_readback({resources.front(), resources.back()});
         }
         if (menu_readback_copied_this_frame && !menu_readback_logged &&
             ++menu_readback_copies >= 5) {
@@ -4520,6 +4629,149 @@ class OpenXrProbe {
         ads_vignette_quad.pose.position = {0.0F, 0.0F, -1.0F};
         ads_vignette_quad.size = {3.6F, 3.6F};
       }
+      // The board and its pointer as a projection layer of their own, drawn
+      // from this frame's located eyes with the runtime's own field of view
+      // and blended over the world by premultiplied alpha, as the quad
+      // layers were. A board with no seat yet (no head) stays a view-space
+      // quad layer.
+      XrCompositionLayerProjection board_projection{
+          XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+      std::array<XrCompositionLayerProjectionView, 2> board_projection_views{{
+          {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},
+          {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}}};
+      bool board_in_projection_this_frame{};
+      if (panel_renderer && submit_layer && board_texture_written &&
+          submitted_flat_fallback_this_frame && flat_fallback_pose_valid &&
+          located_views.size() == board_swapchains.size()) {
+        XrSwapchainImageAcquireInfo board_acquire{
+            XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+        XrSwapchainImageWaitInfo board_wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+        board_wait.timeout = XR_INFINITE_DURATION;
+        std::array<std::uint32_t, 2> board_image_indices{};
+        std::array<ID3D12Resource*, 2> board_resources{};
+        for (std::size_t eye = 0; eye < board_swapchains.size(); ++eye) {
+          check_xr(xrAcquireSwapchainImage(board_swapchains[eye],
+                                           &board_acquire,
+                                           &board_image_indices[eye]),
+                   "xrAcquireSwapchainImage(board)");
+          check_xr(xrWaitSwapchainImage(board_swapchains[eye], &board_wait),
+                   "xrWaitSwapchainImage(board)");
+          board_resources[eye] =
+              board_images[eye][board_image_indices[eye]].texture;
+        }
+        check(board_allocator->Reset(),
+              "ID3D12CommandAllocator::Reset(board)");
+        check(board_command_list->Reset(board_allocator.Get(), nullptr),
+              "ID3D12GraphicsCommandList::Reset(board)");
+        if (!panel_renderer->swatch_ready() && pointer_swatch_uploaded) {
+          panel_renderer->upload_swatch(board_command_list.Get(),
+                                        pointer_upload.Get(),
+                                        pointer_upload_footprint);
+        }
+        std::array<darktidevr::harness::PanelQuad,
+                   darktidevr::harness::PanelRenderer::maximum_quads_per_eye>
+            board_quads{};
+        std::size_t board_quad_count{};
+        board_quads[board_quad_count++] = {
+            flat_fallback_quad.pose, flat_fallback_quad.size,
+            flat_fallback_quad.subImage.imageRect,
+            darktidevr::harness::PanelQuad::Source::board};
+        for (std::size_t pointer_index = 0;
+             pointer_index < pointer_quads.size(); ++pointer_index) {
+          if (pointer_index == 2 ? pointer_target_visible
+                                 : pointer_ray_visible) {
+            const auto& pointer_quad = pointer_quads[pointer_index];
+            board_quads[board_quad_count++] = {
+                pointer_quad.pose, pointer_quad.size,
+                pointer_quad.subImage.imageRect,
+                darktidevr::harness::PanelQuad::Source::swatch};
+          }
+        }
+        const XrRect2Di board_rect{{0, 0}, board_eye_extent};
+        panel_renderer->begin(board_command_list.Get());
+        for (std::size_t eye = 0; eye < board_swapchains.size(); ++eye) {
+          const D3D12_CPU_DESCRIPTOR_HANDLE board_target{
+              board_rtv_heap->GetCPUDescriptorHandleForHeapStart().ptr +
+              static_cast<SIZE_T>(board_rtv_base_offsets[eye] +
+                                  board_image_indices[eye]) *
+                  rtv_increment};
+          panel_renderer->record(board_command_list.Get(), board_target,
+                                 board_rect, eye, located_views[eye].pose,
+                                 located_views[eye].fov, board_quads.data(),
+                                 board_quad_count, true);
+        }
+        panel_renderer->end(board_command_list.Get());
+        const bool board_readback = projected_eye_readback_requested &&
+                                    !projected_eye_readback_copied_this_frame &&
+                                    projected_eye_readbacks[1] &&
+                                    board_eye_extent.width ==
+                                        static_cast<std::int32_t>(width) &&
+                                    board_eye_extent.height ==
+                                        static_cast<std::int32_t>(height);
+        if (board_readback) {
+          for (std::size_t eye = 0; eye < board_resources.size(); ++eye) {
+            D3D12_RESOURCE_BARRIER barrier{};
+            barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Transition.pResource = board_resources[eye];
+            barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+            barrier.Transition.Subresource =
+                D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            board_command_list->ResourceBarrier(1, &barrier);
+            D3D12_TEXTURE_COPY_LOCATION source{};
+            source.pResource = board_resources[eye];
+            source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            D3D12_TEXTURE_COPY_LOCATION destination{};
+            destination.pResource = projected_eye_readbacks[eye].Get();
+            destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+            destination.PlacedFootprint = projected_eye_readback_footprint;
+            board_command_list->CopyTextureRegion(&destination, 0, 0, 0,
+                                                  &source, nullptr);
+            std::swap(barrier.Transition.StateBefore,
+                      barrier.Transition.StateAfter);
+            board_command_list->ResourceBarrier(1, &barrier);
+          }
+        }
+        check(board_command_list->Close(),
+              "ID3D12GraphicsCommandList::Close(board)");
+        ID3D12CommandList* board_lists[]{board_command_list.Get()};
+        queue->ExecuteCommandLists(1, board_lists);
+        const auto board_signal_value = ++fence_value;
+        check(queue->Signal(fence.Get(), board_signal_value),
+              "ID3D12CommandQueue::Signal(board)");
+        wait_for_fence(fence.Get(), board_signal_value, fence_event,
+                       "ID3D12Fence::SetEventOnCompletion(board)");
+        if (board_readback) {
+          write_projected_eye_readback(board_resources);
+        }
+        XrSwapchainImageReleaseInfo board_release{
+            XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+        for (std::size_t eye = 0; eye < board_swapchains.size(); ++eye) {
+          check_xr(xrReleaseSwapchainImage(board_swapchains[eye],
+                                           &board_release),
+                   "xrReleaseSwapchainImage(board)");
+          auto& view = board_projection_views[eye];
+          view.pose = located_views[eye].pose;
+          view.fov = located_views[eye].fov;
+          view.subImage.swapchain = board_swapchains[eye];
+          view.subImage.imageRect = board_rect;
+          view.subImage.imageArrayIndex = 0;
+        }
+        board_projection.layerFlags =
+            XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+        board_projection.space = local_space_;
+        board_projection.viewCount =
+            static_cast<std::uint32_t>(board_projection_views.size());
+        board_projection.views = board_projection_views.data();
+        board_in_projection_this_frame = true;
+        if (++board_projection_frames == 1) {
+          std::cout << "openxr.board_projection=first-frame quads="
+                    << board_quad_count << " mode="
+                    << static_cast<std::uint32_t>(presentation_state.mode)
+                    << " extent=" << board_eye_extent.width << 'x'
+                    << board_eye_extent.height << '\n';
+        }
+      }
       std::array<const XrCompositionLayerBaseHeader*, 8> layers{};
       std::uint32_t layer_count{};
       if (submit_layer) {
@@ -4528,7 +4780,11 @@ class OpenXrProbe {
               reinterpret_cast<const XrCompositionLayerBaseHeader*>(
                   &projection);
         }
-        if (submitted_flat_fallback_this_frame) {
+        if (board_in_projection_this_frame) {
+          layers[layer_count++] =
+              reinterpret_cast<const XrCompositionLayerBaseHeader*>(
+                  &board_projection);
+        } else if (submitted_flat_fallback_this_frame) {
           layers[layer_count++] =
               reinterpret_cast<const XrCompositionLayerBaseHeader*>(
                   &flat_fallback_quad);
@@ -4538,8 +4794,9 @@ class OpenXrProbe {
         }
         for (std::size_t pointer_index = 0;
              pointer_index < pointer_quads.size(); ++pointer_index) {
-          if (pointer_index == 2 ? pointer_target_visible
-                                 : pointer_ray_visible) {
+          if (!board_in_projection_this_frame &&
+              (pointer_index == 2 ? pointer_target_visible
+                                  : pointer_ray_visible)) {
             layers[layer_count++] =
                 reinterpret_cast<const XrCompositionLayerBaseHeader*>(
                     &pointer_quads[pointer_index]);
@@ -4847,6 +5104,11 @@ class OpenXrProbe {
     if (pointer_swapchain != XR_NULL_HANDLE) {
       check_xr(xrDestroySwapchain(pointer_swapchain),
                "xrDestroySwapchain(pointer swatch)");
+    }
+    for (const auto swapchain : board_swapchains) {
+      if (swapchain != XR_NULL_HANDLE) {
+        check_xr(xrDestroySwapchain(swapchain), "xrDestroySwapchain(board)");
+      }
     }
     if (require_rendering && submitted_frames == 0) {
       request_clean_exit();
