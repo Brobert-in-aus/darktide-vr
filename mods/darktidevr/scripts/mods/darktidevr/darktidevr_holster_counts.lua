@@ -36,6 +36,7 @@ end
 function Counts.install(mod, presentation)
     local api = {}
     local world, gui, failed, logged = nil, nil, false, {}
+    local consecutive_failures = 0
     local UIFonts
     function api.destroy()
         if gui and world then pcall(World.destroy_gui, world, gui) end
@@ -123,13 +124,22 @@ function Counts.install(mod, presentation)
             mod:info("DARKTIDEVR_HOLSTER_COUNTS first_draw zone=%s label=%s", zone.id, label)
         end
     end
+    -- One bad frame is not a broken display: a unit can die between the
+    -- draw and the pose, and a world can go at a level change. Three in a
+    -- row is a fault worth stopping for; anything less re-arms at the next
+    -- level load, which is where destroy() is called from.
     function api.draw(game_world, unit)
         if failed then return end
         local ok, err = pcall(draw, game_world, unit)
-        if not ok then
-            api.destroy(); failed = true
-            mod:warning("DARKTIDEVR_HOLSTER_COUNTS error=%s", tostring(err))
+        if ok then
+            consecutive_failures = 0
+            return
         end
+        consecutive_failures = consecutive_failures + 1
+        api.destroy()
+        failed = consecutive_failures >= 3
+        mod:warning("DARKTIDEVR_HOLSTER_COUNTS error=%s consecutive=%d stopped=%s", tostring(err),
+            consecutive_failures, tostring(failed))
     end
     return api
 end

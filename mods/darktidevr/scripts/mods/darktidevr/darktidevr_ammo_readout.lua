@@ -265,6 +265,7 @@ function Readout.install(mod, presentation, observation)
     local api = {Readout = Readout}
     local logged_slot
     local world, gui, failed, logged
+    local consecutive_failures = 0
     local UIFonts, Ammo, NetworkConstants
     local test_poll, test_mode = 0, nil
     local tracker = Readout.reload_tracker()
@@ -453,13 +454,22 @@ function Readout.install(mod, presentation, observation)
             mod:info("DARKTIDEVR_AMMO_READOUT first_draw text=%s level=%s test=%s", text, level, tostring(test))
         end
     end
+    -- One bad frame is not a broken display: a unit can die between the
+    -- draw and the pose, and a world can go at a level change. Three in a
+    -- row is a fault worth stopping for; anything less re-arms at the next
+    -- level load, which is where destroy() is called from.
     function api.draw(game_world, unit)
         if failed then return end
         local ok, err = pcall(draw, game_world, unit)
-        if not ok then
-            api.destroy(); failed = true
-            mod:warning("DARKTIDEVR_AMMO_READOUT error=%s", tostring(err))
+        if ok then
+            consecutive_failures = 0
+            return
         end
+        consecutive_failures = consecutive_failures + 1
+        api.destroy()
+        failed = consecutive_failures >= 3
+        mod:warning("DARKTIDEVR_AMMO_READOUT error=%s consecutive=%d stopped=%s", tostring(err),
+            consecutive_failures, tostring(failed))
     end
     return api
 end

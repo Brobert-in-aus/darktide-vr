@@ -88,6 +88,7 @@ end
 function Wrist.install(mod, presentation, observation)
     local api = {visible = false}
     local world, gui, failed, logged = nil, nil, false, false
+    local consecutive_failures = 0
     local UIFonts
     function api.destroy()
         if gui and world then pcall(World.destroy_gui, world, gui) end
@@ -189,13 +190,22 @@ function Wrist.install(mod, presentation, observation)
             mod:info("DARKTIDEVR_WRIST_DISPLAY first_draw bars=%d test=%s", #bars, tostring(test))
         end
     end
+    -- One bad frame is not a broken display: a unit can die between the
+    -- draw and the pose, and a world can go at a level change. Three in a
+    -- row is a fault worth stopping for; anything less re-arms at the next
+    -- level load, which is where destroy() is called from.
     function api.draw(game_world, unit)
         if failed then return end
         local ok, err = pcall(draw, game_world, unit)
-        if not ok then
-            api.destroy(); failed = true
-            mod:warning("DARKTIDEVR_WRIST_DISPLAY error=%s", tostring(err))
+        if ok then
+            consecutive_failures = 0
+            return
         end
+        consecutive_failures = consecutive_failures + 1
+        api.destroy()
+        failed = consecutive_failures >= 3
+        mod:warning("DARKTIDEVR_WRIST_DISPLAY error=%s consecutive=%d stopped=%s", tostring(err),
+            consecutive_failures, tostring(failed))
     end
     return api
 end
