@@ -83,4 +83,34 @@ assert(math.abs(walk[1] - 0.15) < 1e-9, 'half the lead at half the speed')
 local drift = Skull.follow_offset({0, 0, 0}, {0, 0, 0}, 0, 0, {0.3, 0, 0})
 assert(drift[1] == 0, 'no lead below the minimum speed')
 assert(Skull.LEAD_METRES == 0.3)
-print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed')
+
+-- One writer: what the stock extension is fed. Its rest offset is used as
+-- position - right * x + forward * y, so x is to the LEFT of the heading.
+-- Heading 0 faces +y with +x to the right.
+local so = Skull.stock_offset({0.5, 0.3, -0.2}, 0)
+assert(math.abs(so[1] + 0.5) < 1e-9 and math.abs(so[2] - 0.3) < 1e-9 and so[3] == -0.2, 'a point to the right has a negative x')
+-- Round trip through the stock formula at an arbitrary heading.
+local heading = 1.1
+local c, s = math.cos(heading), math.sin(heading)
+local delta = {0.4, -0.7, 0.25}
+so = Skull.stock_offset(delta, heading)
+local back_x = -c * so[1] + -s * so[2]
+local back_y = -s * so[1] + c * so[2]
+assert(math.abs(back_x - delta[1]) < 1e-9 and math.abs(back_y - delta[2]) < 1e-9, 'the stock formula puts it back where it was')
+-- The lead, a world vector along the run.
+local l = Skull.lead({0, 5, 0})
+assert(math.abs(l[2] - 0.3) < 1e-9 and l[1] == 0 and l[3] == 0)
+assert(Skull.lead({0.3, 0, 0})[1] == 0 and Skull.lead(nil)[1] == 0)
+assert(math.abs(Skull.lead({2, 0, 0})[1] - 0.15) < 1e-9)
+-- The fed offset: the stock flamethrower rest (-0.55 is 55 cm to the right)
+-- mirrored to the left and brought forward, plus the lead in the heading's
+-- frame; an unmirrored one (left-handed) keeps its side.
+local fed = Skull.fed_offset({-0.55, 0.15, -0.25}, true, 0.30, {0, 0.3, 0}, 0)
+assert(math.abs(fed[1] - 0.55) < 1e-9 and math.abs(fed[2] - 0.60) < 1e-9 and fed[3] == -0.25)
+fed = Skull.fed_offset({-0.55, 0.15, -0.25}, false, nil, {0, 0, 0}, 0.7)
+assert(fed[1] == -0.55 and fed[2] == 0.15)
+-- Running to the right of the heading leads to the right: a smaller x.
+fed = Skull.fed_offset({0, 0, 0}, false, nil, {0.3, 0, 0}, 0)
+assert(math.abs(fed[1] + 0.3) < 1e-9 and math.abs(fed[2]) < 1e-9)
+assert(Skull.HOLD_UP == 0.07)
+print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed stock_offset lead fed_offset')

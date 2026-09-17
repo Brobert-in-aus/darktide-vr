@@ -492,6 +492,13 @@ function Holsters.install(mod, presentation, observation)
             presentation.controller_bindings and presentation.controller_bindings.support_grip)
     end
     function api.finish_grip(grip, ours)
+        -- The servo skull follows the hand that holds its grab (before the
+        -- branch below clears the owner on a release).
+        if presentation.skull_throw and presentation.skull_throw.set_held then
+            local claim = ours and owner_hand and api.hands[owner_hand].claim
+            presentation.skull_throw.set_held(claim ~= nil and claim ~= false and claim.zone ~= nil and
+                claim.zone.id == "skull" and grip ~= nil and grip.released ~= true and grip.cancelled ~= true)
+        end
         if ours and owner_hand then
             local offer = api.hands[owner_hand].offer
             if grip.pressed and offer and offer.refused then
