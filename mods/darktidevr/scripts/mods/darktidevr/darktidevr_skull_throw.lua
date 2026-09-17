@@ -222,11 +222,21 @@ function Skull.install(mod, presentation)
     -- movement extensions read the same table every frame. The server keeps
     -- its own table, so an order sends the real skull from the server's rest;
     -- the follower below carries the drawn one across.
+    local applied_mirror
     local function apply_forward(on)
         Settings = Settings or require("scripts/settings/companion/companion_servo_skull_movement_settings")
         local rules = Settings.movement_settings
         if type(rules) ~= "table" then return end
+        -- Stock rests the throwable skull on the right: the off-hand side
+        -- already for a left-handed player, so the sides swap only when the
+        -- support hand is the left one. A change of handedness re-applies.
+        local roles = presentation.weapon_hand_roles
+        local mirror = Skull.MIRROR_SIDE and not (roles and roles.physical and roles.physical("support") == "right")
+        if on and originals and applied_mirror ~= mirror then
+            apply_forward(false)
+        end
         if on and not originals then
+            applied_mirror = mirror
             originals = {}
             local seen = {}
             local tables = 0
@@ -248,7 +258,7 @@ function Skull.install(mod, presentation)
                         end
                         originals[rule][view] = saved
                         local forward = rule == Skull.RULE and Skull.FORWARD or nil
-                        for name, offset in pairs(Skull.rest_offsets(plain, forward, Skull.MIRROR_SIDE)) do
+                        for name, offset in pairs(Skull.rest_offsets(plain, forward, mirror)) do
                             position[name] = Vector3Box(offset[1], offset[2], offset[3])
                         end
                         tables = tables + 1
@@ -256,7 +266,7 @@ function Skull.install(mod, presentation)
                 end
             end
             mod:info("DARKTIDEVR_SKULL_THROW rest_forward=%.2f mirror=%s tables=%d", Skull.FORWARD,
-                tostring(Skull.MIRROR_SIDE), tables)
+                tostring(mirror), tables)
         elseif not on and originals then
             for rule, views in pairs(originals) do
                 local entry = rules[rule]
@@ -412,8 +422,10 @@ function Skull.install(mod, presentation)
         local dt = follow.t and t - follow.t or 0
         follow.t = t
         follow.node = follow.node or child_node(skull)
+        -- A bridge left on the child node when the skull came back: undone.
+        if follow.base then unplace(follow, skull); follow.base, follow.written = nil, nil end
         local frame = owner_frame(owner, t)
-        if not frame or not follow.node then return real end
+        if not frame then return real end
         local eye = frame.eye
         -- Back from a flight it resumes from the flight's last real position,
         -- so the return to the mirrored rest is a glide, not a jump.
@@ -424,11 +436,27 @@ function Skull.install(mod, presentation)
         local target = Skull.follow_offset(real, eye, frame.head_yaw, frame.heading, frame.velocity)
         follow.offset = Skull.smoothed(follow.offset, target, dt, Skull.OFFSET_TAU)
         follow.position = {eye[1] + follow.offset[1], eye[2] + follow.offset[2], eye[3] + follow.offset[3]}
-        place(extension, skull, follow, follow.position)
+        -- The root itself, not the child node the throw moves: that node was
+        -- never seen to move the skull (worn, 17 September: "still locked to
+        -- my head" with the follower logging its placements). While the
+        -- skull follows, both stock extensions compute its position from
+        -- scratch and write the root just before this hook, so this write
+        -- lasts one frame and needs no undoing; the grab zone, read from the
+        -- root at the next input frame, is where the skull is drawn.
+        Unit.set_local_position(skull, 1, Vector3(follow.position[1], follow.position[2], follow.position[3]))
+        World.update_unit_and_children(extension._world, skull)
         if not follow.logged then
             follow.logged = true
-            mod:info("DARKTIDEVR_SKULL_THROW follow node=%d state=%s thrower=%s", follow.node, tostring(name),
-                tostring(follow.thrower == true))
+            local ok, count = pcall(Unit.num_scene_graph_items, skull)
+            local children = 0
+            if ok and count then
+                for node = 2, count do
+                    if Unit.scene_graph_parent(skull, node) == 1 then children = children + 1 end
+                end
+            end
+            mod:info("DARKTIDEVR_SKULL_THROW follow=root state=%s thrower=%s nodes=%s root_children=%d child_node=%s",
+                tostring(name), tostring(follow.thrower == true), tostring(ok and count or nil), children,
+                tostring(follow.node))
         end
         return real
     end
@@ -524,6 +552,19 @@ function Skull.install(mod, presentation)
         place(extension, skull, throw, drawn)
     end
 
+    -- Every child-node placement undone (a bridge or a throw); the
+    -- follower's root writes undo themselves at the next stock update.
+    local function unplace_all()
+        for skull, record in pairs(followers) do
+            if Unit.alive(skull) then unplace(record, skull) end
+        end
+        followers = setmetatable({}, {__mode = "k"})
+        local owner = local_player_unit()
+        local thrower = owner and companion(owner)
+        if throw and thrower then unplace(throw, thrower) end
+        throw = nil
+    end
+
     local failed = false
     local function hook_class(class)
         if not class or logged[class] then return end
@@ -533,7 +574,7 @@ function Skull.install(mod, presentation)
             local ok, err = pcall(after_movement, self, unit)
             if not ok then
                 failed = true
-                pcall(restore, unit)
+                pcall(unplace_all)
                 mod:warning("DARKTIDEVR_SKULL_THROW error=%s", tostring(err))
             end
         end)
@@ -544,8 +585,8 @@ function Skull.install(mod, presentation)
     end
 
     function api.destroy()
+        pcall(unplace_all)
         pending = nil; throw = nil; heading_state = nil; shared = nil; shared_t = nil
-        followers = setmetatable({}, {__mode = "k"})
         apply_forward(false)
     end
     return api

@@ -326,6 +326,8 @@ function Mirror.install(mod, presentation)
         end
         -- Not in the hub, whose own presentation (first or third person) is
         -- decided elsewhere and has no combat body to replace.
+        -- The mirror does not come back by itself on the next visit.
+        if mirror_toggled and not in_psykhanium() then mirror_toggled = false end
         local game_mode = presentation.current_game_mode_name and presentation.current_game_mode_name()
         local wanted = Mirror.requested_mode(parsed, mirror_toggled, in_psykhanium(),
             mod.get and mod:get("vr_full_body_experimental") == true and game_mode ~= nil and game_mode ~= "hub")
