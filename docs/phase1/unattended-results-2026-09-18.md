@@ -84,3 +84,40 @@ The eye readbacks were requested and consumed but wrote nothing: the
 cuffs or a board, so an ordinary gameplay frame serves the request and writes
 no file. The runner now asks for the **shared**-eye readback as well, which is
 the game's own rendered pair and is what shows the zoom.
+
+## The second run (`prove-20260918-b`), after the day's review fixes
+
+Same scene and character, 120 s, with the aim-down-sights test flag and the
+body overlay. Scene reached, no crash, no mod errors.
+
+- **The eye readbacks work now.** Four PPMs at the full 1908x2076, at 60 s
+  and 100 s. The runner asks for both readback kinds because the
+  **projected**-eye one is only copied on a frame that draws the tracked
+  cuffs or a board, so the first run consumed its request and wrote nothing;
+  the **shared**-eye readback is the game's own rendered pair and is written
+  in ordinary gameplay.
+- **The zoom does not break the render.** The readback with the zoom active
+  shows the Psykhanium correctly projected, the HUD in place, no black
+  frame, no distortion: the one real risk in changing the rendered frustum
+  is cleared. The magnification itself is proven by
+  `DARKTIDEVR_AIM zoom=on` and by the pure test; the readback cannot show it
+  on its own without a matching unzoomed frame to compare.
+- **The near-eye scan now takes the real camera**:
+  `near_eye eye=0.097,0.020,1.364 source=camera head=0.107,0.032,1.315`.
+  The old estimate put the eye 0.24 m forward and 0.20 m above where the
+  camera actually is. **It still hides nothing** (`meshes=32 hidden=0`), so
+  the eye was not the only reason: with the correct eye, no mesh's box comes
+  within the 0.25 m radius. Either the criterion wants the mesh's surface
+  rather than its box centre, or the hiding is simply unnecessary now that
+  the head slots are hidden outright. Not worth guessing further without the
+  user looking down at the body.
+
+## Still open after both runs
+
+- The pickup sliver: measured *not* to be content overflow, so last night's
+  gutter is the standing explanation. The user's eyes decide.
+- The body overlay's uniform scale: capped at 1.3, and the arms with it. In
+  the first run the solve wanted a target 0.759 m from the shoulder against a
+  0.709 m reach, so the soft stretch ran on **every** frame
+  (`unreachable_frames=25200` of 25200, `max_stretch_ratio` 1.13 to 1.19).
+  That is the case for the arm-length work, in numbers.
