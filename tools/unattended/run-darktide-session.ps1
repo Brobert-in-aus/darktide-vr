@@ -202,11 +202,21 @@ try {
     # Eye readbacks: a stale request file from an earlier run would be served
     # at once and the PPMs would show that run's frame (16 September), so
     # clear both the request and the outputs before the first one.
-    $readbackRequest = Join-Path $env:TEMP 'darktidevr-projected-eye-readback.request'
-    $readbackOutputs = @('darktidevr-projected-eye-left.ppm', 'darktidevr-projected-eye-right.ppm')
+    # Two kinds, asked for together. The shared-eye readback is the game's
+    # own rendered pair and is written in ordinary gameplay; the projected one
+    # is what the viewer submits, but it is only copied on a frame that draws
+    # the tracked cuffs or a board, so on its own a gameplay run consumes the
+    # request and writes nothing (18 September).
+    $readbackRequests = @(
+        (Join-Path $env:TEMP 'darktidevr-shared-eye-readback.request'),
+        (Join-Path $env:TEMP 'darktidevr-projected-eye-readback.request'))
+    $readbackOutputs = @('darktidevr-shared-eye-left.ppm', 'darktidevr-shared-eye-right.ppm',
+        'darktidevr-projected-eye-left.ppm', 'darktidevr-projected-eye-right.ppm')
     $readbackSchedule = @()
     if ($EyeReadbackAtSeconds.Count -gt 0) {
-        Remove-Item -LiteralPath $readbackRequest -ErrorAction SilentlyContinue
+        foreach ($request in $readbackRequests) {
+            Remove-Item -LiteralPath $request -ErrorAction SilentlyContinue
+        }
         foreach ($name in $readbackOutputs) {
             Remove-Item -LiteralPath (Join-Path $env:TEMP $name) -ErrorAction SilentlyContinue
         }
@@ -264,14 +274,17 @@ try {
             $readback.Taken = $true
             $record = [ordered]@{ offset_seconds = $readback.Offset; served = $false; files = @() }
             try {
-                Set-Content -LiteralPath $readbackRequest -Value 'readback' -Encoding ascii
-                # The viewer polls the request four times a second and writes
-                # both eyes on the next frame it draws.
+                foreach ($request in $readbackRequests) {
+                    Set-Content -LiteralPath $request -Value 'readback' -Encoding ascii
+                }
+                # The viewer polls each request four times a second and writes
+                # its eyes on the next frame that can serve it.
                 $deadline = (Get-Date).AddSeconds(20)
-                while ((Get-Date) -lt $deadline -and (Test-Path -LiteralPath $readbackRequest)) {
+                while ((Get-Date) -lt $deadline -and
+                        @($readbackRequests | Where-Object { Test-Path -LiteralPath $_ }).Count -gt 0) {
                     Start-Sleep -Milliseconds 250
                 }
-                $record.served = -not (Test-Path -LiteralPath $readbackRequest)
+                $record.served = @($readbackRequests | Where-Object { Test-Path -LiteralPath $_ }).Count -eq 0
                 Start-Sleep -Seconds 1
                 foreach ($name in $readbackOutputs) {
                     $source = Join-Path $env:TEMP $name

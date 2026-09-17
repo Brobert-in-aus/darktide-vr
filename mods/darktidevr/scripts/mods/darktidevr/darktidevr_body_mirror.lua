@@ -461,6 +461,15 @@ function Mirror.install(mod, presentation, options)
     end
     -- Hide near-eye meshes of every spawned slot unit and its attachments,
     -- logging each decision so a worn test can name wrong ones.
+    --
+    -- The eye is the player's real camera, not an estimate hung off the
+    -- copy's head joint. The estimate was about 20 cm forward of where the
+    -- camera actually is (`live_eye_root_local` in this module's own log),
+    -- against a 0.25 m radius, and it was taken in the spawn pose before the
+    -- copy was scaled and moved to the neck: every recorded run since the
+    -- mode was built logged `hidden=0`, all 348 mesh decisions `far`. The
+    -- scan is also deferred until the scale has settled (`ready_frames`),
+    -- because before then the copy is still its spawned size.
     local function hide_near_eye(unit, data)
         if not (Unit.has_node(unit, "j_head") and Unit.has_node(unit, "j_leftarm")) then
             log_once("near_eye_nodes", "near_eye=skipped reason=nodes_missing")
@@ -470,6 +479,13 @@ function Mirror.install(mod, presentation, options)
         local function root_local(position) return array(Matrix4x4.transform(root_inverse, position)) end
         local head = root_local(Unit.world_position(unit, Unit.node(unit, "j_head")))
         local eye = {head[1], head[2] + Mirror.EYE_FORWARD_OF_HEAD, head[3] + Mirror.EYE_ABOVE_HEAD}
+        local eye_source = "head_estimate"
+        local first_person = state.avatar and ScriptUnit.has_extension(state.avatar, "first_person_system")
+        local camera = first_person and first_person:first_person_unit()
+        if camera and Unit.alive(camera) then
+            eye = root_local(Unit.world_position(camera, 1))
+            eye_source = "camera"
+        end
         local shoulder_height = root_local(Unit.world_position(unit, Unit.node(unit, "j_leftarm")))[3]
         local hidden, total = 0, 0
         local function scan(slot_name, slot_unit)
@@ -502,8 +518,8 @@ function Mirror.install(mod, presentation, options)
                 end
             end
         end
-        mod:info("DARKTIDEVR_BODY_MIRROR near_eye eye=%.3f,%.3f,%.3f shoulder_z=%.3f meshes=%d hidden=%d",
-            eye[1], eye[2], eye[3], shoulder_height, total, hidden)
+        mod:info("DARKTIDEVR_BODY_MIRROR near_eye eye=%.3f,%.3f,%.3f source=%s head=%.3f,%.3f,%.3f shoulder_z=%.3f meshes=%d hidden=%d",
+            eye[1], eye[2], eye[3], eye_source, head[1], head[2], head[3], shoulder_height, total, hidden)
     end
     local function capture_arms(unit)
         state.arms = {}
@@ -656,7 +672,9 @@ function Mirror.install(mod, presentation, options)
                 function(name) return Unit.has_node(unit, name) and Unit.node(unit, name) end, probes)
             state.count = Unit.num_scene_graph_items(unit)
             capture_arms(unit)
-            if Mirror.MODES[mode_name].near_eye then hide_near_eye(unit, data) end
+            -- Deferred: see hide_near_eye. The scale eases over about a
+            -- second, so the scan waits for it to settle and for a camera.
+            state.near_eye_pending = Mirror.MODES[mode_name].near_eye or nil
             if Mirror.MODES[mode_name].hand_rig and body_proxy() and body_proxy().set_hand_rig then
                 -- Before the first copy: the wrist basis comes from this spawn pose.
                 state.hand_rig = body_proxy().set_hand_rig(unit)
@@ -817,6 +835,12 @@ function Mirror.install(mod, presentation, options)
             Unit.set_local_rotation(unit, 1, Quaternion.multiply(Quaternion(Vector3.up(), math.pi), Unit.local_rotation(unit, 1)))
             World.update_unit(world, unit)
         end
+        if state.near_eye_pending and (state.scale_ratio == nil or
+                (state.last_scale_ratio and math.abs(state.scale_ratio - state.last_scale_ratio) < 0.002)) then
+            state.near_eye_pending = nil
+            hide_near_eye(unit, state.data)
+        end
+        state.last_scale_ratio = state.scale_ratio
         state.frames = state.frames + 1
         if state.frames == 1 or state.frames % 900 == 0 then
             if state.neck_offset then
