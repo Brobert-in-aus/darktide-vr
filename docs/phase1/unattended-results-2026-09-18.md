@@ -181,17 +181,36 @@ comparable, the shoulder-to-target distances are not the worn case.
 | length ratios applied | none | 0.815 and **0.700** (at the clamp floor) |
 | soft stretch, worst | 0.00 m (ratio 1.13-1.19) | **0.42 m** |
 
-**Applying the calibration as it stands makes the arms markedly worse**, and
-the reason is in the same log line: `arm_length source=span span_m=1.559
-reach_m=0.518 upper_m=0.290 lower_m=0.228`. A 1.56 m span for a 1.78 m player
-is short — the 16 September capture was 150.6 cm against 163 expected, and
-this one is no better — so the derived forearm hits the mode's 0.70 clamp
-floor and the arm ends up a fifth shorter than the rig's own.
+**Corrected after checking the arithmetic against the saved calibration.**
+The first reading of this table was that the calibration is too short to use.
+It is not. The saved result is a standing one (`seated = false`,
+`floor_eye_height = 1.723`, `hand_span = 1.559` against a predicted 1.630,
+so 7.1 cm or **1.6 standard deviations** short — inside the 2.5 SD the
+derivation accepts, which is why its source reads `span`). From that span the
+derivation gives a shoulder-to-wrist reach of 0.518 m, and 0.29 m + 0.23 m
+segments, for a 1.78 m player. Those are **plausible human arm lengths**; the
+log's `shoulder_width_m=0.491` is the rig's own width, printed for
+information, while the derivation correctly used the player's 0.362 m.
 
-So the next step for the body is **not** to switch the overlay to calibrated
-lengths. It is to fix the capture first: the design's step 1 asks for the
-90th percentile of grip-to-grip over the hold, and the code still averages 45
-frames (`darktidevr_calibration_view.lua:231-252`), which is exactly the
-under-extension the design predicted. Until the span is trustworthy, the
-uniform scale — capped, and stretching by 13 to 19 per cent — is the better
-of the two.
+The conflict is the other side of the equation. The rig's own arm is 0.550 m
+unscaled, and the copy is scaled by 1.21 to 1.30 to reach the neck, which
+puts its arm at 0.665 to 0.715 m **and its shoulders that much further from
+the body's centre** — while the hand targets stay where the unscaled avatar's
+hands are. The solve is then asked for 0.82 to 0.87 m from a shoulder that
+has been moved outward and upward. Giving it true 0.518 m arms makes that
+gap worse, not better: the stretch goes from 0.05 m to 0.42 m.
+
+So the lesson is not about the capture at all:
+
+- **Calibrated arm lengths cannot be used while the copy is uniformly
+  scaled.** The two are in direct conflict, and the design says as much —
+  the uniform scale is a stand-in until the body is the player's height by
+  construction (the spine and legs milestones), not by enlargement.
+- **The order of work is therefore**: stop scaling the whole copy (bend the
+  spine, or scale only the legs, so the neck reaches the head without the
+  shoulders moving), and only then apply the calibrated arms.
+- The span capture is still worth improving (the design asks for the 90th
+  percentile of grip-to-grip over the hold, and the code averages 45 frames
+  inside a 15 mm stillness gate, so it cannot correct a player who does not
+  fully extend). But at 1.6 SD it is **not** what is blocking the arms, and
+  today's A/B is not evidence against it.
