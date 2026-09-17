@@ -15876,7 +15876,14 @@ function presentation.marker_head_frame(phase, left, right, t)
     end
     local center = (ScriptCamera.local_position(left) + ScriptCamera.local_position(right)) * 0.5
     local rotation = ScriptCamera.local_rotation(left)
-    local _, height = Application.back_buffer_size()
+    local back_width, height = Application.back_buffer_size()
+    if not presentation.marker_pixel_spaces_logged then
+        presentation.marker_pixel_spaces_logged = true
+        local lookup = rawget(_G, "RESOLUTION_LOOKUP") or {}
+        mod:info("DARKTIDEVR_MARKER pixel_spaces back_buffer=%sx%s lookup=%sx%s scale=%s eye_target=%dx%d",
+            tostring(back_width), tostring(height), tostring(lookup.width), tostring(lookup.height),
+            tostring(lookup.scale), ui_eye_target_width, ui_eye_target_height)
+    end
     local frame = {stamp = stamp, t = t, left = left, right = right,
         center = presentation.marker_plain(center),
         right_axis = presentation.marker_plain(Quaternion.right(rotation)),

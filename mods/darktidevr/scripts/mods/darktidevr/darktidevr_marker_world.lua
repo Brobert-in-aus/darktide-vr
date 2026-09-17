@@ -557,8 +557,37 @@ end
 -- (script_*) pass no `logical_scale`; the logical ones (draw_rect,
 -- draw_slug_icon) pass the renderer scale, and their factor is applied
 -- through the target renderer's scale instead.
+-- The largest offset a routed draw has asked for, from its cell's centre, in
+-- target pixels. A marker's content is not clipped to its cell: the hand
+-- displays' sliver beside the ammo count was content laid out past the cell
+-- edge, and the pickup markers' sliver (worn, 17 September) is the same
+-- question with nothing measuring it. Reported when a new maximum stands for
+-- a second, so a log carries the worst case without a line per draw.
+state.extent = {dx = 0, dy = 0, reported_dx = 0, reported_dy = 0, at = nil}
+local function observe_extent(x, y, scope_atlas)
+    local extent = state.extent
+    local ax, ay = x < 0 and -x or x, y < 0 and -y or y
+    if ax > extent.dx then extent.dx = ax end
+    if ay > extent.dy then extent.dy = ay end
+    local now = Application and Application.time_since_launch and Application.time_since_launch()
+    if not now then return end
+    if not extent.at then extent.at = now; return end
+    if now - extent.at < 1 then return end
+    extent.at = now
+    if extent.dx <= extent.reported_dx + 0.5 and extent.dy <= extent.reported_dy + 0.5 then return end
+    extent.reported_dx, extent.reported_dy = extent.dx, extent.dy
+    local atlas = scope_atlas
+    if not (state.api and state.api.log) then return end
+    state.api.log(string.format(
+        "DARKTIDEVR_MARKER extents max_dx=%.1f max_dy=%.1f half_cell=%.1f,%.1f",
+        extent.dx, extent.dy, (atlas and atlas.CELL_WIDTH or 0) * 0.5,
+        (atlas and atlas.CELL_HEIGHT or 0) * 0.5))
+end
+
 local function shifted(scope, position, logical_scale)
     local factor = scope.factor or 1
+    observe_extent((position[1] or 0) * factor - scope.origin_x,
+        (position[2] or 0) * factor - scope.origin_y, scope.atlas)
     local dx = scope.atlas_x - scope.origin_x
     local dy = scope.atlas_y - scope.origin_y
     local unit = logical_scale

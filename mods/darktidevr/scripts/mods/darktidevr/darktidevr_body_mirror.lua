@@ -648,6 +648,7 @@ function Mirror.install(mod, presentation, options)
             local unit = data and data.unit_3p
             if not unit then return end
             state.unit = unit
+            state.data = data
             Unit.disable_animation_state_machine(unit)
             local probes = {"j_hips", "j_spine2", "j_head", "j_lefthand", "j_righthand", "j_leftfoot", "j_rightfoot"}
             state.same_layout = Mirror.same_layout(Unit.num_scene_graph_items(avatar), Unit.num_scene_graph_items(unit),
@@ -682,8 +683,33 @@ function Mirror.install(mod, presentation, options)
         local unit = state.unit
         if not Unit.alive(unit) then destroy_own(); return end
         if not state.same_layout then
-            log_once("layout", "copy=skipped reason=layout_mismatch")
-            place(avatar, unit)
+            log_once("layout", "copy=skipped reason=layout_mismatch mode=%s hidden=%s",
+                tostring(mode_name), tostring(Mirror.MODES[mode_name].distance == 0))
+            -- A copy this module cannot pose is not left standing where the
+            -- player is. Every mode that spawns it on them (distance 0) hides
+            -- its head only after the pose is copied, and the reflection is
+            -- moved off them only at the end of a posed frame, so a rig whose
+            -- node layout does not match (an Ogryn, a cosmetic that changes
+            -- the node count) would otherwise leave a whole character, head
+            -- included, inside the player's view. It is hidden rather than
+            -- destroyed: destroying it here would spawn another next frame.
+            if Mirror.MODES[mode_name].distance == 0 and not state.layout_hidden then
+                state.layout_hidden = true
+                pcall(Unit.set_unit_visibility, unit, false, true)
+                for _, slot in pairs(state.data and state.data.slots or {}) do
+                    if slot.unit_3p and Unit.alive(slot.unit_3p) then
+                        pcall(Unit.set_unit_visibility, slot.unit_3p, false, true)
+                        local attachments = slot.attachments_by_unit_3p and
+                            slot.attachments_by_unit_3p[slot.unit_3p]
+                        for _, attachment in ipairs(attachments or {}) do
+                            if Unit.alive(attachment) then
+                                pcall(Unit.set_unit_visibility, attachment, false, true)
+                            end
+                        end
+                    end
+                end
+            end
+            if not state.layout_hidden then place(avatar, unit) end
             return
         end
         -- Every joint below the root: the avatar's local pose after its own
