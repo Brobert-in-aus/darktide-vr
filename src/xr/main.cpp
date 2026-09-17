@@ -3813,6 +3813,28 @@ class OpenXrProbe {
           const bool capture_projected_eyes =
               projected_eye_readback_requested &&
               (frame_cuff_draws != 0U || rendered_gameplay_reticle);
+          if (capture_projected_eyes && rendered_gameplay_reticle) {
+            // The centre of the quad, through the same transform the draw
+            // used, so the readback can be checked rather than admired. NDC
+            // is -1..1 with +Y up; the pixel is where to look in the PPM.
+            for (std::size_t eye = 0; eye < submitted_view_poses.size();
+                 ++eye) {
+              const auto clip = darktidevr::harness::panel_point_clip(
+                  submitted_view_poses[eye], submitted_view_fovs[eye],
+                  gameplay_reticle_quad.pose, gameplay_reticle_quad.size,
+                  0.5F, 0.5F);
+              const auto inverse_w = clip[3] != 0.0F ? 1.0F / clip[3] : 0.0F;
+              const auto ndc_x = clip[0] * inverse_w;
+              const auto ndc_y = clip[1] * inverse_w;
+              std::cout << "openxr.gameplay_reticle_clip eye=" << eye
+                        << " ndc=" << ndc_x << ',' << ndc_y
+                        << " pixel=" << (ndc_x * 0.5F + 0.5F) *
+                                            static_cast<float>(width)
+                        << ',' << (0.5F - ndc_y * 0.5F) *
+                                     static_cast<float>(height)
+                        << " w=" << clip[3] << '\n';
+            }
+          }
           if (capture_projected_eyes && draw_tracked_cuffs) {
             for (std::size_t eye = 0; eye < theatre_swapchain_count; ++eye) {
               for (std::size_t hand = 0; hand < cuff_hands.size(); ++hand) {
