@@ -6500,6 +6500,25 @@ end
 -- Aim-down-sights (alternate fire) on the wielded weapon. The viewer
 -- tightens the reticle and eases in a focus vignette; the stabilisation
 -- filter steadies the hand. Off through the ads_focus option.
+-- An unattended run cannot press the alternate fire, so nothing downstream of
+-- this (the reticle's tightening, the focus vignette, the aim zoom) could be
+-- proven without a person in the headset; the vignette went five days unseen
+-- for want of it. `darktidevr_ads_test.flag` holds the sights up, polled like
+-- the other modules' test flags. Players never have the file.
+presentation.ads_test_poll = 0
+function presentation.ads_test_flag()
+    presentation.ads_test_poll = (presentation.ads_test_poll or 0) - 1
+    if presentation.ads_test_poll > 0 then return presentation.ads_test_enabled == true end
+    presentation.ads_test_poll = 300
+    local io_api = Mods and Mods.lua and Mods.lua.io
+    local file = io_api and io_api.open("./../mods/darktidevr/darktidevr_ads_test.flag", "r")
+    if not file then presentation.ads_test_enabled = false; return false end
+    local value = file:read(32) or ""
+    file:close()
+    presentation.ads_test_enabled = value:match("^%s*enabled%s*$") ~= nil
+    return presentation.ads_test_enabled
+end
+
 function presentation.track_aim_down_sights()
     local unit = presentation.gameplay_input_owner[2]
     local script_unit = rawget(_G, "ScriptUnit")
@@ -6510,7 +6529,8 @@ function presentation.track_aim_down_sights()
         local ok, component = pcall(function()
             return unit_data and unit_data:read_component("alternate_fire")
         end)
-        active = ok and component ~= nil and component.is_active == true
+        active = (ok and component ~= nil and component.is_active == true) or
+            presentation.ads_test_flag()
     end
     if active ~= presentation.ads_active then
         presentation.ads_active = active
