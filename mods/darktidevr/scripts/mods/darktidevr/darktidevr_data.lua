@@ -58,6 +58,15 @@ return {
                 function_name = "toggle_melee_preview",
             },
             {
+                setting_id = "body_mirror_keybind",
+                type = "keybind",
+                default_value = {"f8"},
+                keybind_trigger = "pressed",
+                keybind_type = "function_call",
+                keybind_global = true,
+                function_name = "toggle_body_mirror",
+            },
+            {
                 setting_id = "scanner_test_keybind",
                 type = "keybind",
                 default_value = {"f7"},

@@ -112,4 +112,13 @@ do
         'overlay does the swing, protraction and stretch')
     assert(Mirror.MODES.overlayswing.clavicles and not Mirror.MODES.overlayswing.protract,'swing-only A/B')
 end
+-- Which mode runs: the dev flag first, then the mirror key in the
+-- Psykhanium, then the full-body option's overlay.
+assert(Mirror.requested_mode(nil, false, false, false) == nil)
+assert(Mirror.requested_mode("overlayspine", true, true, true) == "overlayspine", 'the dev flag wins')
+assert(Mirror.requested_mode("nonsense", false, false, true) == "overlay", 'an unknown flag mode is no flag')
+assert(Mirror.requested_mode(nil, true, true, true) == "mirror", 'the key shows the mirror in the Psykhanium')
+assert(Mirror.requested_mode(nil, true, false, false) == nil, 'and nowhere else')
+assert(Mirror.requested_mode(nil, true, false, true) == "overlay", 'outside it the option still runs')
+assert(Mirror.requested_mode(nil, false, true, true) == "overlay" and Mirror.MODES[Mirror.OPTION_MODE] ~= nil)
 print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles')

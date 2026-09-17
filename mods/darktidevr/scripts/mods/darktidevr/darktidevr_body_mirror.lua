@@ -255,6 +255,20 @@ function Mirror.chain_fractions(chain)
     return fractions
 end
 
+-- The mode to run: the dev flag's when it names one; else the mirror while
+-- its key has toggled it on (Psykhanium only); else the full overlay while
+-- the "Full body (experimental)" option is on; else none. The option used to
+-- turn on the older headless third-person body, whose head floats above a
+-- body of the character's own height (worn, 17 September); the overlay is
+-- the body scaled so its neck reaches the player's head. Pure.
+Mirror.OPTION_MODE = "overlay"
+function Mirror.requested_mode(flag_mode, mirror_toggled, in_psykhanium, option_on)
+    if flag_mode and Mirror.MODES[flag_mode] then return flag_mode end
+    if mirror_toggled == true and in_psykhanium == true then return "mirror" end
+    if option_on == true then return Mirror.OPTION_MODE end
+    return nil
+end
+
 -- The flag's mode, or nil. Pure.
 function Mirror.parse_mode(value)
     local name = type(value) == "string" and value:match("^%s*(%a+)%s*$")
@@ -294,19 +308,44 @@ function Mirror.install(mod, presentation)
     local poll, enabled, mode_name = 0, false, nil
     local state
     local logged = {}
+    local mirror_toggled = false
+    local function in_psykhanium()
+        local name = presentation.current_game_mode_name and presentation.current_game_mode_name()
+        return name == "shooting_range" or name == "training_grounds"
+    end
     local function flag()
         poll = poll - 1
         if poll > 0 then return enabled end
         poll = 120
         local io_api = Mods and Mods.lua and Mods.lua.io
         local file = io_api and io_api.open(Mirror.FLAG, "r")
-        if not file then enabled = false; return false end
-        local value = file:read("*all"); file:close()
-        local parsed = Mirror.parse_mode(value)
-        if state and parsed ~= mode_name then api.destroy() end
-        mode_name = parsed
-        enabled = parsed ~= nil
+        local parsed
+        if file then
+            local value = file:read("*all"); file:close()
+            parsed = Mirror.parse_mode(value)
+        end
+        -- Not in the hub, whose own presentation (first or third person) is
+        -- decided elsewhere and has no combat body to replace.
+        local game_mode = presentation.current_game_mode_name and presentation.current_game_mode_name()
+        local wanted = Mirror.requested_mode(parsed, mirror_toggled, in_psykhanium(),
+            mod.get and mod:get("vr_full_body_experimental") == true and game_mode ~= nil and game_mode ~= "hub")
+        if state and wanted ~= mode_name then api.destroy() end
+        if wanted ~= mode_name then
+            mod:info("DARKTIDEVR_BODY_MIRROR mode=%s flag=%s toggled=%s", tostring(wanted), tostring(parsed),
+                tostring(mirror_toggled))
+        end
+        mode_name = wanted
+        enabled = wanted ~= nil
         return enabled
+    end
+    -- The mirror key (F8 by default): a copy of your character standing ahead
+    -- of you, facing you, in the Psykhanium. Returns the new state, or nil
+    -- outside the Psykhanium.
+    function api.toggle_mirror()
+        if not in_psykhanium() then return nil end
+        mirror_toggled = not mirror_toggled
+        poll = 0
+        return mirror_toggled
     end
     local function body_proxy() return presentation.body_proxy end
     function api.destroy()

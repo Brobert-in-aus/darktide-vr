@@ -7501,11 +7501,14 @@ function presentation.update_body_visibility_gate(frame)
         "./../mods/darktidevr/darktidevr_full_body_experimental.flag"
     local full_body_flag = Mods and Mods.lua and Mods.lua.io and
         Mods.lua.io.open(full_body_path, "r")
-    -- The option (user, 16 September: "no full body toggle in the VR settings
-    -- menu") or the dev flag, either turns the mode on.
-    local full_body_experimental = mod:get("vr_full_body_experimental") == true
+    -- The dev flag only: this is the older headless third-person body, whose
+    -- head floats above a body of the character's own height (worn, 17
+    -- September, through the option). The "Full body (experimental)" option
+    -- now runs the body overlay instead (darktidevr_body_mirror,
+    -- Mirror.requested_mode).
+    local full_body_experimental = false
     if full_body_flag then
-        full_body_experimental = full_body_experimental or
+        full_body_experimental =
             full_body_flag:read("*all"):match("^%s*enabled%s*$") ~= nil
         full_body_flag:close()
     end
@@ -15419,6 +15422,17 @@ local function scanner_test_item()
         end
     end
     return chosen
+end
+-- The mirror key: your character's copy standing ahead of you, facing you,
+-- in the Psykhanium (user, 17 September).
+mod.toggle_body_mirror = function()
+    local mirror = presentation.body_mirror
+    local state = mirror and mirror.toggle_mirror and mirror.toggle_mirror()
+    if state == nil then
+        mod:echo("The body mirror works in the Psykhanium.")
+    else
+        mod:echo(state and "Body mirror on (a moment to spawn)." or "Body mirror off.")
+    end
 end
 mod.toggle_scanner_test = function()
     local manager = Managers and Managers.ui
