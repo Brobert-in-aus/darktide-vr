@@ -310,3 +310,56 @@ can finally **see** the reticle and check where it is -- which it never could
 while the reticle lived in a layer the runtime composites after us.
 
 Not yet run in the game. Default off until it has been worn.
+
+## What the reviews caught before anything ran
+
+Three of the day's reviews found faults in work written the same hour. None
+of these reached the game, and two would have been hard to diagnose from a
+worn session.
+
+1. **All three of solo play's bots on one panel anchor.** The teammate key
+   asked for the account id, then the peer id. A bot is added with no account
+   id at all and carries the host's peer id, so every bot resolved to the same
+   key: the second and third overwrote the first's position and claimed extra
+   cells against it, which is two panels over one bot's head and none over the
+   others, every frame. `unique_id` (peer, local player and a counter) is
+   asked first now.
+2. **A clock that goes backwards wedged the new anchor sweep permanently**,
+   and the marker atlas had the same shape with a worse symptom -- a negative
+   age reads as "drawn this instant", so the cells last claimed would keep
+   showing and the resources would never be released, which is the crash on
+   mission unload that release exists to avoid.
+3. **The reticle would have vanished past 100 metres.** The panel renderer's
+   projection has always had a 100 m far plane, invisible while it drew only
+   boards two metres out. The mod publishes the aim distance up to 200 m, so
+   aiming down a long hall clipped the quad away -- and because a draw had
+   been *issued*, the quad layer stood down, leaving nothing at all. Far plane
+   now 1000 m, and "drawn" means the centre is inside the frustum.
+4. **The aim state was read too early for the path that ships.** Hoisting the
+   derivation above the theatre command list is necessary for drawing into the
+   eye images and costs everything else the samples published during the pair
+   wait and the GPU work. It is one lambda now, called early only when the
+   draw needs it.
+
+## The aim zoom was moving the world and not the reticle
+
+Following the last of those: the zoom renders a narrower cone across the same
+angle while the viewer submits the runtime's field of view unchanged. Anything
+placed by that submitted field of view is therefore placed for an image that
+was not rendered -- off the view's centre the world has moved out by the
+magnification and the reticle has not. At the default twelve per cent a
+reticle four degrees off centre sits about half a degree inside its target,
+and further as you look further out.
+
+The mod publishes the point now with the magnification applied across the
+view, which cancels it exactly and corrects the shipped quad layer as well as
+the drawn one. The head's axis rather than each eye's leaves the two eyes
+disagreeing by (m - 1) times half the IPD: under 4 mm at a tenth
+magnification, a fiftieth of a degree at ten metres.
+
+**Not run in the game.** The reticle work is built, reviewed twice and
+committed, and the unattended proof is prepared -- Psykhanium, synthetic
+controller path, `darktidevr_reticle_in_eyes.flag`, eye readbacks, and
+`openxr.gameplay_reticle_clip` to check the picture against arithmetic. It was
+not launched: the standing rule is to stop unattended launches as soon as any
+message arrives, and two did.
