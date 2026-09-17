@@ -147,3 +147,40 @@ by pointing out of the menu (2), the talk zone (6), the charge display's
 place (8), the sliver (4), the radial (5), the skulls (9), the F8 mirror
 toggle (3), the full body's head height (7). The calibration note (1) when
 it arrives.
+
+## Second round, the same evening (items 39 to 46, build `9741baa`)
+
+The user's words, by the checklist's own numbers (headings this time, so
+they match), recorded before acting.
+
+- **8, calibration**: "I did this one last time, calibration seemed to
+  work". Pass.
+- **13, 14, 46**: "nothing to test". Closed.
+- **39, sliver**: "Fixed, however item pickups still have a sliver". Open:
+  the pickups' world markers.
+- **40, charge display**: "good, but move both it and the ammo counter
+  further to the left of the gun - maybe 2cm?" Open: both 2 cm further.
+- **41, talk zone**: "pass".
+- **42, radial**: "persists with a gun out, but flicks up still swap weapons
+  rather than grabbing the item (but only most of the time, infrequently
+  it'll pull out the item)". Open.
+- **43, skulls**: "leading works, but physics objects on them flicker as I
+  move (but not when I turn, I expect this is the same issue with conflict
+  between our position and the base model position, same as past flickers
+  when moving)". And: "Throwing works in that it triggers the targeting
+  mode and releasing sends the skull, but the skull never gets visually
+  grabbed and just follows its usual path when thrown." Open: one writer
+  for the skull's position; the grab and throw never draw.
+- **44, full body**: "snap turns as I turn rather than following smoothly,
+  and eyes are a bit too low, need to come up maybe 10cm, and forward maybe
+  5? Or perhaps the body needs to move down. Check where the eyes are
+  supposed to be vs where they are, resetting view and sitting or standing
+  doesn't seem to change it. I notice that when doing the left-hand in
+  front of mouth to PTT that the mirrored model shows my hand going inside
+  its head." And: "I notice that when I reset view the body scales height
+  up to my head, so it's coming up too far (and I think the eyes need to be
+  further forward too)". Open: the body turns in steps; it stands about
+  10 cm too high and about 5 cm too far forward of the eye.
+- **45, mirror**: "works, but glitches around when I move. Also, doesn't
+  mirror my IK except the hands, and its own hands are invisible - it
+  should match my IK identically, a true mirror." Open.
