@@ -38,7 +38,12 @@ param(
     [string[]] $ViewerArguments = @(),
     [string] $OutputDirectory,
     [ValidateRange(60, 3600)] [int] $StartTimeoutSeconds = 900,
-    [ValidateRange(10, 600)] [int] $ExitTimeoutSeconds = 180
+    [ValidateRange(10, 600)] [int] $ExitTimeoutSeconds = 180,
+    # Seconds into the hold at which to ask the viewer for an eye readback.
+    # The viewer serves %TEMP%\darktidevr-projected-eye-readback.request and
+    # writes one PPM per eye; nothing automated that before, so every readback
+    # was hand-driven and none was repeatable (18 September survey).
+    [int[]] $EyeReadbackAtSeconds = @()
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -194,6 +199,27 @@ try {
     $holdEnd = (Get-Date).AddSeconds($HoldSeconds)
     $holdMid = (Get-Date).AddSeconds($HoldSeconds / 2)
     $midSampled = $false
+    # Eye readbacks: a stale request file from an earlier run would be served
+    # at once and the PPMs would show that run's frame (16 September), so
+    # clear both the request and the outputs before the first one.
+    $readbackRequest = Join-Path $env:TEMP 'darktidevr-projected-eye-readback.request'
+    $readbackOutputs = @('darktidevr-projected-eye-left.ppm', 'darktidevr-projected-eye-right.ppm')
+    $readbackSchedule = @()
+    if ($EyeReadbackAtSeconds.Count -gt 0) {
+        Remove-Item -LiteralPath $readbackRequest -ErrorAction SilentlyContinue
+        foreach ($name in $readbackOutputs) {
+            Remove-Item -LiteralPath (Join-Path $env:TEMP $name) -ErrorAction SilentlyContinue
+        }
+        $holdStart = Get-Date
+        foreach ($offset in ($EyeReadbackAtSeconds | Sort-Object)) {
+            $readbackSchedule += [pscustomobject]@{
+                At = $holdStart.AddSeconds([math]::Min($offset, [math]::Max(0, $HoldSeconds - 5)))
+                Offset = $offset
+                Taken = $false
+            }
+        }
+        $summary.eye_readbacks = @()
+    }
     while ((Get-Date) -lt $holdEnd) {
         Start-Sleep -Seconds 2
         if ($game.HasExited) { throw 'Darktide exited during the hold.' }
@@ -232,6 +258,46 @@ try {
             try {
                 $summary.streamer_processes_mid = @(Get-Process -Name 'VirtualDesktop.Streamer' -ErrorAction SilentlyContinue).Count
             } catch {}
+        }
+        foreach ($readback in $readbackSchedule) {
+            if ($readback.Taken -or (Get-Date) -lt $readback.At) { continue }
+            $readback.Taken = $true
+            $record = [ordered]@{ offset_seconds = $readback.Offset; served = $false; files = @() }
+            try {
+                Set-Content -LiteralPath $readbackRequest -Value 'readback' -Encoding ascii
+                # The viewer polls the request four times a second and writes
+                # both eyes on the next frame it draws.
+                $deadline = (Get-Date).AddSeconds(20)
+                while ((Get-Date) -lt $deadline -and (Test-Path -LiteralPath $readbackRequest)) {
+                    Start-Sleep -Milliseconds 250
+                }
+                $record.served = -not (Test-Path -LiteralPath $readbackRequest)
+                Start-Sleep -Seconds 1
+                foreach ($name in $readbackOutputs) {
+                    $source = Join-Path $env:TEMP $name
+                    if (-not (Test-Path -LiteralPath $source)) { continue }
+                    $destination = Join-Path $outputDirectory ("eye-{0}s-{1}" -f $readback.Offset, $name)
+                    Copy-Item -LiteralPath $source -Destination $destination -Force
+                    $item = Get-Item -LiteralPath $destination
+                    # A PPM's own header carries the size the viewer wrote, so
+                    # the summary records what was captured rather than what
+                    # anything assumed (the analysers still default to 2112).
+                    $reader = [System.IO.File]::OpenRead($destination)
+                    $bytes = New-Object byte[] 32
+                    [void]$reader.Read($bytes, 0, 32)
+                    $reader.Close()
+                    $text = ([System.Text.Encoding]::ASCII.GetString($bytes) -split "`n")
+                    $record.files += [ordered]@{
+                        name = $item.Name
+                        bytes = $item.Length
+                        extent = if ($text.Count -ge 2) { $text[1] } else { 'unknown' }
+                    }
+                    Remove-Item -LiteralPath $source -ErrorAction SilentlyContinue
+                }
+            } catch {
+                $record.error = $_.Exception.Message
+            }
+            $summary.eye_readbacks += $record
         }
     }
 
