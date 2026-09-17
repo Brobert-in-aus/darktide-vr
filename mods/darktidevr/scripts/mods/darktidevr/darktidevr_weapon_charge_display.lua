@@ -26,9 +26,11 @@ local Charge = {}
 -- Metres per widget pixel. The stock bars are 400 units long, so this is a
 -- bar about 10 cm across, sitting above the weapon.
 Charge.PIXEL_METRES = 0.00026
--- Where the bars sit relative to the gun's attach point: a little forward,
--- and above the barrel so they do not cover the sights.
-Charge.FORWARD, Charge.UP = 0.06, 0.09
+-- Left of the weapon, where the melee count sits (darktidevr_ammo_readout's
+-- beside_weapon; user, 17 September worn: "to the left of the weapon not
+-- above it, same as ammo"), further out by half the bars' width so their
+-- near end clears the hand.
+Charge.SIDE = 0.06 + 200 * Charge.PIXEL_METRES
 -- The element's own charge bars, and nothing else it draws (its background,
 -- its text). The crosshair's filter happens to match these ids too, since both
 -- start "charge_"; being explicit is what keeps the two elements' rules apart
@@ -167,11 +169,9 @@ function Charge.install(mod, presentation, tracking)
         if not widget or not widget.passes then probe(now, widget, 0, true); hide(); return end
         -- The weapon hand's controller grip: every weapon with charge bars is
         -- melee, so there is no gun pose to use.
-        local grip, grip_rotation = presentation.weapon_grip_target("dominant")
-        if not grip or not grip_rotation then probe(now, widget, 0, true, false); hide(); return end
-        local position = grip +
-            Quaternion.forward(grip_rotation) * Charge.FORWARD +
-            Quaternion.up(grip_rotation) * Charge.UP
+        local readout = presentation.ammo_readout
+        local position = readout and readout.beside_weapon and readout.beside_weapon(rotation, Charge.SIDE)
+        if not position then probe(now, widget, 0, true, false); hide(); return end
         if world ~= game_world then
             local owner, stamp = source, source_t
             api.destroy(); world = game_world; source, source_t = owner, stamp

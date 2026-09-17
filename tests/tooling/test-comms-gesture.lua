@@ -17,7 +17,8 @@ assert(not Comms.at_mouth(nil) and not Comms.at_mouth({0, 0 / 0, 0}), 'nothing u
 
 -- Hysteresis: a hand that drifts out keeps the microphone open rather than
 -- chopping the sentence in half.
-local drifting = {0, 0.40, -0.16}
+-- (The zone is a third smaller since 17 September: 0.135 m in, 0.19 m out.)
+local drifting = {0, 0.32, -0.16}
 assert(not Comms.at_mouth(drifting, false), 'outside the entry radius')
 assert(Comms.at_mouth(drifting, true), 'inside the exit radius once talking')
 
@@ -50,4 +51,5 @@ assert(Comms.DWELL_SECONDS > Inspect.DWELL_SECONDS, 'slower to open than to insp
 -- in the dominant hand, talking is the off hand.
 assert(Comms.at_mouth({0, 0.20, 0.0}), 'up at the nose still counts')
 
+assert(Comms.ENTER_RADIUS == 0.135 and Comms.EXIT_RADIUS == 0.19)
 print('comms_gesture=pass at_mouth hysteresis dwell')

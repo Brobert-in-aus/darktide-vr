@@ -22,9 +22,23 @@ Readout.AWAY_FROM_EYE = 0.06
 -- hand-relative placement showed it (worn screenshot 19:04): beside the
 -- receiver, just ahead of the hand. The hand drawn from the hidden
 -- character's animation moved with the weapon and while strafing.
--- The melee charge count sits where the HUD's charge bars would: above the
--- weapon hand's grip (darktidevr_weapon_charge_display, the same offsets).
-Readout.CHARGE_FORWARD, Readout.CHARGE_UP = 0.06, 0.09
+-- The melee charge count sits left of the weapon as the ammo count does
+-- (user, 17 September worn: above the grip it landed on the forearm
+-- holster's count, 13 cm up, and read as right of the hand): ahead of the
+-- grip along the aim and toward the body's midline as the eye sees it, level
+-- with the hand. The charge bars use the same place, further out by half
+-- their width (darktidevr_weapon_charge_display).
+Readout.CHARGE_FORWARD, Readout.CHARGE_SIDE = 0.08, 0.06
+
+-- The anchor beside a weapon with no gun pose: position + forward * ahead +
+-- inward * side, where inward is the eye's right negated for a right-hand
+-- weapon. 3-arrays in, 3-array out. Pure.
+function Readout.beside_weapon(grip, forward, eye_right, weapon_side, ahead, side)
+    local sign = weapon_side == "left" and 1 or -1
+    return {grip[1] + forward[1] * ahead + eye_right[1] * side * sign,
+        grip[2] + forward[2] * ahead + eye_right[2] * side * sign,
+        grip[3] + forward[3] * ahead + eye_right[3] * side * sign}
+end
 Readout.GUN_FORWARD = 0.08
 Readout.GUN_SIDE = 0.04
 Readout.GUN_UP = 0.0
@@ -301,6 +315,26 @@ function Readout.install(mod, presentation, observation)
     end
     -- The wielded ranged weapon's values, for other features (haptics).
     api.slot_values = slot_values
+    -- Where a display beside a melee weapon goes (the count here, the charge
+    -- bars in darktidevr_weapon_charge_display): ahead of the weapon hand's
+    -- grip along its aim, side metres toward the midline as the eye sees it.
+    function api.beside_weapon(eye_rotation, side)
+        local grip, grip_rotation = presentation.weapon_grip_target("dominant")
+        if not grip or not eye_rotation then return nil end
+        local aim_rotation
+        if presentation.weapon_aim_target then
+            local _, rotation = presentation.weapon_aim_target("dominant")
+            aim_rotation = rotation
+        end
+        aim_rotation = aim_rotation or grip_rotation
+        if not aim_rotation then return nil end
+        local forward, right = Quaternion.forward(aim_rotation), Quaternion.right(eye_rotation)
+        local p = Readout.beside_weapon({Vector3.x(grip), Vector3.y(grip), Vector3.z(grip)},
+            {Vector3.x(forward), Vector3.y(forward), Vector3.z(forward)},
+            {Vector3.x(right), Vector3.y(right), Vector3.z(right)},
+            presentation.weapon_hand_roles.physical("dominant"), Readout.CHARGE_FORWARD, side)
+        return Vector3(p[1], p[2], p[3])
+    end
     local function draw(game_world, unit)
         local test = read_test_flag()
         if not unit or (not test and not mod:get("vr_ammo_readout")) or presentation.mode ~= 1 or
@@ -358,22 +392,14 @@ function Readout.install(mod, presentation, observation)
             anchor = gun_position + Quaternion.forward(gun_rotation) * Readout.GUN_FORWARD +
                 midline * Readout.GUN_SIDE + Quaternion.up(gun_rotation) * Readout.GUN_UP
         else
-            -- No gun placed (melee charges): where the charge bars would sit,
-            -- above the weapon hand's grip (user, 16 September: beside the
-            -- hand it sat over the ranged weapon). One display or the other,
-            -- by the weapon charge style option.
+            -- No gun placed (melee charges): left of the weapon, as the ammo
+            -- count is (Readout.beside_weapon). One display or the other, by
+            -- the weapon charge style option.
             -- The controller grip, as the gun and the forearm holsters use:
             -- the drawn wrist followed the character's animation (animation
             -- audit, 16 September, item F).
-            local grip, grip_rotation = presentation.weapon_grip_target("dominant")
-            if not grip or not grip_rotation then hide(); return end
-            anchor = grip + Quaternion.forward(grip_rotation) * Readout.CHARGE_FORWARD +
-                Quaternion.up(grip_rotation) * Readout.CHARGE_UP
-            local offset = eye - anchor
-            local distance = Vector3.length(offset)
-            if distance > 1e-4 then
-                anchor = anchor - offset * (Readout.AWAY_FROM_EYE / distance)
-            end
+            anchor = api.beside_weapon(eye_rotation, Readout.CHARGE_SIDE)
+            if not anchor then hide(); return end
         end
         -- In front of the scene: 2D UI on the hand overlay's panel at the anchor
         -- (darktidevr_hand_overlay), laid out in metres, x to the viewer's

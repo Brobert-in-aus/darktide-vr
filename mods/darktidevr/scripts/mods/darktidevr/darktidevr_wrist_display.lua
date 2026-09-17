@@ -35,6 +35,22 @@ Wrist.TEXT_GAP = 0.003
 Wrist.PIXEL_METRES = 0.0002625
 -- The bars sit left of the anchor so the numbers to their right stay inside.
 Wrist.BARS_LEFT = 0.01875
+-- Half the layout's width at size 1: the bars' left end is BARS_LEFT +
+-- BAR_WIDTH / 2 = 0.06375 m left of the anchor (the numbers end nearer on
+-- the right). The panel scale is coarsened until that fits the overlay
+-- cell: at a 2112-wide eye target the cell is 528 px and 0.0002625 fits
+-- (243 px of 264); at Virtual Desktop's 90 per cent FOV tangent the target
+-- is 1908 wide, the cell 477 px, and the bars' left ends spilled 4 px into
+-- the ammo count's cell (worn, 16 and 17 September).
+Wrist.LAYOUT_HALF_WIDTH = 0.066
+
+-- Metres per panel pixel at size 1 for an overlay cell this many pixels
+-- wide. Pure.
+function Wrist.pixel_metres(cell_width)
+    cell_width = tonumber(cell_width)
+    if not cell_width or not (cell_width > 8) then return Wrist.PIXEL_METRES end
+    return math.max(Wrist.PIXEL_METRES, Wrist.LAYOUT_HALF_WIDTH / (cell_width * 0.5 - 2))
+end
 
 -- The size factor from the "vr_wrist_display_scale" percentage (50-200,
 -- default 100). Pure.
@@ -148,7 +164,8 @@ function Wrist.install(mod, presentation, observation)
         world = game_world
         local overlay = presentation.hand_overlay
         local k = Wrist.size(mod:get("vr_wrist_display_scale"))
-        local canvas = overlay and overlay.canvas(game_world, "wrist_display", anchor, Wrist.PIXEL_METRES * k)
+        local pixel_metres = Wrist.pixel_metres(overlay and overlay.cell_width and overlay.cell_width())
+        local canvas = overlay and overlay.canvas(game_world, "wrist_display", anchor, pixel_metres * k)
         if not canvas then hide(); return end
         local width, height, gap = Wrist.BAR_WIDTH * k, Wrist.BAR_HEIGHT * k, Wrist.BAR_GAP * k
         local top = (#bars - 1) * gap * 0.5
@@ -162,7 +179,7 @@ function Wrist.install(mod, presentation, observation)
                 canvas.rect(x - width * 0.5 + filled * 0.5, y, filled, height, {230, c[1], c[2], c[3]})
             end
             if bar.text then
-                canvas.text(bar.text, Wrist.TEXT_SIZE / Wrist.PIXEL_METRES, x + width * 0.5 + Wrist.TEXT_GAP * k, y,
+                canvas.text(bar.text, Wrist.TEXT_SIZE / pixel_metres, x + width * 0.5 + Wrist.TEXT_GAP * k, y,
                     {235, c[1], c[2], c[3]}, "left")
             end
         end

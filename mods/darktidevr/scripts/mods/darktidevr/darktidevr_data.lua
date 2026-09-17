@@ -205,11 +205,6 @@ return {
                         default_value = false,
                     },
                     {
-                        setting_id = "vr_tag_gesture",
-                        type = "checkbox",
-                        default_value = false,
-                    },
-                    {
                         -- One display for a melee weapon's special charges
                         -- (user, 16 September: the count and the bars showed
                         -- the same thing in two places).

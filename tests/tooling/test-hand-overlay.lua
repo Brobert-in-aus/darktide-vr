@@ -18,7 +18,7 @@ local claimed,rects,texts={},{},{}
 local atlas={configure=function() end,ensure=function() return true end,
     claim=function(t,anchor) claimed[#claimed+1]=anchor; return 256,256 end,
     renderer=function() return {} end,draw=function(world,frame_for) return frame_for(claimed[1]) end}
-atlas.CELL_WIDTH=960
+atlas.CELL_WIDTH=960; atlas.CELL_HEIGHT=1080
 local Atlas={new=function(options)
     assert(options.cell_width==960 and options.cell_height==1080 and options.columns==4 and options.rows==4 and
         options.log_tag=='DARKTIDEVR_HAND_OVERLAY' and options.clock)
@@ -45,4 +45,16 @@ assert(texts[1][1]=='7' and texts[1][2]==30); near(texts[1][3][1],256-960*.5); n
 assert(claimed[1].key=='ammo' and claimed[1].metres==.001 and claimed[1].position:unbox()[3]==3)
 overlay.canvas('world','ammo',{4,5,6},.001)
 assert(claimed[2]==claimed[1] and claimed[1].position:unbox()[1]==4,'one persistent anchor per display, moved each frame')
-print('hand_overlay=pass facing basis text_box canvas_pixels persistent_anchor')
+-- Nothing a display draws reaches a neighbour's cell: rectangles are clipped
+-- to the cell less a one-pixel margin (the wrist bars' left ends showed beside
+-- the ammo count once the cell shrank to 477 px, 17 September).
+local l,t,w,h=Overlay.clip_rect(-243,-10,343,20,477,519)
+near(l,-237.5); near(t,-10); near(w,343-5.5); near(h,20)
+l,t,w,h=Overlay.clip_rect(-100,-10,50,20,477,519)
+near(l,-100); near(w,50)
+assert(Overlay.clip_rect(-300,-10,40,20,477,519)==nil,'wholly outside: nothing drawn')
+l,t,w,h=Overlay.clip_rect(-10,250,20,40,477,519)
+near(t,250); near(h,8.5)
+assert(Overlay.cell_width({width=1908,height=2076})==477 and Overlay.cell_width({width=2112,height=2304})==528)
+print('hand_overlay=pass facing basis text_box canvas_pixels persistent_anchor clip_rect cell_width')
+

@@ -53,6 +53,28 @@ function Overlay.facing(anchor, eye)
     return {-viewer_right[1], -viewer_right[2], -viewer_right[3]}, {-away[1], -away[2], -away[3]}, up
 end
 
+-- The cell width for a resolution lookup, as the atlas is built. Pure.
+function Overlay.cell_width(lookup)
+    local width = Overlay.extent(lookup)
+    return math.floor(width / Overlay.COLUMNS)
+end
+
+-- A rectangle (left, top, width, height, in pixels relative to the cell's
+-- centre, y down) clipped to the cell less a one-pixel margin; nil when
+-- nothing of it is inside. Nothing a display draws may reach a neighbour's
+-- cell: worn 16 and 17 September, the wrist bars' left ends showed as a
+-- sliver beside the ammo count once the eye target (and so the cell)
+-- shrank with Virtual Desktop's FOV tangent. Pure.
+Overlay.CELL_MARGIN = 1
+function Overlay.clip_rect(left, top, width, height, cell_width, cell_height)
+    local half_w = cell_width * 0.5 - Overlay.CELL_MARGIN
+    local half_h = cell_height * 0.5 - Overlay.CELL_MARGIN
+    local l, r = math.max(left, -half_w), math.min(left + width, half_w)
+    local t, b = math.max(top, -half_h), math.min(top + height, half_h)
+    if not (r > l) or not (b > t) then return nil end
+    return l, t, r - l, b - t
+end
+
 -- Pixel box for text centred (or aligned) at a cell pixel. Pure.
 function Overlay.text_box(x, y, width, height, align)
     local left = x - width * 0.5
@@ -109,8 +131,10 @@ function Overlay.install(mod, presentation, Atlas, api)
         -- A rectangle centred at (cx, cy), w by h metres; color {a, r, g, b}.
         function canvas.rect(cx, cy, w, h, color)
             local pw, ph = w / mpp, h / mpp
-            local sx, sy = pixel(cx, cy)
-            UIRenderer.draw_rect(renderer, api.Vector3(sx - pw * 0.5, sy - ph * 0.5, 10), api.Vector2(pw, ph), color)
+            local left, top, cw, ch = Overlay.clip_rect(cx / mpp - pw * 0.5, -cy / mpp - ph * 0.5, pw, ph,
+                atlas.CELL_WIDTH, atlas.CELL_HEIGHT)
+            if not left then return end
+            UIRenderer.draw_rect(renderer, api.Vector3(x + left, y + top, 10), api.Vector2(cw, ch), color)
         end
         -- Text centred vertically at (cx, cy); align "center", "left" or "right".
         function canvas.text(text, font_px, cx, cy, color, align)
@@ -145,6 +169,8 @@ function Overlay.install(mod, presentation, Atlas, api)
             return tm, anchor.metres
         end)
     end
+    -- The cell width displays lay themselves out within.
+    function overlay.cell_width() return Overlay.cell_width(RESOLUTION_LOOKUP) end
     function overlay.destroy() if atlas then pcall(atlas.destroy) end end
     function overlay.forget_world() if atlas then pcall(atlas.forget_world) end end
     return overlay

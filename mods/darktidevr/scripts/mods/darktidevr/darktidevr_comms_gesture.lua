@@ -18,8 +18,10 @@ local Comms = {}
 -- held out in front of it. The grip pose is the palm, so a hand cupped at the
 -- mouth reads a few centimetres further out than the lips.
 Comms.MOUTH = {0, 0.16, -0.12}
-Comms.ENTER_RADIUS = 0.20
-Comms.EXIT_RADIUS = 0.28
+-- A third smaller than the first worn build's 0.20 and 0.28 (user, 17
+-- September: "hum works, make the zone ~33% smaller though").
+Comms.ENTER_RADIUS = 0.135
+Comms.EXIT_RADIUS = 0.19
 -- Held this long before the microphone opens. Longer than the other gestures:
 -- opening a microphone by accident is worse than missing a word.
 Comms.DWELL_SECONDS = 0.5

@@ -171,4 +171,12 @@ do
     assert(l.dash_length > 0 and l.dash_thickness > 0)
     assert(math.abs((clip_bottom - dash_top) - (dash_bottom - reserve_top)) < 1e-9, "the dash is not midway")
 end
-print("ammo_readout=pass values text levels heat_only nothing_to_show after_hand_pose stack_layout")
+-- Beside a melee weapon: ahead of the grip along the aim, toward the midline
+-- as the eye sees it (the eye's left for a right-hand weapon, its right for a
+-- left-hand one), level with the hand.
+local beside = Readout.beside_weapon({1, 2, 3}, {0, 1, 0}, {1, 0, 0}, "right", 0.08, 0.06)
+assert(math.abs(beside[1] - 0.94) < 1e-9 and math.abs(beside[2] - 2.08) < 1e-9 and beside[3] == 3, "right hand: to the eye's left")
+local beside_left = Readout.beside_weapon({1, 2, 3}, {0, 1, 0}, {1, 0, 0}, "left", 0.08, 0.06)
+assert(math.abs(beside_left[1] - 1.06) < 1e-9, "left hand: to the eye's right")
+assert(Readout.CHARGE_FORWARD == 0.08 and Readout.CHARGE_SIDE == 0.06)
+print("ammo_readout=pass values text levels heat_only nothing_to_show after_hand_pose stack_layout beside_weapon")

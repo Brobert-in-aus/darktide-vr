@@ -83,8 +83,11 @@ function Tag.install(mod, presentation)
         return test_enabled
     end
 
+    -- Withdrawn from the menu after the 17 September worn test ("doesn't seem
+    -- to work (also disable it for now)"); only the unattended test flag
+    -- turns it on (a saved option value is ignored).
     function api.enabled()
-        return mod:get("vr_tag_gesture") == true or test_flag()
+        return test_flag()
     end
 
     local function vector(value)
