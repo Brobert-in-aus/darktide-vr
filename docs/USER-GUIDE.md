@@ -103,8 +103,16 @@ patch needs an update from us.
 
 ## Playing
 
-- Movement follows the head by default (or the left hand, in the mod
-  options), turning is snap or smooth on the right stick, and buttons can be
+Everything below lives under Mod Options, Darktide VR. That menu is a short
+list of sections -- aiming and weapons, your body and hands, the world around
+you, the HUD, movement and turning, hub and missions, experimental features,
+and the controller bindings -- and a setting that only matters while another
+is on sits underneath it, so the wrist display's size is under the wrist
+display. Nothing you have already set has changed; the settings have only
+moved to where they belong.
+
+- Movement follows the head by default (or the left hand, in Movement and
+  turning), turning is snap or smooth on the right stick, and buttons can be
   rebound per action in Mod Options, Darktide VR.
 - Default layout: right trigger fires, left trigger aims (or the weapon's
   alternate), right grip is the weapon special, left grip the combat
@@ -157,7 +165,7 @@ Options, Darktide VR, Experimental features, "Keyboard and mouse in VR".
 
 ### Weapon hand holsters (experimental)
 
-Experimental features, "Weapon hand holsters". Small models of your other
+Your body and hands, "Weapon hand holsters". Small models of your other
 weapon, stim, carried item and device float in a line above your gun hand's
 forearm, the weapon nearest the wrist. Reach into one with the other hand and
 press grip to equip it; the model your hand is in grows and ticks, and with
@@ -170,7 +178,7 @@ you two-hand the gun or aim down its sights, and in the hub.
 
 ### Push to talk with a hand at your mouth (experimental)
 
-Experimental features, "Push to talk with a hand at your mouth". Bring your off
+The world around you, "Push to talk with a hand at your mouth". Bring your off
 hand up in front of your mouth and hold it there for about half a second: your
 microphone opens, as if you were speaking into a vox bead, and closes when you
 take the hand away. It works alongside your push to talk binding rather than
@@ -178,7 +186,7 @@ instead of it, and never while that hand is holding the gun.
 
 ### Item radial at your hand (experimental)
 
-Experimental features, "Item radial at your hand". Hold the carried items
+Your body and hands, "Item radial at your hand". Hold the carried items
 control and three choices appear at your off hand: your carried item, your stim
 and your device. Flick the stick towards one to take it. Let go
 without choosing and the control cycles through them as it always did, so
@@ -187,7 +195,7 @@ rather than turns you. Not in the Mourningstar.
 
 ### Full body (experimental)
 
-Mod Options, Darktide VR, Experimental features, "Full body". A copy of your
+Mod Options, Darktide VR, Your body and hands, "Full body". A copy of your
 own character stands where you do, scaled so that its neck meets your head,
 with its arms solved to your controllers: look down and you see your body,
 your gear and your gloves rather than a pair of floating hands. It takes a
@@ -202,7 +210,7 @@ it.
 
 ### Grab and throw the servo skull (experimental)
 
-Mod Options, Darktide VR, Experimental features, "Grab and throw the servo
+Mod Options, Darktide VR, The world around you, "Grab and throw the servo
 skull". With the flamethrower servo skull talented, it hovers at your
 off-hand side, a little forward, where you can reach it: grip it and it
 comes to your hand, and letting go with a target marked sends it. All of
@@ -229,7 +237,7 @@ also dims the edges of your view and tightens the crosshair while you aim.
 
 ### Two-hand support (experimental)
 
-Mod Options, Darktide VR, Experimental features, "Two-hand support". With a
+Mod Options, Darktide VR, Aiming and weapons, "Two-hand support". With a
 two-handed gun out, put your off hand on the gun anywhere from just ahead of
 your gun hand to the muzzle: the glove slides onto the foregrip (where the
 weapon's animation holds it) and, with vibration on, the controller ticks, to
@@ -255,7 +263,7 @@ their sights with the button.
 
 ### Controller vibration (experimental)
 
-Mod Options, Darktide VR, Experimental features, "Controller vibration":
+Mod Options, Darktide VR, Your body and hands, "Controller vibration":
 
 - **Informative** vibrates when something happens that you need to know
   about:
@@ -284,7 +292,7 @@ a click. "Controller vibration strength" scales every vibration (25-200 %).
 
 ### Ammo count at the hand (experimental)
 
-Mod Options, Darktide VR, Experimental features, "Ammo count at the hand".
+Mod Options, Darktide VR, Aiming and weapons, "Ammo count at the hand".
 With a ranged weapon out, the clip count shows on the gun, beside the
 receiver just ahead of your hand, with the reserve beneath it, instead of on
 the HUD panel. It draws in front of your hand, the gun and the scene. Each

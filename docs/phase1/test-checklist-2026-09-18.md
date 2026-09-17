@@ -112,6 +112,27 @@ Off by default. To try it, launch with `-ReticleInEyes`.
   window where the reticle should be -- matters more than placement. Say so
   and turn the switch off.
 
+### 61. The options menu, reorganised (two minutes, no headset needed)
+
+You asked for this today. Mod Options, Darktide VR is now a short list of
+sections rather than forty-three settings in a column, and a setting that
+only matters while another is on sits underneath it.
+
+Nothing you have set has changed -- the ids are the saved keys and none was
+renamed -- so the check is only whether it reads better:
+
+- Are the seven sections the right seven? Is anything filed where you would
+  not look for it?
+- The nesting: the aim zoom under aim focus, the grip mode and virtual stock
+  under two-hand support, the wrist display's size under the display, the
+  haptic strength under the haptics mode (it should disappear when you set
+  haptics to off). Does the indentation read clearly, or would you rather
+  they were flat?
+- Is anything you use every session now buried a level too deep?
+
+Say which sections you would move things between and it is a five-minute
+change.
+
 ## Suggested order
 
 1. In the Psykhanium with a ranged weapon: 55 and 56 together (aim, hold,
