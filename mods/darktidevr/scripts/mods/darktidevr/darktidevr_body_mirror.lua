@@ -98,6 +98,19 @@ Mirror.MODES = {
     -- "overlay" with clavicles but the avatar's root yaw, for A/B of the body yaw.
     overlayrootyaw = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true},
+    -- The mirror key's copy (user, 17 September worn: the first one "doesn't
+    -- mirror my IK except the hands ... it should match my IK identically, a
+    -- true mirror", and it "glitches around when I move"). It is posed by the
+    -- whole overlay pipeline (the neck, the scale, the clavicles, the arms
+    -- solved to the same wrist poses), so it is the body the overlay draws,
+    -- head included, and only then turned about the player and stood
+    -- MIRROR_DISTANCE ahead (Mirror.reflected_root). It is placed from the
+    -- tracked head through the body frame, as the overlay is, not from the
+    -- avatar's root, whose fixed-step position is what jumped about. It is
+    -- never the hand rig: it runs beside the overlay, in its own instance of
+    -- this module.
+    reflection = {distance = 0, facing = false, hide_head = false, solve_arms = true, follow_neck = true,
+        scale_to_neck = true, clavicles = true, body_yaw = true, protract = true, stretch = true, reflect = true},
     -- "overlay" without the clavicle swing, for A/B (milestone 3).
     overlaystock = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true},
@@ -288,6 +301,14 @@ function Mirror.smooth_yaw(previous, target, dt)
     return (previous + diff * (1 - math.exp(-dt / Mirror.YAW_TAU)) + math.pi) % (2 * math.pi) - math.pi
 end
 
+-- The root of a copy turned half a turn about the vertical through pivot and
+-- stood distance ahead of it along heading (Stingray yaw): {x, y, z}, the
+-- height kept. Its yaw is the copy's plus pi. 3-arrays. Pure.
+function Mirror.reflected_root(root, pivot, heading, distance)
+    local fx, fy = -math.sin(heading), math.cos(heading)
+    return {2 * pivot[1] - root[1] + fx * distance, 2 * pivot[2] - root[2] + fy * distance, root[3]}
+end
+
 -- The mode to run: the dev flag's when it names one; else the mirror while
 -- its key has toggled it on (Psykhanium only); else the full overlay while
 -- the "Full body (experimental)" option is on; else none. The option used to
@@ -335,11 +356,18 @@ function Mirror.same_layout(count_a, count_b, index_of_a, index_of_b, probes)
     return true
 end
 
-function Mirror.install(mod, presentation)
+function Mirror.install(mod, presentation, options)
     local api = {}
+    -- The mirror key's copy is a second instance with its own state, run by
+    -- the first: it only ever runs the "reflection" mode.
+    local is_reflection = type(options) == "table" and options.reflection == true
+    local reflection = not is_reflection and Mirror.install(mod, presentation, {reflection = true}) or nil
     local ArmLength
     local poll, enabled, mode_name = 0, false, nil
     local state
+    -- This instance's own copy torn down (a mode change, a lost avatar, an
+    -- error); api.destroy also takes the reflection's down.
+    local destroy_own
     local logged = {}
     local mirror_toggled = false
     local function in_psykhanium()
@@ -351,20 +379,25 @@ function Mirror.install(mod, presentation)
         if poll > 0 then return enabled end
         poll = 120
         local io_api = Mods and Mods.lua and Mods.lua.io
-        local file = io_api and io_api.open(Mirror.FLAG, "r")
+        local file = not is_reflection and io_api and io_api.open(Mirror.FLAG, "r")
         local parsed
         if file then
             local value = file:read("*all"); file:close()
             parsed = Mirror.parse_mode(value)
         end
-        -- Not in the hub, whose own presentation (first or third person) is
-        -- decided elsewhere and has no combat body to replace.
         -- The mirror does not come back by itself on the next visit.
         if mirror_toggled and not in_psykhanium() then mirror_toggled = false end
+        -- Not in the hub, whose own presentation (first or third person) is
+        -- decided elsewhere and has no combat body to replace.
         local game_mode = presentation.current_game_mode_name and presentation.current_game_mode_name()
-        local wanted = Mirror.requested_mode(parsed, mirror_toggled, in_psykhanium(),
-            mod.get and mod:get("vr_full_body_experimental") == true and game_mode ~= nil and game_mode ~= "hub")
-        if state and wanted ~= mode_name then api.destroy() end
+        local wanted
+        if is_reflection then
+            wanted = mirror_toggled and in_psykhanium() and "reflection" or nil
+        else
+            wanted = Mirror.requested_mode(parsed, false, false,
+                mod.get and mod:get("vr_full_body_experimental") == true and game_mode ~= nil and game_mode ~= "hub")
+        end
+        if state and wanted ~= mode_name then destroy_own() end
         if wanted ~= mode_name then
             mod:info("DARKTIDEVR_BODY_MIRROR mode=%s flag=%s toggled=%s", tostring(wanted), tostring(parsed),
                 tostring(mirror_toggled))
@@ -377,19 +410,24 @@ function Mirror.install(mod, presentation)
     -- of you, facing you, in the Psykhanium. Returns the new state, or nil
     -- outside the Psykhanium.
     function api.toggle_mirror()
+        if reflection then return reflection.toggle_mirror() end
         if not in_psykhanium() then return nil end
         mirror_toggled = not mirror_toggled
         poll = 0
         return mirror_toggled
     end
     local function body_proxy() return presentation.body_proxy end
-    function api.destroy()
+    function destroy_own()
         if state and state.hand_rig and body_proxy() then body_proxy().set_hand_rig(nil) end
         if state then
             if state.profile_spawner then pcall(state.profile_spawner.destroy, state.profile_spawner) end
             if state.unit_spawner then pcall(state.unit_spawner.destroy, state.unit_spawner) end
         end
         state = nil
+    end
+    function api.destroy()
+        destroy_own()
+        if reflection then reflection.destroy() end
     end
     local function log_once(key, format, ...)
         if logged[key] then return end
@@ -487,7 +525,7 @@ function Mirror.install(mod, presentation)
         -- The final visible wrist pose (tracked, gun-aligned or on the support
         -- grip); the avatar's hand joint only when no pose is recorded.
         local target, target_rotation
-        if state.hand_rig and body_proxy() and body_proxy().hand_pose then
+        if (state.hand_rig or Mirror.MODES[mode_name].reflect) and body_proxy() and body_proxy().hand_pose then
             target, target_rotation = body_proxy().hand_pose(arm.side)
         end
         if not target then
@@ -601,8 +639,8 @@ function Mirror.install(mod, presentation)
         mod:info("DARKTIDEVR_BODY_MIRROR spawn mode=%s kept_slots=%d ignored_slots=%d", tostring(mode_name), kept, ignored)
     end
     local function update(world, avatar, dt, t)
-        if not flag() or not world or not avatar or not Unit.alive(avatar) then api.destroy(); return end
-        if state and (state.world ~= world or state.avatar ~= avatar) then api.destroy() end
+        if not flag() or not world or not avatar or not Unit.alive(avatar) then destroy_own(); return end
+        if state and (state.world ~= world or state.avatar ~= avatar) then destroy_own() end
         if not state then spawn(world, avatar); return end
         if not state.unit then
             state.profile_spawner:update(dt, t)
@@ -642,7 +680,7 @@ function Mirror.install(mod, presentation)
                 #hidden > 0 and table.concat(hidden, ",") or "none")
         end
         local unit = state.unit
-        if not Unit.alive(unit) then api.destroy(); return end
+        if not Unit.alive(unit) then destroy_own(); return end
         if not state.same_layout then
             log_once("layout", "copy=skipped reason=layout_mismatch")
             place(avatar, unit)
@@ -743,6 +781,16 @@ function Mirror.install(mod, presentation)
         if Mirror.MODES[mode_name].solve_arms then
             for _, arm in ipairs(state.arms) do solve_arm(world, avatar, unit, arm) end
         end
+        if Mirror.MODES[mode_name].reflect then
+            -- Posed on the player; now turned about them and stood ahead.
+            local root = Unit.local_position(unit, 1)
+            local heading = state.yaw or Quaternion.yaw(Unit.local_rotation(unit, 1))
+            local pivot = neck_target or array(root)
+            local moved = Mirror.reflected_root(array(root), pivot, heading, Mirror.MIRROR_DISTANCE)
+            Unit.set_local_position(unit, 1, vector(moved))
+            Unit.set_local_rotation(unit, 1, Quaternion.multiply(Quaternion(Vector3.up(), math.pi), Unit.local_rotation(unit, 1)))
+            World.update_unit(world, unit)
+        end
         state.frames = state.frames + 1
         if state.frames == 1 or state.frames % 900 == 0 then
             if state.neck_offset then
@@ -801,9 +849,12 @@ function Mirror.install(mod, presentation)
         local ok, err = pcall(update, world, avatar, dt, t)
         if not ok then
             log_once("failure", "failed=%s", tostring(err):sub(1, 200))
-            api.destroy()
+            destroy_own()
             enabled = false; poll = 1e9
         end
+        -- After the overlay, whose final wrist poses the reflection's arms
+        -- are solved to this frame.
+        if reflection then reflection.update(world, avatar, dt, t) end
     end
     return api
 end

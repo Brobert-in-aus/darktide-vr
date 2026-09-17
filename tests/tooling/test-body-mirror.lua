@@ -131,6 +131,18 @@ assert(Mirror.smooth_yaw(0, math.rad(90), 0.016) == math.rad(90), 'a snap turn i
 for _ = 1, 200 do y = Mirror.smooth_yaw(y, 1.0, 0.016) end
 assert(math.abs(y - 1.0) < 1e-3, 'and it arrives')
 
+-- The mirror key's copy: posed by the overlay's pipeline, never the hand
+-- rig, its head shown; then turned about the player and stood ahead.
+local reflection = assert(Mirror.MODES.reflection)
+assert(reflection.reflect and reflection.solve_arms and reflection.follow_neck and reflection.scale_to_neck and
+    reflection.clavicles and reflection.body_yaw and not reflection.hand_rig and not reflection.hide_head and
+    not reflection.near_eye and reflection.distance == 0)
+-- Heading 0 faces +y. A root 10 cm behind the pivot ends 10 cm beyond it,
+-- 2.5 m further on; a root to the pivot's left ends on its right.
+local rr = Mirror.reflected_root({1.2, 3.0 - 0.1, 0.5}, {1.0, 3.0, 1.4}, 0, 2.5)
+assert(math.abs(rr[1] - 0.8) < 1e-9 and math.abs(rr[2] - 5.6) < 1e-9 and rr[3] == 0.5, 'turned about the pivot, stood ahead, height kept')
+rr = Mirror.reflected_root({0, 0, 0}, {0, 0, 0}, math.pi / 2, 2.5)
+assert(math.abs(rr[1] + 2.5) < 1e-9 and math.abs(rr[2]) < 1e-9, 'yaw 90 faces -x')
 -- Which mode runs: the dev flag first, then the mirror key in the
 -- Psykhanium, then the full-body option's overlay.
 assert(Mirror.requested_mode(nil, false, false, false) == nil)

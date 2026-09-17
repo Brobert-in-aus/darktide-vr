@@ -36,7 +36,7 @@ return {
     vr_full_body_experimental = {en = "Full body (experimental)"},
     vr_full_body_experimental_description = {en = "Show your character's whole body under you: a copy of your character scaled so its neck meets your head, its arms solved to your controllers, instead of the tracked hands alone. Takes a few seconds to appear after you turn it on."},
     body_mirror_keybind = {en = "Body mirror shortcut (Psykhanium)"},
-    body_mirror_keybind_description = {en = "In the Psykhanium, stands a copy of your character a few paces ahead, facing you, so you can see your own body. Press again to remove it. Default: F8."},
+    body_mirror_keybind_description = {en = "In the Psykhanium, stands a copy of your character a few paces ahead, facing you, posed exactly as your own body is (head, shoulders and arms solved to your controllers), so you can see what others would. Press again to remove it. Default: F8."},
     vr_two_hand_support = {en = "Two-hand support"},
     vr_two_hand_support_description = {en = "Grip with your off hand where the weapon's own animation holds the foregrip to steady a gun with both hands. The glove moves onto the foregrip when your hand is close enough to grip. A grip recorded with /dtvr_two_hand_calibrate takes precedence for that weapon this session."},
     vr_two_hand_grip_mode = {en = "Two-hand grip"},
