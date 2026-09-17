@@ -88,10 +88,13 @@ better — a body that meets your head with long arms, or one with your own
 arms whose head sits high. That decides whether the next body work is the
 legs (to close the remaining 18 cm honestly) or something else.
 
-### 60. The reticle, if an unattended run has proved it first
+### 60. The reticle drawn into the eye images -- the run has proved its place
 
-Only worth your time once the run below has shown it lands where it should;
-if this session has not said so, skip it.
+An unattended run has now shown it lands where it should, so this is worth
+your time. In the Psykhanium, 11295 frames drew it, and differencing the eye
+readback against the game's own pair puts it within **0.8 of a pixel** of
+where the arithmetic says, in both eyes. What a readback cannot show is
+whether it looks right to you, which is the whole of the item below.
 
 The reticle is a quad layer today, which means Virtual Desktop's compositor
 places it, and with your FOV tangent at 90 per cent it places quad layers
@@ -185,5 +188,6 @@ Two small things changed in how the hand panels are drawn.
    likely to be felt, and it needs no setup.
 4. 63 anywhere, in half a minute.
 5. 61 at the desk, with the headset off.
-6. 60 only if this session's notes say an unattended run saw the reticle in
-   the right place.
+6. 60 last, because it needs the switch: launch with `-ReticleInEyes`. The
+   unattended run has proved its placement to the pixel; what is left is
+   whether it reads right through a head turn.
