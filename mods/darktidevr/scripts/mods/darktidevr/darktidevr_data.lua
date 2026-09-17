@@ -3,12 +3,16 @@ local mod = get_mod("darktidevr")
 -- The options menu, grouped by what the player is trying to change rather
 -- than by when each setting was added (user, 18 September: "the mod options
 -- are getting pretty extensive... can we reorganise the segments either
--- way?"). Every top-level entry is a section, so the first screen is seven
+-- way?"). Every top-level entry is a section, so the first screen is eight
 -- lines instead of forty-three, and a setting that only matters when another
 -- is on is nested under it: the wrist display's scale under the display, the
 -- grip mode and the virtual stock under two-handed support, the haptic
 -- strength under the haptics mode (where the dropdown's own `show_widgets`
 -- hides it when haptics are off).
+--
+-- Nesting HIDES a child while its parent is off, so nothing may be nested
+-- under a setting it can work without: the body mirror's key is a sibling of
+-- Full body, not its child, because F8 toggles the mirror either way.
 --
 -- NOTHING here renames a setting_id: those are the saved keys, so every
 -- setting keeps the value the player already chose, wherever it now appears.
@@ -90,18 +94,22 @@ return {
                         setting_id = "vr_ammo_readout",
                         type = "checkbox",
                         default_value = false,
-                    },
-                    {
-                        -- One display for a melee weapon's special charges
-                        -- (user, 16 September: the count and the bars showed
-                        -- the same thing in two places).
-                        setting_id = "vr_weapon_charge_style",
-                        type = "dropdown",
-                        default_value = "count",
-                        options = {
-                            {text = "vr_weapon_charge_style_count", value = "count"},
-                            {text = "vr_weapon_charge_style_bars", value = "bars"},
-                            {text = "vr_weapon_charge_style_off", value = "off"},
+                        sub_widgets = {
+                            {
+                                -- One display for a melee weapon's special
+                                -- charges (user, 16 September: the count and
+                                -- the bars showed the same thing in two
+                                -- places). Its count shares the ammo readout's
+                                -- panel, so it belongs under it.
+                                setting_id = "vr_weapon_charge_style",
+                                type = "dropdown",
+                                default_value = "count",
+                                options = {
+                                    {text = "vr_weapon_charge_style_count", value = "count"},
+                                    {text = "vr_weapon_charge_style_bars", value = "bars"},
+                                    {text = "vr_weapon_charge_style_off", value = "off"},
+                                },
+                            },
                         },
                     },
                 },
@@ -114,27 +122,33 @@ return {
                         setting_id = "vr_full_body_experimental",
                         type = "checkbox",
                         default_value = false,
-                        sub_widgets = {
-                            {
-                                setting_id = "body_mirror_keybind",
-                                type = "keybind",
-                                default_value = {"f8"},
-                                keybind_trigger = "pressed",
-                                keybind_type = "function_call",
-                                keybind_global = true,
-                                function_name = "toggle_body_mirror",
-                            },
-                        },
+                    },
+                    {
+                        -- A sibling, not a child of Full body. DMF HIDES a
+                        -- checkbox's children while it is off, and the mirror
+                        -- this key toggles works whether Full body is on or
+                        -- not -- so nesting it left a working F8 with no row
+                        -- anywhere that names or rebinds it, which is where
+                        -- the guide sends you (review, 18 September).
+                        setting_id = "body_mirror_keybind",
+                        type = "keybind",
+                        default_value = {"f8"},
+                        keybind_trigger = "pressed",
+                        keybind_type = "function_call",
+                        keybind_global = true,
+                        function_name = "toggle_body_mirror",
                     },
                     {
                         setting_id = "vr_forearm_holsters",
                         type = "checkbox",
                         default_value = false,
-                    },
-                    {
-                        setting_id = "vr_holster_counts",
-                        type = "checkbox",
-                        default_value = false,
+                        sub_widgets = {
+                            {
+                                setting_id = "vr_holster_counts",
+                                type = "checkbox",
+                                default_value = false,
+                            },
+                        },
                     },
                     {
                         setting_id = "vr_item_radial",

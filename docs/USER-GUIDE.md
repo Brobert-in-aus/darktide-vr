@@ -104,12 +104,12 @@ patch needs an update from us.
 ## Playing
 
 Everything below lives under Mod Options, Darktide VR. That menu is a short
-list of sections -- aiming and weapons, your body and hands, the world around
-you, the HUD, movement and turning, hub and missions, experimental features,
-and the controller bindings -- and a setting that only matters while another
-is on sits underneath it, so the wrist display's size is under the wrist
-display. Nothing you have already set has changed; the settings have only
-moved to where they belong.
+list of eight sections -- aiming and weapons, your body and hands, the world
+around you, the HUD, movement and turning, hub and missions, experimental
+features, and the controller bindings -- and a setting that only works while
+another is on sits underneath it and appears when you switch that one on, so
+the wrist display's size is under the wrist display. Nothing you have already
+set has changed; the settings have only moved to where they belong.
 
 - Movement follows the head by default (or the left hand, in Movement and
   turning), turning is snap or smooth on the right stick, and buttons can be

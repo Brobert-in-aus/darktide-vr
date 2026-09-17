@@ -121,14 +121,18 @@ only matters while another is on sits underneath it.
 Nothing you have set has changed -- the ids are the saved keys and none was
 renamed -- so the check is only whether it reads better:
 
-- Are the seven sections the right seven? Is anything filed where you would
-  not look for it?
+- Are the eight sections the right eight? Is anything filed where you
+  would not look for it?
 - The nesting: the aim zoom under aim focus, the grip mode and virtual stock
   under two-hand support, the wrist display's size under the display, the
   haptic strength under the haptics mode (it should disappear when you set
   haptics to off). Does the indentation read clearly, or would you rather
   they were flat?
 - Is anything you use every session now buried a level too deep?
+
+The section titles are also the tab labels, and there are eight of them
+now where there were three -- if the tab bar is cramped or a title is cut
+off, say so.
 
 Say which sections you would move things between and it is a five-minute
 change.
