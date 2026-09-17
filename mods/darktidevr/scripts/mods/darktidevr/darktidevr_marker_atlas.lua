@@ -269,6 +269,13 @@ local function new(options)
         local now = options.clock and options.clock()
         if now and state.stamp_t then
             local age = now - state.stamp_t
+            -- A stamp from ahead of the clock makes every age negative, which
+            -- reads as "drawn just now" for ever: the cells last claimed would
+            -- keep showing and the resources would never be released, which is
+            -- the crash on mission unload this release exists to avoid. Since
+            -- nothing else explains a clock that went backwards, let go at
+            -- once; the next marker rebuilds (review, 18 September).
+            if age < 0 then return true, true end
             return age > Atlas.STALE_SECONDS, age > Atlas.IDLE_RELEASE_SECONDS
         end
         if options.clock then return true, false end

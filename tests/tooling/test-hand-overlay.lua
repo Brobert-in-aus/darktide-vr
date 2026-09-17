@@ -75,5 +75,34 @@ local stale=Overlay.stale_anchors(anchors,102) or {}
 assert(#stale==1 and stale[1]=='teammate_b','only the display that stopped drawing is let go')
 assert(#(Overlay.stale_anchors({fresh={}},500) or {})==0,'an anchor with no time yet is kept')
 assert(Overlay.ANCHOR_SWEEP_SECONDS<Overlay.ANCHOR_IDLE_SECONDS,'the sweep must run before the idle limit')
+-- And the sweep as `canvas` actually runs it, on a clock that moves: the pure
+-- helper above passes even if nothing ever calls it.
+local now=5
+Managers.time.time=function() return now end
+local swept=Overlay.install({},{},Atlas,api)
+local function frame(keys) for _,key in ipairs(keys) do swept.canvas('world',key,{1,2,3},.001) end end
+-- The module does not expose `anchors`, so count the boxes it makes instead:
+-- a swept anchor is re-created, which allocates another one.
+local made=0
+local counting_mt={__index={store=function(self,v) self.v=v end,unbox=function(self) return self.v end}}
+Vector3Box=function(v) made=made+1 return setmetatable({v=v},counting_mt) end
+frame({'ammo','wrist','teammate_a','teammate_b'}); assert(made==4,'four anchors made: '..made)
+for _=1,60 do now=now+1; frame({'ammo','wrist','teammate_a','teammate_b'}) end
+assert(made==4,'a display that keeps drawing keeps its anchor: '..made)
+for _=1,60 do now=now+1; frame({'ammo','wrist'}) end
+assert(made==4,'the two that stopped drawing are gone, not re-made')
+frame({'ammo','wrist','teammate_a','teammate_b'}); assert(made==6,'the teammates return as new anchors: '..made)
+-- A clock that goes backwards must not wedge the sweep for the rest of the
+-- session, which is what a bare elapsed test does.
+now=0
+for _=1,60 do now=now+1; frame({'ammo','wrist'}) end
+made=0
+frame({'ammo','wrist','teammate_c'})
+assert(made==1,'only the new key allocates; the sweep still runs after the clock reset')
+for _=1,60 do now=now+1; frame({'ammo','wrist'}) end
+made=0; frame({'ammo','wrist','teammate_c'})
+assert(made==1,'and it still lets go: teammate_c had to be re-made')
+swept.destroy(); made=0; frame({'ammo'})
+assert(made==1,'destroy lets go of every anchor')
 print('hand_overlay=pass facing basis text_box canvas_pixels persistent_anchor clip_rect cell_width stale_anchors')
 

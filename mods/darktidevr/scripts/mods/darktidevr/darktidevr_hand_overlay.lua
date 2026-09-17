@@ -174,7 +174,12 @@ function Overlay.install(mod, presentation, Atlas, api)
         end
         anchor.metres = metres_per_pixel
         anchor.seen_t = t
-        if not overlay.swept_t or t - overlay.swept_t > Overlay.ANCHOR_SWEEP_SECONDS then
+        -- `t < overlay.swept_t` is not paranoia about a wobbling clock: once a
+        -- stamp from the future is stored, the elapsed test is negative for as
+        -- long as the session has already run, so the sweep stops for good and
+        -- the leak comes back permanently (review, 18 September).
+        if not overlay.swept_t or t < overlay.swept_t or
+                t - overlay.swept_t > Overlay.ANCHOR_SWEEP_SECONDS then
             overlay.swept_t = t
             for _, stale in ipairs(Overlay.stale_anchors(anchors, t) or {}) do
                 anchors[stale] = nil
@@ -241,8 +246,19 @@ function Overlay.install(mod, presentation, Atlas, api)
     end
     -- The cell width displays lay themselves out within.
     function overlay.cell_width() return Overlay.cell_width(RESOLUTION_LOOKUP) end
-    function overlay.destroy() if atlas then pcall(atlas.destroy) end end
-    function overlay.forget_world() if atlas then pcall(atlas.forget_world) end end
+    -- Both of these are the "everything stopped" points -- flat mode, a world
+    -- going away -- so the anchors go too; nothing else would call for them
+    -- again, and the sweep only runs from a draw.
+    function overlay.destroy()
+        if atlas then pcall(atlas.destroy) end
+        anchors = {}
+        overlay.swept_t = nil
+    end
+    function overlay.forget_world()
+        if atlas then pcall(atlas.forget_world) end
+        anchors = {}
+        overlay.swept_t = nil
+    end
     return overlay
 end
 

@@ -31,34 +31,37 @@ function Status.state_label(state_name)
     return type(state_name) == "string" and Status.STATE_LABELS[state_name] or nil
 end
 
--- Panel scale for a distance, or nil when too near to show. Pure.
+-- One identity candidate: called when it is an accessor (which is what every
+-- one of them is on a Player, reached through the class metatable), and
+-- accepted only as a string or a number. File scope, not a closure inside
+-- anchor_key: that ran for every teammate of every frame.
+local function identifier(value, player)
+    if type(value) == "function" then
+        local ok, result = pcall(value, player)
+        value = ok and result or nil
+    end
+    if type(value) == "string" or type(value) == "number" then return value end
+    return nil
+end
+
 -- The overlay anchor key for one teammate, stable across a frame's iteration
 -- order. `unique_id` is asked first on purpose: it is peer id, local player id
 -- and a counter, so it differs for every player INCLUDING bots, which are
 -- added with no account id at all and carry the *host's* peer id. Asking for
 -- those first gave all three of solo play's bots one key, which is two panels
 -- fighting over one bot's head and none over the others, every frame (review,
--- 18 September). A field that is really the class method is refused, because
--- every player shares that one function address. Falls back to the unit, which
--- is stable while they live. Pure.
+-- 18 September). Falls back to the unit, which is stable while they live.
+-- Pure.
 function Status.anchor_key(player, unit)
     local id
     if type(player) == "table" then
-        local function try(value)
-            if id ~= nil then return end
-            if type(value) == "function" then
-                local ok, result = pcall(value, player)
-                value = ok and result or nil
-            end
-            if type(value) == "string" or type(value) == "number" then id = value end
-        end
-        try(player.unique_id)
-        try(player.account_id)
-        try(player.peer_id)
+        id = identifier(player.unique_id, player) or identifier(player.account_id, player)
+            or identifier(player.peer_id, player)
     end
     return "teammate_" .. tostring(id or unit)
 end
 
+-- Panel scale for a distance, or nil when too near to show. Pure.
 function Status.metres_per_pixel(distance)
     if not finite(distance) or distance < Status.HIDE_NEARER_THAN then return nil end
     return math.max(Status.MIN_DISTANCE, math.min(Status.MAX_DISTANCE, distance)) * Status.METRES_PER_PIXEL_PER_METRE

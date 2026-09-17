@@ -148,4 +148,20 @@ now = 10.2
 assert(clocked.draw("game_world", frame_for) == 0 and clocked.state.resource ~= nil, "stale after 0.1 s, not yet idle")
 now = 11.5
 assert(clocked.draw("game_world", frame_for) == 0 and clocked.state.resource == nil, "idle after a second")
+-- A stamp from ahead of the clock makes every age negative, which without a
+-- guard reads as "drawn just now" for ever: the cells last claimed would keep
+-- showing and the resources would never be released, which is the crash on
+-- mission unload this release exists to avoid (review, 18 September).
+local backwards = Atlas.new({name = "overlay", log_tag = "OVERLAY", cell_width = 960, cell_height = 1080,
+    columns = 4, rows = 2, clock = function() return now end})
+backwards.configure(api)
+assert(backwards.ensure("game_world") and backwards.claim(now, {x = 0, y = 0, z = 0}))
+now = 11.6
+assert(backwards.claim(now, {x = 0, y = 0, z = 0}))
+assert(backwards.draw("game_world", frame_for) == 1, "shown at the time it was claimed")
+now = 0.5
+assert(backwards.draw("game_world", frame_for) == 0 and backwards.state.resource == nil,
+    "a stamp from the future is stale and idle at once, not fresh for ever")
+assert(backwards.ensure("game_world") and backwards.claim(now, {x = 0, y = 0, z = 0}),
+    "and the next marker rebuilds it on the new clock")
 print("marker_atlas.result=pass")
