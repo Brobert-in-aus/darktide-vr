@@ -21,6 +21,26 @@
 local Overlay = {}
 
 Overlay.COLUMNS, Overlay.ROWS = 4, 4
+-- An anchor whose display has not drawn for this long is let go, and the sweep
+-- runs no more often than this. The keys used to be a fixed handful of hand
+-- displays; teammate anchors are one per player ever seen, each holding a
+-- Vector3Box, so without a sweep a long session accumulates them (review,
+-- 18 September).
+Overlay.ANCHOR_IDLE_SECONDS = 10
+Overlay.ANCHOR_SWEEP_SECONDS = 5
+
+-- The keys to drop from `anchors` at time `t`: those not seen for
+-- ANCHOR_IDLE_SECONDS. Pure, so a test can pin it.
+function Overlay.stale_anchors(anchors, t)
+    local stale
+    for key, record in pairs(anchors) do
+        if t - (record.seen_t or t) > Overlay.ANCHOR_IDLE_SECONDS then
+            stale = stale or {}
+            stale[#stale + 1] = key
+        end
+    end
+    return stale
+end
 
 -- The atlas extent from the resolution lookup (width, height, scale). Pure.
 function Overlay.extent(lookup)
@@ -153,6 +173,13 @@ function Overlay.install(mod, presentation, Atlas, api)
             anchor.position:store(position)
         end
         anchor.metres = metres_per_pixel
+        anchor.seen_t = t
+        if not overlay.swept_t or t - overlay.swept_t > Overlay.ANCHOR_SWEEP_SECONDS then
+            overlay.swept_t = t
+            for _, stale in ipairs(Overlay.stale_anchors(anchors, t) or {}) do
+                anchors[stale] = nil
+            end
+        end
         local atlas = current_atlas()
         if not atlas.ensure(world) then return nil end
         local x, y = atlas.claim(t, anchor)

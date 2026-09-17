@@ -32,22 +32,29 @@ function Status.state_label(state_name)
 end
 
 -- Panel scale for a distance, or nil when too near to show. Pure.
--- The overlay anchor key for one teammate: their account, peer or unit
--- level id, whichever the player object offers, so it is stable across a
--- frame's iteration order. Falls back to the unit itself, which is stable
--- while they live. Pure.
+-- The overlay anchor key for one teammate, stable across a frame's iteration
+-- order. `unique_id` is asked first on purpose: it is peer id, local player id
+-- and a counter, so it differs for every player INCLUDING bots, which are
+-- added with no account id at all and carry the *host's* peer id. Asking for
+-- those first gave all three of solo play's bots one key, which is two panels
+-- fighting over one bot's head and none over the others, every frame (review,
+-- 18 September). A field that is really the class method is refused, because
+-- every player shares that one function address. Falls back to the unit, which
+-- is stable while they live. Pure.
 function Status.anchor_key(player, unit)
     local id
     if type(player) == "table" then
-        local function try(name)
-            if id or type(player[name]) ~= "function" then return end
-            local ok, value = pcall(player[name], player)
-            if ok and (type(value) == "string" or type(value) == "number") then id = value end
+        local function try(value)
+            if id ~= nil then return end
+            if type(value) == "function" then
+                local ok, result = pcall(value, player)
+                value = ok and result or nil
+            end
+            if type(value) == "string" or type(value) == "number" then id = value end
         end
-        try("account_id")
-        try("peer_id")
-        try("unique_id")
-        id = id or player.unique_id or player.peer_id
+        try(player.unique_id)
+        try(player.account_id)
+        try(player.peer_id)
     end
     return "teammate_" .. tostring(id or unit)
 end
@@ -108,7 +115,6 @@ function Status.install(mod, presentation)
         -- iteration: keyed by index, a join, a death or a respawn re-orders
         -- `pairs` and draws one teammate's bars and name over another's head
         -- for a frame.
-        local index = 0
         for _, player in pairs(players) do
             local unit = player.player_unit
             if unit and unit ~= local_unit and Unit.alive(unit) then
@@ -119,7 +125,6 @@ function Status.install(mod, presentation)
                 local anchor = head + Vector3(0, 0, Status.ABOVE_HEAD)
                 local mpp = Status.metres_per_pixel(Vector3.distance(anchor, eye))
                 if visible and mpp then
-                    index = index + 1
                     local canvas = overlay.canvas(world, Status.anchor_key(player, unit), anchor, mpp)
                     if canvas then
                         local values = values_for(unit)

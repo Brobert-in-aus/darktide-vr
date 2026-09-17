@@ -66,5 +66,14 @@ assert(Overlay.fitted_font(54,300,475)==54,'fits: unchanged')
 assert(Overlay.fitted_font(54,730,475)==35,'a long name shrinks to the cell')
 assert(Overlay.fitted_font(54,5000,475)==nil and Overlay.fitted_font(54,10,0)==nil,'too long, or no room: not drawn')
 near(Overlay.estimated_width('Ammunition Crate',54),16*54*.6)
-print('hand_overlay=pass facing basis text_box canvas_pixels persistent_anchor clip_rect cell_width')
+-- The anchors were a fixed handful of hand displays; a teammate's is one per
+-- player ever seen, each holding a Vector3Box, so a display that stops drawing
+-- must let its anchor go. What keeps drawing keeps its anchor.
+local anchors={hands={seen_t=100},['teammate_a']={seen_t=100},['teammate_b']={seen_t=91}}
+assert(Overlay.stale_anchors(anchors,100)==nil,'nothing is stale on the frame it was seen')
+local stale=Overlay.stale_anchors(anchors,102) or {}
+assert(#stale==1 and stale[1]=='teammate_b','only the display that stopped drawing is let go')
+assert(#(Overlay.stale_anchors({fresh={}},500) or {})==0,'an anchor with no time yet is kept')
+assert(Overlay.ANCHOR_SWEEP_SECONDS<Overlay.ANCHOR_IDLE_SECONDS,'the sweep must run before the idle limit')
+print('hand_overlay=pass facing basis text_box canvas_pixels persistent_anchor clip_rect cell_width stale_anchors')
 

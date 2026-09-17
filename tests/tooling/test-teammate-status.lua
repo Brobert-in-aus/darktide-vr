@@ -31,4 +31,35 @@ assert(Status.anchor_key(throws, "unitE") == "teammate_peer-2", "an accessor tha
 -- The same player keeps its key whatever order it is seen in.
 assert(Status.anchor_key(by_account, "unitA") == Status.anchor_key(by_account, "unitZ"),
     "the key must not depend on the unit when the player identifies itself")
+-- Solo play is three bots, and a bot is added with no account id and the
+-- *host's* peer id: asking for those before `unique_id` gave all three one
+-- key, so two panels fought over one bot's head and the others had none.
+local function bot(unique)
+    return player_with({
+        account_id = function() return nil end,
+        peer_id = function() return "host-peer" end,
+        unique_id = function() return unique end,
+    })
+end
+local one, two, three = bot("host-peer:2:1"), bot("host-peer:3:1"), bot("host-peer:4:1")
+local keys = {}
+for _, b in ipairs({one, two, three}) do
+    local key = Status.anchor_key(b, "bot_unit")
+    assert(not keys[key], "two bots share the anchor key " .. key)
+    keys[key] = true
+end
+assert(Status.anchor_key(one, "unitA") == "teammate_host-peer:2:1", "a bot is keyed by its unique id")
+-- An id that arrives as the class method -- which is what `player.unique_id`
+-- resolves to through the metatable -- is called, not stringified: every
+-- player shares that one function address, so using it as the id would put
+-- them all on one key. When nothing answers, the unit is what is left.
+local shared_method = function() return nil end
+local answers_nothing = setmetatable({}, {__index = {unique_id = shared_method, peer_id = shared_method,
+    account_id = shared_method}})
+assert(Status.anchor_key(answers_nothing, "unitF") == "teammate_unitF" and
+    Status.anchor_key(answers_nothing, "unitG") == "teammate_unitG",
+    "a player whose accessors answer nothing falls through to the unit, not to a shared function address")
+-- And a method reached only through the metatable still identifies the player.
+local inherited = setmetatable({}, {__index = {unique_id = function() return "uid-inherited" end}})
+assert(Status.anchor_key(inherited, "unitH") == "teammate_uid-inherited", "an inherited accessor is called")
 print('teammate_status=pass state_label angular_size bars clamps')
