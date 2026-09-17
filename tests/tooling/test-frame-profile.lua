@@ -110,4 +110,32 @@ do
     end
     assert(rows == 2, 'nested rows are still reported')
 end
-print('frame_profile=pass figures ordering top_cut bad_samples no_frames stable begin_finish nested')
+-- The wrapper is transparent: every argument in, every result out, off and
+-- on, nils included. (It named eight parameters at first, and the bindings'
+-- sample takes nine: the stick-ownership flag was dropped for a day.)
+do
+    local ticks = 0
+    local api = Profile.install({info = function() end}, function() return ticks end, function() return 1000 end)
+    local function echo(...) return select('#', ...), ... end
+    Mods = nil
+    for _, on in ipairs({false, true}) do
+        if on then
+            Mods = {lua = {io = {open = function() return {read = function() return 'enabled' end, close = function() end} end}}}
+            api.frame(0)
+        end
+        assert(api.enabled() == on)
+        local n, a, b, c, d, e, f, g, h, i, j = api.section('echo', echo, 1, 2, 3, 4, 5, 6, 7, 8, 9, true)
+        assert(n == 10 and a == 1 and h == 8 and i == 9 and j == true, 'ten arguments through, on=' .. tostring(on))
+        local count = select('#', api.section('echo', echo, nil, nil, nil))
+        assert(count == 4, 'trailing nils keep their places, on=' .. tostring(on))
+        assert(select('#', api.section('none', function() end)) == 0, 'no results stay none')
+    end
+end
+-- And the one call site that needs it: the bindings' sample has nine
+-- parameters, the last the stick's exclusive owner.
+do
+    local source = assert(io.open(arg[2], 'rb')):read('*a')
+    assert(source:find('function api.sample(enabled, physical, stick_x, stick_y, stick_usable, generation, mode, support, exclusive_stick)', 1, true),
+        'the bindings sample signature this test guards has changed; re-check every profile.section call site')
+end
+print('frame_profile=pass figures ordering top_cut bad_samples no_frames stable begin_finish nested transparent')

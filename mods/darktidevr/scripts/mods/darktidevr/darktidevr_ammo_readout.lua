@@ -28,7 +28,7 @@ Readout.AWAY_FROM_EYE = 0.06
 -- grip along the aim and toward the body's midline as the eye sees it, level
 -- with the hand. The charge bars use the same place, further out by half
 -- their width (darktidevr_weapon_charge_display).
-Readout.CHARGE_FORWARD, Readout.CHARGE_SIDE = 0.08, 0.06
+Readout.CHARGE_FORWARD, Readout.CHARGE_SIDE = 0.08, 0.08
 
 -- The anchor beside a weapon with no gun pose: position + forward * ahead +
 -- inward * side, where inward is the eye's right negated for a right-hand
@@ -40,7 +40,8 @@ function Readout.beside_weapon(grip, forward, eye_right, weapon_side, ahead, sid
         grip[3] + forward[3] * ahead + eye_right[3] * side * sign}
 end
 Readout.GUN_FORWARD = 0.08
-Readout.GUN_SIDE = 0.04
+-- 2 cm further from the gun, with the melee count (user, 17 September worn).
+Readout.GUN_SIDE = 0.06
 Readout.GUN_UP = 0.0
 Readout.PIXEL_METRES = 0.0011   -- world size of one font pixel (layout unit)
 -- The overlay panel draws several panel pixels per layout pixel, for sharp

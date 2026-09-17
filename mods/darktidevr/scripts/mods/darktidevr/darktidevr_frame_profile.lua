@@ -109,22 +109,28 @@ function Profile.install(mod, ticks, frequency)
     function api.enabled() return enabled end
 
     -- Run fn with its arguments, timing it under name when the profile is
-    -- on. Up to four results are returned, which covers every call site;
-    -- more would need a table per call and this must not allocate.
+    -- on. EVERY argument and result passes through (varargs; no table is
+    -- made). The first version named eight parameters, and the bindings'
+    -- sample takes nine: its last, "the stick is owned by a radial or the
+    -- communication wheel", was silently dropped for every player from 16
+    -- September, so a flick inside the item radial also fired the stick's own
+    -- binding, the weapon switch (worn, 17 September; the session log shows
+    -- quick_wield delivered on the frame of each pick).
     -- `depth` is how many sections are open, so a section that closes
     -- inside another is recorded as nested. An error thrown through a
     -- section leaves it open; frame() resets the depth, so the damage is
     -- the rest of that frame.
     local depth = 0
-    function api.section(name, fn, a, b, c, d, e, f, g, h)
-        if not enabled then return fn(a, b, c, d, e, f, g, h) end
-        depth = depth + 1
-        local started = clock()
-        local r1, r2, r3, r4 = fn(a, b, c, d, e, f, g, h)
+    local function close(name, started, ...)
         local seconds = (clock() - started) * per_tick
         depth = depth - 1
         Profile.add(acc, name, seconds, depth > 0)
-        return r1, r2, r3, r4
+        return ...
+    end
+    function api.section(name, fn, ...)
+        if not enabled then return fn(...) end
+        depth = depth + 1
+        return close(name, clock(), fn(...))
     end
 
     -- For a body too large to pass as one call (a whole hook): begin returns

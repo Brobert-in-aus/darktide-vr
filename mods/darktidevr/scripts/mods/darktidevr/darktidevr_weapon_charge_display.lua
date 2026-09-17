@@ -30,7 +30,7 @@ Charge.PIXEL_METRES = 0.00026
 -- beside_weapon; user, 17 September worn: "to the left of the weapon not
 -- above it, same as ammo"), further out by half the bars' width so their
 -- near end clears the hand.
-Charge.SIDE = 0.06 + 200 * Charge.PIXEL_METRES
+Charge.SIDE = 0.08 + 200 * Charge.PIXEL_METRES
 -- The element's own charge bars, and nothing else it draws (its background,
 -- its text). The crosshair's filter happens to match these ids too, since both
 -- start "charge_"; being explicit is what keeps the two elements' rules apart
