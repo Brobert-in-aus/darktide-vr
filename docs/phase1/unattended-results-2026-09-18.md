@@ -455,3 +455,48 @@ distance has a true disparity of about 0.2 degrees, far below this.
 off by default and checklist item 60 asks for the worn look -- whether it
 stays on target through a head turn, which is the fault it was built to
 remove and which no readback can show.
+
+## A check that passes the defects it exists for is worse than no check
+
+The hook-arity invariant was written to stop `mod:hook` handlers naming the
+stock signature, which silently drops whatever the engine adds beyond it --
+the fault that cost the item radial's stick claim a day on 17 September. A
+review mutation-tested it and **it passed six real dropped arguments**.
+
+It matched one spelling and one shape of everything:
+
+- `pcall(func,self,...)` was invisible. The opener was written with a space
+  and the compact modules have none; worse, `func(` is not a substring of
+  `pcall(func,` at all, because that call passes `func` as a value. Eleven
+  forward sites unchecked.
+- Anything spanning two lines was skipped on a silent `continue`.
+- The handler regex required the second parameter to be `self`, so a hook on
+  a free function was not a handler.
+- `function(func, self)` and `func(self)` were exempt twice over -- the arity
+  regex needed a parameter after `self`, and the forward check guarded on a
+  non-empty argument list, which is the total-drop case.
+
+Rewritten to normalise spacing, balance brackets across lines, accept any
+function whose first parameter is `func`, and read `pcall(func,` as the
+forward it is. It immediately found **nine more handlers**, including
+`create_viewport` with twelve parameters forwarded three times.
+
+**The other half of the lesson**: it then had to be taught what *not* to
+flag. `func(location, false)` in the visual settings deliberately overrides
+the value it was handed, and forwarding a tail after it would pass the value
+being overridden. A forward is flagged only when it copies the handler's own
+parameter list, allowing one substituted name but not a literal. A guard that
+blocks a legitimate change is a worse guard than none, and the first cut of
+this rule flagged three.
+
+Both harnesses live in `tools/lua/`: `mutate-hook-arity.py` and
+`mutate-options-data.py`. Each puts the real failures through the real check
+and every one must read CAUGHT. Neither is in ctest, because both anchor on
+exact source text and would break the build on an ordinary edit rather than
+on the thing being tested.
+
+**The general lesson, twice in one day**: a test that walks a structure and
+checks what its author happened to think of is worth much less than one
+checked against the consumer's own rules, and worth nothing at all until its
+failures have been made to fail. Both of today's new checks passed their own
+subject matter until they were mutated.
