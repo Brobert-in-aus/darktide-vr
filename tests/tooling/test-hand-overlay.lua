@@ -9,7 +9,15 @@ local c={forward[2]*up[3]-forward[3]*up[2],forward[3]*up[1]-forward[1]*up[3],for
 near(c[1],right[1]); near(c[2],right[2]); near(c[3],right[3])
 right=Overlay.facing({1,0,1},{0,0,1}); near(right[2],1,'looking +x: viewer left is +y')
 assert(Overlay.facing({0,0,1},{0,0,1})==nil,'eye on the anchor')
-assert(Overlay.facing({0,0,0},{0,0,1})==nil,'straight below with nothing to hold')
+-- Straight below with no roll to hold still draws: an arbitrary roll is what
+-- the well-conditioned case would have given anyway, and a display whose
+-- first frame is inside the cone -- bringing a hand back up while looking
+-- down at it -- must not simply be missing (review, 18 September).
+local first_right,first_forward,first_up,first_held = Overlay.facing({0,0,0},{0,0,1})
+assert(first_right and first_held,'a first frame inside the cone still draws')
+near(first_forward[3],1,'forward points at the eye above')
+local function unit(v) return math.abs(v[1]*v[1]+v[2]*v[2]+v[3]*v[3]-1) end
+assert(unit(first_right)<1e-9 and unit(first_up)<1e-9,'and the basis is still unit length')
 -- Looking straight down at your own wrist is the pose the wrist display is
 -- for, and it is where world up and the view direction are parallel: the roll
 -- swings for a millimetre of head movement and at vertical there is none at
@@ -106,6 +114,22 @@ tall.text('88',54,0,0.5,{255,255,255,255})
 assert(#texts==2 and texts[2][2]==51,'500 px up leaves 31 px of room, so it shrinks')
 tall.text('88',54,0,0.529,{255,255,255,255})
 assert(#texts==2,'529 px up is 2 px from the edge: dropped, not spilled')
+-- Two fits, each allowed down to MIN_FONT_SCALE of ITS OWN input, compound to
+-- the square of it: 0.35 twice is 0.12, an unreadable smear where a drop was
+-- meant. The floor is measured against the size that was asked for (review,
+-- 18 September). A long label near a side AND near the top is where both
+-- fits bite at once.
+texts={}
+local corner=assert(overlay.canvas('world','holster',{1,2,3},.001))
+-- 350 px right of centre takes a 518 px label to 25 px; 525 px above it
+-- leaves 6 px of room, which would take that 25 to 10 -- a fifth of what was
+-- asked, where the floor says a third.
+corner.text('Ammunition Crate',54,0.35,0.525,{255,255,255,255})
+assert(#texts==0,'both fits bit: 10 px is under the floor, so nothing is drawn')
+-- One fit alone still shrinks rather than dropping.
+corner.text('Ammunition Crate',54,0.35,0,{255,255,255,255})
+assert(#texts==1 and texts[1][2]==25,'the width fit alone shrinks to 25 px')
+assert(texts[1][2]>=54*Overlay.MIN_FONT_SCALE,'and stays above the floor')
 -- The anchors were a fixed handful of hand displays; a teammate's is one per
 -- player ever seen, each holding a Vector3Box, so a display that stops drawing
 -- must let its anchor go. What keeps drawing keeps its anchor.

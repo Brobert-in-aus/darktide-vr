@@ -2867,6 +2867,11 @@ local function apply_head_tracking(clean_position, clean_rotation)
     local render_aspect_ratio = tonumber(head_pose_values[8])
     if render_vertical_fov > 0 and render_vertical_fov < math.pi and
             render_aspect_ratio > 0 then
+        -- Kept unzoomed: the zoom is applied to a copy below, because this
+        -- value survives a frame whose sample is unusable and dividing the
+        -- stored one would zoom an already zoomed value again, and again
+        -- (review, 18 September).
+        presentation.head_render_vertical_fov_unzoomed = render_vertical_fov
         head_render_vertical_fov = render_vertical_fov
         head_render_aspect_ratio = render_aspect_ratio
     end
@@ -2906,10 +2911,14 @@ local function apply_head_tracking(clean_position, clean_rotation)
             presentation.projection_math.zoomed_frustum(left_frustum, zoom),
             presentation.projection_math.zoomed_frustum(right_frustum, zoom)
         }
-        if zoom > 1.0001 and head_render_vertical_fov then
-            head_render_vertical_fov =
-                2 * math.atan(math.tan(head_render_vertical_fov * 0.5) / zoom)
+        local unzoomed = presentation.head_render_vertical_fov_unzoomed
+        if unzoomed then
+            head_render_vertical_fov = zoom > 1.0001 and
+                2 * math.atan(math.tan(unzoomed * 0.5) / zoom) or unzoomed
         end
+        -- Recorded, not yet believed: whether it reaches the cameras is
+        -- decided where they are set.
+        presentation.ads_zoom_frame = zoom
     end
     local runtime_ipd = tonumber(head_pose_values[19])
     controller_observation.body_follow_x = tonumber(head_pose_values[20])
@@ -5389,6 +5398,12 @@ local function update_stereo(manager)
         head_render_aspect_ratio and
         math.abs(head_render_aspect_ratio -
             (ui_eye_target_width / ui_eye_target_height)) < 0.001
+    -- The magnification the eyes are actually rendered with. The reticle is
+    -- corrected for it, and correcting for a zoom that never reached the
+    -- cameras is the original error with its sign flipped (review,
+    -- 18 September).
+    presentation.ads_zoom_applied = runtime_projection_matches_target and
+        presentation.ads_zoom_frame or 1
     local left_optical_rotation = nil
     local right_optical_rotation = nil
     if runtime_projection_matches_target then
@@ -6496,9 +6511,6 @@ function presentation.ads_zoom_magnification()
     end
     local magnification = presentation.projection_math.zoom_magnification(
         percent, presentation.ads_zoom_blend)
-    -- Kept for readers that must not advance the blend a second time in one
-    -- frame (the aim publisher).
-    presentation.ads_zoom_value = magnification
     if (magnification > 1.0001) ~= (presentation.ads_zoom_logged == true) then
         presentation.ads_zoom_logged = magnification > 1.0001
         mod:info("DARKTIDEVR_AIM zoom=%s magnification=%.3f percent=%s",
@@ -8862,6 +8874,30 @@ function presentation.weapon_grip_target(role)
     if side == "right" then return presentation.controller_grip_target() end
 end
 
+-- A world point moved so that, placed by the field of view the viewer
+-- submits, it lands where it is seen in the magnified image the game renders.
+-- The magnification is about the rendered head's forward, so the point is
+-- taken into that frame, moved across the view only, and put back. Returns
+-- the point unchanged when there is no zoom, no head rotation or no eye.
+function presentation.zoom_corrected_aim_point(world_point)
+    local magnification = tonumber(presentation.ads_zoom_applied)
+    if not world_point or not magnification or magnification <= 1.0001 or
+            not controller_observation.head_aim_qw then
+        return world_point
+    end
+    local eye = presentation.eye_pose(nil)
+    if not eye then return world_point end
+    local head = Quaternion.from_elements(controller_observation.head_aim_qx,
+        controller_observation.head_aim_qy, controller_observation.head_aim_qz,
+        controller_observation.head_aim_qw)
+    local v = Quaternion.rotate(Quaternion.inverse(head), world_point - eye)
+    -- Darktide axes: +y is forward, so +x and +z are the two across the view.
+    local across_x, across_z = presentation.projection_math.magnified_target(
+        Vector3.x(v), Vector3.z(v), Vector3.y(v), magnification)
+    return eye + Quaternion.rotate(head,
+        Vector3(across_x, Vector3.y(v), across_z))
+end
+
 function presentation.publish_gameplay_aim_state(active, hit, distance, world_point)
     if not ui_native_capture or
             not ui_native_capture.dtvr_set_gameplay_aim_state then
@@ -8890,18 +8926,21 @@ function presentation.publish_gameplay_aim_state(active, hit, distance, world_po
         if view_pitch ~= 0 then
             rotation = Quaternion.multiply(rotation, Quaternion.axis_angle(Vector3.right(), view_pitch))
         end
+        -- The aim zoom renders a narrower cone across the same angle, so
+        -- everything off the view's centre sits further out in the image than
+        -- the field of view the viewer submits says it does. The reticle is
+        -- placed by that submitted field of view, so the point has to move
+        -- with it -- and about the EYE's forward, which is the axis the zoom
+        -- is about. Doing it in the published frame instead is wrong: that
+        -- frame is the recentre pose, and every degree of head turn since the
+        -- last recentre sits between the two, which displaces a target that is
+        -- dead centre and needs no correction at all (review, 18 September).
+        world_point = presentation.zoom_corrected_aim_point(world_point)
         local player = Managers.player:local_player(1)
         local scale = presentation.calibrated_character_scale(player)
         local point = Quaternion.rotate(Quaternion.inverse(rotation),world_point-anchor)/scale
-        -- The aim zoom renders a narrower cone across the same angle, so
-        -- everything off the view's centre is further out in the image than
-        -- the submitted field of view says. The reticle is placed by that
-        -- field of view, so the point it is placed at has to move with it.
-        local ox, oy, oz = presentation.projection_math.magnified_target(
-            Vector3.x(point), Vector3.z(point), -Vector3.y(point),
-            presentation.ads_zoom_value)
         local result = publish(hit and 1 or 0, math.max(.05,math.min(200,distance/scale)),
-            ox, oy, oz, sequence,
+            Vector3.x(point), Vector3.z(point), -Vector3.y(point), sequence,
             controller_observation.body_anchor_pose_generation,
             controller_observation.body_anchor_recenter_generation)
         if tonumber(result) ~= 0 then

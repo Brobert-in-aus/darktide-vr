@@ -64,8 +64,10 @@ if arg[2] then
     local p={online_rules={enabled=function() return online end},calibrated_character_scale=function() return 2 end,
         keyboard_mouse_enabled=function() return keyboard_mouse end,keyboard_mouse_view_pitch=function() return 0 end,
         native_gameplay_aim_target=function(...) packet={...}; return 0 end,
-        -- The real module: the published point has to carry the aim zoom, or
-        -- the reticle is placed for an image the game did not render.
+        -- The zoom correction has a slice and a stub of its own below: it
+        -- needs a real quaternion, and the anchor frame here deliberately
+        -- uses a fake one.
+        zoom_corrected_aim_point=function(point) return point end,
         projection_math=dofile(assert(arg[3]))}
     local obs={body_anchor_x=10,body_anchor_y=20,body_anchor_z=30,body_anchor_pose_sequence=42,
         body_anchor_pose_generation=3,body_anchor_recenter_generation=8}
@@ -90,22 +92,115 @@ if arg[2] then
     p.native_gameplay_aim_target=nil
     assert(not p.publish_gameplay_aim_state(true,true,12,vec(8,22,31)) and legacy[1]==0,
         'old DLL displayed the wrong ray as if it were the stock target')
-    -- With the aim zoom on, the game renders a narrower cone across the same
-    -- angle while the viewer submits the runtime's own field of view, so the
-    -- point the reticle is placed at moves out by the magnification. The
-    -- depth does not, and nothing moves when the zoom is off.
+    -- The publisher hands the point through the zoom correction before it
+    -- converts to the anchor frame, and publishes exactly what comes back.
     p.native_gameplay_aim_target=function(...) packet={...}; return 0 end
-    p.ads_zoom_value=1
+    local corrected=nil
+    p.zoom_corrected_aim_point=function(point) corrected=point; return vec(9,23,32) end
     assert(p.publish_gameplay_aim_state(true,true,12,vec(8,22,31)))
-    local flat={packet[3],packet[4],packet[5]}
-    p.ads_zoom_value=1.12
-    assert(p.publish_gameplay_aim_state(true,true,12,vec(8,22,31)))
-    assert(math.abs(packet[3]-flat[1]*1.12)<1e-9 and math.abs(packet[4]-flat[2]*1.12)<1e-9,
-        'the aim zoom did not reach the published point')
-    assert(packet[5]==flat[3],'the depth must not scale with the zoom')
-    assert(math.abs(packet[2]-6)<1e-9,'the distance is unchanged by the zoom')
-    p.ads_zoom_value=nil
-    assert(p.publish_gameplay_aim_state(true,true,12,vec(8,22,31)) and packet[3]==flat[1],
-        'no magnification recorded yet: publish the point as it is')
+    assert(corrected and corrected[1]==8,'the raw world point goes to the correction')
+    assert(math.abs(packet[3]-1.5)<1e-9 and math.abs(packet[4]-1)<1e-9 and
+        math.abs(packet[5]+0.5)<1e-9,'the corrected point is what is published')
+    p.zoom_corrected_aim_point=function(point) return point end
     print('PASS online reticle native seam: exact target, basis, character scale, pose identity and old-DLL clear')
+
+    -- The zoom correction, with a real quaternion. The magnification is about
+    -- the EYE's forward: a target dead centre in the view needs no correction
+    -- at all, whatever direction the head is facing. Correcting in the frame
+    -- the point is published in -- the recentre pose -- displaced exactly
+    -- those targets, by more than the error it was meant to remove (review,
+    -- 18 September).
+    local zfirst = assert(source:find('function presentation.zoom_corrected_aim_point(', 1, true))
+    local zlast = assert(source:find('\nfunction presentation.publish_gameplay_aim_state(', zfirst, true))
+    local vmt = {}
+    local function v3(x, y, z) return setmetatable({x, y, z}, vmt) end
+    vmt.__add = function(a, b) return v3(a[1]+b[1], a[2]+b[2], a[3]+b[3]) end
+    vmt.__sub = function(a, b) return v3(a[1]-b[1], a[2]-b[2], a[3]-b[3]) end
+    local V3 = setmetatable({x=function(v) return v[1] end, y=function(v) return v[2] end,
+        z=function(v) return v[3] end}, {__call=function(_, x, y, z) return v3(x, y, z) end})
+    local Q = {}
+    function Q.from_elements(x, y, z, w) return {x, y, z, w} end
+    function Q.inverse(q) return {-q[1], -q[2], -q[3], q[4]} end
+    function Q.rotate(q, v)
+        local x, y, z, w = q[1], q[2], q[3], q[4]
+        local dot = x*v[1] + y*v[2] + z*v[3]
+        local cx, cy, cz = y*v[3]-z*v[2], z*v[1]-x*v[3], x*v[2]-y*v[1]
+        local k = w*w - (x*x + y*y + z*z)
+        return v3(2*dot*x + k*v[1] + 2*w*cx, 2*dot*y + k*v[2] + 2*w*cy,
+            2*dot*z + k*v[3] + 2*w*cz)
+    end
+    -- A rotation of `angle` about `axis`, normalised.
+    local function axis_angle(ax, ay, az, angle)
+        local half = angle * 0.5
+        local sn = math.sin(half)
+        return {ax*sn, ay*sn, az*sn, math.cos(half)}
+    end
+    local eye = v3(3, -4, 1.7)
+    local zp = {eye_pose = function() return eye end,
+        projection_math = dofile(assert(arg[3]))}
+    local zobs = {}
+    local zenv = setmetatable({presentation = zp, controller_observation = zobs,
+        Vector3 = V3, Quaternion = Q}, {__index = _G})
+    setfenv(assert(loadstring(source:sub(zfirst, zlast - 1))), zenv)()
+
+    local function set_head(yaw, pitch)
+        -- Darktide: +z up, +x right, +y forward. Yaw about z, then pitch about
+        -- the yawed right axis, which for these tests is x at yaw 0.
+        local qz = axis_angle(0, 0, 1, yaw)
+        local qx = axis_angle(math.cos(yaw), math.sin(yaw), 0, pitch)
+        local x1, y1, z1, w1 = qz[1], qz[2], qz[3], qz[4]
+        local x2, y2, z2, w2 = qx[1], qx[2], qx[3], qx[4]
+        local q = {w1*x2 + x1*w2 + y1*z2 - z1*y2, w1*y2 - x1*z2 + y1*w2 + z1*x2,
+            w1*z2 + x1*y2 - y1*x2 + z1*w2, w1*w2 - x1*x2 - y1*y2 - z1*z2}
+        zobs.head_aim_qx, zobs.head_aim_qy, zobs.head_aim_qz, zobs.head_aim_qw =
+            q[1], q[2], q[3], q[4]
+        return q
+    end
+    local function forward_point(q, metres)
+        local f = Q.rotate(q, v3(0, 1, 0))
+        return v3(eye[1] + f[1]*metres, eye[2] + f[2]*metres, eye[3] + f[3]*metres)
+    end
+    local function distance(a, b)
+        local dx, dy, dz = a[1]-b[1], a[2]-b[2], a[3]-b[3]
+        return math.sqrt(dx*dx + dy*dy + dz*dz)
+    end
+
+    zp.ads_zoom_applied = 1.12
+    -- Dead ahead of the head, at every orientation: untouched. This is the
+    -- assertion the wrong frame failed, by over a degree at ten degrees of
+    -- pitch and three at forty-five.
+    for _, yaw in ipairs({0, 0.3, 1.2, -2.0, 3.0}) do
+        for _, pitch in ipairs({0, 0.17, 0.35, 0.52, 0.79, -0.4}) do
+            local q = set_head(yaw, pitch)
+            local target = forward_point(q, 10)
+            local moved = zp.zoom_corrected_aim_point(target)
+            assert(distance(moved, target) < 1e-4,
+                string.format('a target dead ahead moved %.4f m at yaw %.2f pitch %.2f',
+                    distance(moved, target), yaw, pitch))
+        end
+    end
+    -- Off the view's centre it moves outward by the magnification, measured as
+    -- a tangent from the eye, and the depth along the view does not change.
+    local q = set_head(0.9, -0.3)
+    local right = Q.rotate(q, v3(1, 0, 0))
+    local ahead = forward_point(q, 10)
+    local off = v3(ahead[1] + right[1]*0.7, ahead[2] + right[2]*0.7, ahead[3] + right[3]*0.7)
+    local moved = zp.zoom_corrected_aim_point(off)
+    local delta = moved - eye
+    local forward = Q.rotate(q, v3(0, 1, 0))
+    local depth = delta[1]*forward[1] + delta[2]*forward[2] + delta[3]*forward[3]
+    local across = delta[1]*right[1] + delta[2]*right[2] + delta[3]*right[3]
+    assert(math.abs(depth - 10) < 1e-4, 'the depth along the view must not change: ' .. depth)
+    assert(math.abs(across - 0.7 * 1.12) < 1e-4, 'across the view it scales: ' .. across)
+    -- No zoom, no movement; and nothing to work with is not an error.
+    zp.ads_zoom_applied = 1
+    assert(distance(zp.zoom_corrected_aim_point(off), off) < 1e-9, 'no zoom, no correction')
+    zp.ads_zoom_applied = 1.12
+    zobs.head_aim_qw = nil
+    assert(distance(zp.zoom_corrected_aim_point(off), off) < 1e-9, 'no head rotation: unchanged')
+    set_head(0, 0)
+    zp.eye_pose = function() return nil end
+    assert(distance(zp.zoom_corrected_aim_point(off), off) < 1e-9, 'no eye: unchanged')
+    assert(zp.zoom_corrected_aim_point(nil) == nil, 'no point: nothing to do')
+    print('PASS online reticle zoom frame: centred targets untouched at every head angle')
 end

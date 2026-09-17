@@ -70,9 +70,12 @@ end
 -- wrist, the pose the wrist display is FOR. Within a few degrees of vertical
 -- the panel's roll swings wildly for a millimetre of head movement, and at
 -- vertical it used to vanish outright. `fallback_right` (the last roll that
--- was well conditioned) holds it steady through that cone instead, which is
--- what z_up_billboard_basis does for the world markers. Nil only when the eye
--- is on the anchor, or is vertical with no fallback to hold. Pure.
+-- was well conditioned) holds it steady through that cone instead, and with
+-- none to hold, any horizontal direction -- as z_up_billboard_basis does for
+-- the world markers, though its cone is the true singularity and this one is
+-- deliberately wider, because what goes wrong first is not the arithmetic but
+-- the roll angle swinging for a millimetre of head movement. Nil only when
+-- the eye is on the anchor. Pure.
 Overlay.ROLL_FALLBACK_SINE = 0.05
 function Overlay.facing(anchor, eye, fallback_right)
     local away = normalize(sub(anchor, eye))
@@ -83,10 +86,16 @@ function Overlay.facing(anchor, eye, fallback_right)
     local held_roll = not viewer_right or horizontal < Overlay.ROLL_FALLBACK_SINE
     if held_roll then
         -- The caller hands back the right it was given, which is the
-        -- negated internal one.
+        -- negated internal one. With none to hand back -- a display whose
+        -- first frame is already inside the cone, which is bringing a hand
+        -- back up while looking down at it -- any horizontal direction will
+        -- do: an arbitrary roll is what the well-conditioned case would have
+        -- given anyway, and it beats drawing nothing, which is what returning
+        -- nil here did (review, 18 September). z_up_billboard_basis has the
+        -- same terminal default.
         local held = fallback_right and normalize(
             {-fallback_right[1], -fallback_right[2], -fallback_right[3]})
-        if not held then return nil end
+        if not held then held = {1, 0, 0} end
         -- Re-orthogonalise the held roll against the new view direction, so
         -- the panel still faces the eye squarely.
         local held_up = normalize(cross(held, away))
@@ -245,6 +254,7 @@ function Overlay.install(mod, presentation, Atlas, api)
         end
         -- Text centred vertically at (cx, cy); align "center", "left" or "right".
         function canvas.text(text, font_px, cx, cy, color, align)
+            local asked_font_px = font_px
             UIFonts = UIFonts or require("scripts/managers/ui/ui_fonts")
             -- Fitted to the cell: measured by the renderer when it can.
             local measured
@@ -258,10 +268,14 @@ function Overlay.install(mod, presentation, Atlas, api)
             -- Width was guarded and height was not, so a line near a cell's
             -- top or bottom reached into the neighbour exactly as the wrist
             -- bars did sideways (survey, 18 September). Same rule: shrink to
-            -- the room, drop rather than spill.
+            -- the room, drop rather than spill. The floor is measured against
+            -- the size that was ASKED for, not against the width-fitted one:
+            -- two fits each allowed down to MIN_FONT_SCALE compound to its
+            -- square, which is an unreadable smear where a drop was meant
+            -- (review, 18 September).
             font_px = Overlay.fitted_font(font_px, font_px * Overlay.TEXT_HALF_HEIGHT,
                 Overlay.vertical_room(cy / mpp, atlas.CELL_HEIGHT))
-            if not font_px then return end
+            if not font_px or font_px < asked_font_px * Overlay.MIN_FONT_SCALE then return end
             local width, height = atlas.CELL_WIDTH, font_px * 1.5
             local sx, sy = pixel(cx, cy)
             local left, top = Overlay.text_box(sx, sy, width, height, align)
