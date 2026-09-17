@@ -184,3 +184,5 @@ they match), recorded before acting.
 - **45, mirror**: "works, but glitches around when I move. Also, doesn't
   mirror my IK except the hands, and its own hands are invisible - it
   should match my IK identically, a true mirror." Open.
+- **39, clarified**: "The bleed over is pickups like the stims in the psykh, medipack etc." So the world markers on pickups, not a hand display.
+- **New, item radial**: "the text in the selection wheel is low resolution and too hard to see before you switch to it". Open: sharper and brighter labels.

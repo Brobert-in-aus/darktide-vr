@@ -255,6 +255,39 @@ function Mirror.chain_fractions(chain)
     return fractions
 end
 
+-- Where the copy's j_neck goes. The body frame's neck (7 cm behind and 8 cm
+-- below the eye, along the head's own axes) is the skull's pivot, which suits
+-- the shoulders of the virtual stock; the rig's j_neck is the base of the
+-- neck, lower and further back. Matching one to the other stood the body
+-- about 10 cm too high and 5 cm too far forward (user, 17 September worn:
+-- "eyes are a bit too low, need to come up maybe 10cm, and forward maybe 5";
+-- the log's scale ratios of 1.2 to 1.3 are the same error, the copy enlarged
+-- to reach a neck that was too high). The extra is level and vertical, not
+-- along the head's axes: the base of the neck does not swing with a nod.
+-- Both scale with the frame's size. Pure.
+Mirror.NECK_EXTRA_BACK, Mirror.NECK_EXTRA_DOWN = 0.05, 0.10
+function Mirror.neck_target(neck, head_yaw, scale)
+    if type(neck) ~= "table" then return nil end
+    local s = (type(scale) == "number" and scale > 0) and scale or 1
+    local fx, fy = 0, 0
+    if type(head_yaw) == "number" and head_yaw == head_yaw then fx, fy = -math.sin(head_yaw), math.cos(head_yaw) end
+    return {neck[1] - fx * Mirror.NECK_EXTRA_BACK * s, neck[2] - fy * Mirror.NECK_EXTRA_BACK * s,
+        neck[3] - Mirror.NECK_EXTRA_DOWN * s}
+end
+
+-- The copy's heading eased toward the body frame's, which moves in steps (a
+-- 20 degree dead zone, then a 0.15 s catch-up: right for the stock's
+-- shoulders, a snap when it turns a whole drawn body; user, 17 September:
+-- "snap turns as I turn rather than following smoothly"). A jump beyond
+-- YAW_SNAP (a stick snap turn, a respawn) is taken at once. Pure.
+Mirror.YAW_TAU, Mirror.YAW_SNAP = 0.3, math.rad(75)
+function Mirror.smooth_yaw(previous, target, dt)
+    if type(previous) ~= "number" or type(dt) ~= "number" or not (dt > 0) or dt > 0.5 then return target end
+    local diff = (target - previous + math.pi) % (2 * math.pi) - math.pi
+    if math.abs(diff) > Mirror.YAW_SNAP then return target end
+    return (previous + diff * (1 - math.exp(-dt / Mirror.YAW_TAU)) + math.pi) % (2 * math.pi) - math.pi
+end
+
 -- The mode to run: the dev flag's when it names one; else the mirror while
 -- its key has toggled it on (Psykhanium only); else the full overlay while
 -- the "Full body (experimental)" option is on; else none. The option used to
@@ -627,32 +660,34 @@ function Mirror.install(mod, presentation)
         if Mirror.MODES[mode_name].body_yaw and frame and type(frame.yaw) == "number" then
             state.root_yaw_delta = math.deg(math.atan2(math.sin(frame.yaw - Quaternion.yaw(Unit.world_rotation(unit, 1))),
                 math.cos(frame.yaw - Quaternion.yaw(Unit.world_rotation(unit, 1)))))
-            Unit.set_local_rotation(unit, 1, Quaternion(Vector3.up(), frame.yaw))
+            state.yaw = Mirror.smooth_yaw(state.yaw, frame.yaw, dt)
+            Unit.set_local_rotation(unit, 1, Quaternion(Vector3.up(), state.yaw))
             World.update_unit(world, unit)
         end
+        local neck_target = frame and Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale)
         if Mirror.MODES[mode_name].follow_neck and Unit.has_node(unit, "j_neck") then
-            if frame and frame.neck and Mirror.MODES[mode_name].scale_to_neck then
+            if neck_target and Mirror.MODES[mode_name].scale_to_neck then
                 local base = Unit.world_position(unit, 1)
                 local neck_height = Vector3.z(Unit.world_position(unit, Unit.node(unit, "j_neck"))) - Vector3.z(base)
-                state.scale_ratio = Mirror.scale_ratio(state.scale_ratio, neck_height, frame.neck[3] - Vector3.z(base), dt)
+                state.scale_ratio = Mirror.scale_ratio(state.scale_ratio, neck_height, neck_target[3] - Vector3.z(base), dt)
                 Unit.set_local_scale(unit, 1, Unit.local_scale(avatar, 1) * state.scale_ratio)
                 World.update_unit(world, unit)
             end
-            if frame and frame.neck and not Mirror.MODES[mode_name].spine_bend then
-                local offset, length = Mirror.neck_offset(array(Unit.world_position(unit, Unit.node(unit, "j_neck"))), frame.neck)
+            if neck_target and not Mirror.MODES[mode_name].spine_bend then
+                local offset, length = Mirror.neck_offset(array(Unit.world_position(unit, Unit.node(unit, "j_neck"))), neck_target)
                 Unit.set_local_position(unit, 1, Unit.local_position(unit, 1) + vector(offset))
                 World.update_unit(world, unit)
                 state.neck_offset, state.neck_distance = offset, length
-            elseif frame and frame.neck then
+            elseif neck_target then
                 local neck = Unit.node(unit, "j_neck")
-                local target = vector(frame.neck)
+                local target = vector(neck_target)
                 local before = Vector3.length(Unit.world_position(unit, neck) - target)
                 local fractions = Mirror.chain_fractions(Mirror.SPINE)
                 for i, entry in ipairs(Mirror.SPINE) do
                     if Unit.has_node(unit, entry[1]) then
                         local joint = Unit.node(unit, entry[1])
                         local axis, angle = Mirror.clavicle_swing(array(Unit.world_position(unit, joint)),
-                            array(Unit.world_position(unit, neck)), frame.neck, math.huge)
+                            array(Unit.world_position(unit, neck)), neck_target, math.huge)
                         if axis then
                             angle = math.min(angle * fractions[i], Mirror.SPINE_JOINT_MAX)
                             set_world_rotation(unit, joint, Quaternion.multiply(Quaternion(vector(axis), angle),
@@ -686,7 +721,10 @@ function Mirror.install(mod, presentation)
         if Mirror.MODES[mode_name].clavicles and frame and frame.shoulder_left then
             for _, side in ipairs({"left", "right"}) do
                 local clavicle_name, arm_name = "j_" .. side .. "shoulder", "j_" .. side .. "arm"
-                local target = frame["shoulder_" .. side]
+                -- The estimated shoulders hang from the frame's neck, so they take
+                -- the same extra as the copy's neck, or the clavicles would shrug
+                -- up toward shoulders 10 cm above the lowered body's.
+                local target = Mirror.neck_target(frame["shoulder_" .. side], frame.head_yaw, frame.scale)
                 if target and Unit.has_node(unit, clavicle_name) and Unit.has_node(unit, arm_name) then
                     local clavicle, arm = Unit.node(unit, clavicle_name), Unit.node(unit, arm_name)
                     local before = Vector3.length(Unit.world_position(unit, arm) - vector(target))

@@ -49,7 +49,8 @@ Wrist.LAYOUT_HALF_WIDTH = 0.066
 function Wrist.pixel_metres(cell_width)
     cell_width = tonumber(cell_width)
     if not cell_width or not (cell_width > 8) then return Wrist.PIXEL_METRES end
-    return math.max(Wrist.PIXEL_METRES, Wrist.LAYOUT_HALF_WIDTH / (cell_width * 0.5 - 2))
+    -- Less the overlay's margin (the atlas gutter and one texel).
+    return math.max(Wrist.PIXEL_METRES, Wrist.LAYOUT_HALF_WIDTH / (cell_width * 0.5 - 10))
 end
 
 -- The size factor from the "vr_wrist_display_scale" percentage (50-200,

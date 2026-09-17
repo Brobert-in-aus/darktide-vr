@@ -117,8 +117,15 @@ end
 -- Engine side. The pure part above is what the tests exercise.
 Radial.TEST_FLAG = "./../mods/darktidevr/darktidevr_item_radial_test.flag"
 Radial.RADIUS = 0.055
-Radial.LABEL_PX = 26
-Radial.PIXEL_METRES = 0.00055
+-- Sharper and brighter (user, 17 September worn: "low resolution and too
+-- hard to see before you switch to it"): the panel's scale is as fine as one
+-- overlay cell allows (the labels reach 5.5 cm from the centre and the cell
+-- is 477 px wide at a 1908-wide eye target), the letters a little larger
+-- (1.5 cm, were 1.4), the unpicked labels near white instead of grey.
+Radial.LABEL_PX = 44
+Radial.PIXEL_METRES = 0.00034
+Radial.LABEL_COLOR = {235, 240, 240, 230}
+Radial.PICKED_COLOR = {255, 255, 205, 90}
 Radial.FORWARD = 0.06
 
 function Radial.install(mod, presentation, observation)
@@ -221,8 +228,7 @@ function Radial.install(mod, presentation, observation)
         for index, option in ipairs(Radial.OPTIONS) do
             local x, y = Radial.label_offset(index, #Radial.OPTIONS, Radial.RADIUS)
             local chosen = state.index == index
-            canvas.text(option.label, Radial.LABEL_PX, x, y,
-                chosen and {255, 255, 245, 210} or {170, 210, 210, 200})
+            canvas.text(option.label, Radial.LABEL_PX, x, y, chosen and Radial.PICKED_COLOR or Radial.LABEL_COLOR)
         end
     end
 

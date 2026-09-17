@@ -65,7 +65,9 @@ end
 -- cell: worn 16 and 17 September, the wrist bars' left ends showed as a
 -- sliver beside the ammo count once the eye target (and so the cell)
 -- shrank with Virtual Desktop's FOV tangent. Pure.
-Overlay.CELL_MARGIN = 1
+-- The margin is the atlas's gutter (its outer 8 texels are not shown) and
+-- one more.
+Overlay.CELL_MARGIN = 9
 function Overlay.clip_rect(left, top, width, height, cell_width, cell_height)
     local half_w = cell_width * 0.5 - Overlay.CELL_MARGIN
     local half_h = cell_height * 0.5 - Overlay.CELL_MARGIN
@@ -73,6 +75,38 @@ function Overlay.clip_rect(left, top, width, height, cell_width, cell_height)
     local t, b = math.max(top, -half_h), math.min(top + height, half_h)
     if not (r > l) or not (b > t) then return nil end
     return l, t, r - l, b - t
+end
+
+-- The width a line of text may take, in pixels, at x pixels right of the
+-- cell's centre: to both edges for centred text, to the far edge for
+-- aligned text, less the margin. Pure.
+function Overlay.text_room(x, cell_width, align)
+    local half = cell_width * 0.5 - Overlay.CELL_MARGIN
+    if align == "left" then return math.max(0, half - x) end
+    if align == "right" then return math.max(0, half + x) end
+    return math.max(0, 2 * (half - math.abs(x)))
+end
+
+-- The font size that makes a line of measured width fit the room: unchanged
+-- when it fits, scaled down in proportion when it does not (the whole name
+-- stays readable; text cannot be clipped to a cell the way rectangles are),
+-- never below MIN_FONT_SCALE of what was asked, where the text is dropped
+-- rather than spilled. Returns nil for "do not draw". Worn 17 September: an
+-- item's name on the forearm holsters, 54 px tall and wider than the cell,
+-- spilled into the cells either side ("item pickups still have a sliver").
+-- Pure.
+Overlay.MIN_FONT_SCALE = 0.35
+function Overlay.fitted_font(font_px, width, room)
+    if not (room > 0) then return nil end
+    if not (width > room) then return font_px end
+    local scale = room / width
+    if scale < Overlay.MIN_FONT_SCALE then return nil end
+    return math.floor(font_px * scale)
+end
+-- A width estimate when the renderer cannot measure: bold proportional
+-- digits and capitals run about 0.6 em. Pure.
+function Overlay.estimated_width(text, font_px)
+    return #tostring(text or "") * font_px * 0.6
 end
 
 -- Pixel box for text centred (or aligned) at a cell pixel. Pure.
@@ -139,6 +173,15 @@ function Overlay.install(mod, presentation, Atlas, api)
         -- Text centred vertically at (cx, cy); align "center", "left" or "right".
         function canvas.text(text, font_px, cx, cy, color, align)
             UIFonts = UIFonts or require("scripts/managers/ui/ui_fonts")
+            -- Fitted to the cell: measured by the renderer when it can.
+            local measured
+            if UIRenderer.text_size then
+                local ok, w = pcall(UIRenderer.text_size, renderer, text, "proxima_nova_bold", font_px)
+                if ok and type(w) == "number" and w > 0 then measured = w end
+            end
+            font_px = Overlay.fitted_font(font_px, measured or Overlay.estimated_width(text, font_px),
+                Overlay.text_room(cx / mpp, atlas.CELL_WIDTH, align))
+            if not font_px then return end
             local width, height = atlas.CELL_WIDTH, font_px * 1.5
             local sx, sy = pixel(cx, cy)
             local left, top = Overlay.text_box(sx, sy, width, height, align)

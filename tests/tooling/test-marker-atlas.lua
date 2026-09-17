@@ -58,10 +58,13 @@ assert(Atlas.draw("game_world", frame_for) == 3)
 local quad = find("bitmap_3d")
 local args = quad[6]
 assert(quad[2] == state.world_material and quad[4] == "tm" and quad[5] == 1000)
-assert(math.abs(args.size[1] - 2.048) < 1e-9 and math.abs(args.size[2] - 1.024) < 1e-9)
--- The cell's UVs, inset by half a texel so the filter never samples the
--- neighbouring cell.
-local iu, iv = 0.5 / Atlas.WIDTH, 0.5 / Atlas.HEIGHT
+-- The cell less its gutter: the quad and its UVs shrink together, so a texel
+-- keeps its size in the world and a minified sample (a distant pickup's
+-- marker) stays clear of the neighbouring cell.
+assert(Atlas.GUTTER == 8)
+assert(math.abs(args.size[1] - (1024 - 16) * 0.002) < 1e-9 and math.abs(args.size[2] - (512 - 16) * 0.002) < 1e-9)
+assert(math.abs(args.position_offset[1] + (1024 - 16) * 0.001) < 1e-9, 'still centred on the anchor')
+local iu, iv = Atlas.GUTTER / Atlas.WIDTH, Atlas.GUTTER / Atlas.HEIGHT
 assert(math.abs(args.uv00[1] - (0.5 - iu)) < 1e-9 and math.abs(args.uv00[2] - (0.5 - iv)) < 1e-9 and
     math.abs(args.uv11[1] - iu) < 1e-9 and math.abs(args.uv11[2] - (0.25 + iv)) < 1e-9,
     "the third cell, U and V reversed as on the HUD panel quad")

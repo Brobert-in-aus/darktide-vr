@@ -24,6 +24,21 @@ local function new(options)
     local NAME, TAG = options.name or "darktidevr_markers", options.log_tag or "DARKTIDEVR_MARKER_ATLAS"
     local WIDTH, HEIGHT = CELL_WIDTH * COLUMNS, CELL_HEIGHT * ROWS
     Atlas.CELL_WIDTH, Atlas.CELL_HEIGHT = CELL_WIDTH, CELL_HEIGHT
+    -- The gutter: each cell is shown without its outer GUTTER texels, and the
+    -- quad is that much smaller so nothing is rescaled. A marker far away is
+    -- drawn many times smaller than its cell, and a minified sample reaches
+    -- past half a texel into the neighbouring cell (worn, 17 September: a
+    -- sliver beside distant pickups' markers after the half-texel inset had
+    -- cured the hand displays). Eight texels covers an eightfold reduction.
+    Atlas.GUTTER = 8
+    -- The visible cell's UV rectangle and size in pixels for a cell centred
+    -- at (x, y): u0, v0, u1, v1, width, height. Pure.
+    function Atlas.visible_cell(x, y)
+        local g = Atlas.GUTTER
+        return (x - CELL_WIDTH * 0.5 + g) / WIDTH, (y - CELL_HEIGHT * 0.5 + g) / HEIGHT,
+            (x + CELL_WIDTH * 0.5 - g) / WIDTH, (y + CELL_HEIGHT * 0.5 - g) / HEIGHT,
+            CELL_WIDTH - 2 * g, CELL_HEIGHT - 2 * g
+    end
     Atlas.WIDTH, Atlas.HEIGHT, Atlas.CELLS = WIDTH, HEIGHT, COLUMNS * ROWS
 
     local state = {generation = 0, pending = {}, shown = {}, frame = 0, stamp = -math.huge,
@@ -269,16 +284,9 @@ local function new(options)
         for _, record in ipairs(state.shown) do
             local ok, tm, pixel_size = pcall(frame_for, record.anchor)
             if ok and tm and pixel_size then
-                local w, h = CELL_WIDTH * pixel_size, CELL_HEIGHT * pixel_size
-                -- A half-texel inset keeps the filter from blending the
-                -- neighbouring cell's edge texels into this one: the wrist
-                -- display's bars showed as a sliver beside the ammo count
-                -- (worn, 16 September evening).
-                local iu, iv = 0.5 / WIDTH, 0.5 / HEIGHT
-                local u0 = (record.x - CELL_WIDTH * 0.5) / WIDTH + iu
-                local u1 = (record.x + CELL_WIDTH * 0.5) / WIDTH - iu
-                local v0 = (record.y - CELL_HEIGHT * 0.5) / HEIGHT + iv
-                local v1 = (record.y + CELL_HEIGHT * 0.5) / HEIGHT - iv
+                -- The cell less its gutter (Atlas.visible_cell).
+                local u0, v0, u1, v1, visible_w, visible_h = Atlas.visible_cell(record.x, record.y)
+                local w, h = visible_w * pixel_size, visible_h * pixel_size
                 -- Local x runs to the viewer's left, so U is reversed; local y
                 -- runs up, so V (top = 0) is reversed.
                 api.Gui2.bitmap_3d(state.world_gui, state.world_material, nil, tm, 1000,

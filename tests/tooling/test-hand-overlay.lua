@@ -49,12 +49,22 @@ assert(claimed[2]==claimed[1] and claimed[1].position:unbox()[1]==4,'one persist
 -- to the cell less a one-pixel margin (the wrist bars' left ends showed beside
 -- the ammo count once the cell shrank to 477 px, 17 September).
 local l,t,w,h=Overlay.clip_rect(-243,-10,343,20,477,519)
-near(l,-237.5); near(t,-10); near(w,343-5.5); near(h,20)
+near(l,-229.5); near(t,-10); near(w,329.5); near(h,20)
 l,t,w,h=Overlay.clip_rect(-100,-10,50,20,477,519)
 near(l,-100); near(w,50)
 assert(Overlay.clip_rect(-300,-10,40,20,477,519)==nil,'wholly outside: nothing drawn')
 l,t,w,h=Overlay.clip_rect(-10,250,20,40,477,519)
-near(t,250); near(h,8.5)
+near(t,250); near(h,0.5)
 assert(Overlay.cell_width({width=1908,height=2076})==477 and Overlay.cell_width({width=2112,height=2304})==528)
+-- Text cannot be clipped, so it is fitted: the room at a pixel offset, and
+-- the font scaled down to it (a 730 px item name in a 477 px cell), dropped
+-- when it would have to shrink past reading.
+near(Overlay.text_room(0,477,nil),459); near(Overlay.text_room(100,477,nil),259)
+near(Overlay.text_room(-100,477,'left'),329.5); near(Overlay.text_room(-100,477,'right'),129.5)
+assert(Overlay.text_room(400,477,'left')==0)
+assert(Overlay.fitted_font(54,300,475)==54,'fits: unchanged')
+assert(Overlay.fitted_font(54,730,475)==35,'a long name shrinks to the cell')
+assert(Overlay.fitted_font(54,5000,475)==nil and Overlay.fitted_font(54,10,0)==nil,'too long, or no room: not drawn')
+near(Overlay.estimated_width('Ammunition Crate',54),16*54*.6)
 print('hand_overlay=pass facing basis text_box canvas_pixels persistent_anchor clip_rect cell_width')
 

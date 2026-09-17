@@ -112,6 +112,25 @@ do
         'overlay does the swing, protraction and stretch')
     assert(Mirror.MODES.overlayswing.clavicles and not Mirror.MODES.overlayswing.protract,'swing-only A/B')
 end
+-- The copy's neck target: the body frame's neck moved level and back along
+-- the head's heading and straight down, scaled with the frame.
+local nt = Mirror.neck_target({1, 2, 1.5}, 0, 1)
+assert(math.abs(nt[1] - 1) < 1e-9 and math.abs(nt[2] - 1.95) < 1e-9 and math.abs(nt[3] - 1.4) < 1e-9, 'yaw 0 faces +y: back is -y')
+nt = Mirror.neck_target({0, 0, 1.5}, math.pi / 2, 1.1)
+assert(math.abs(nt[1] - 0.055) < 1e-9 and math.abs(nt[2]) < 1e-9 and math.abs(nt[3] - 1.39) < 1e-9, 'yaw 90 faces -x: back is +x, scaled')
+assert(Mirror.neck_target(nil, 0, 1) == nil)
+assert(Mirror.NECK_EXTRA_BACK == 0.05 and Mirror.NECK_EXTRA_DOWN == 0.10)
+-- The heading eases after the body frame's steps, the short way round, and
+-- takes a snap turn at once.
+assert(Mirror.smooth_yaw(nil, 0.4, 0.016) == 0.4, 'first sample')
+local y = Mirror.smooth_yaw(0, math.rad(20), 0.3)
+assert(math.abs(y - math.rad(20) * (1 - math.exp(-1))) < 1e-9, 'one time constant closes 63 per cent of a step')
+y = Mirror.smooth_yaw(math.pi - 0.05, -math.pi + 0.05, 0.016)
+assert(y > math.pi - 0.05 or y < -math.pi + 0.05, 'across the seam the short way')
+assert(Mirror.smooth_yaw(0, math.rad(90), 0.016) == math.rad(90), 'a snap turn is taken at once')
+for _ = 1, 200 do y = Mirror.smooth_yaw(y, 1.0, 0.016) end
+assert(math.abs(y - 1.0) < 1e-3, 'and it arrives')
+
 -- Which mode runs: the dev flag first, then the mirror key in the
 -- Psykhanium, then the full-body option's overlay.
 assert(Mirror.requested_mode(nil, false, false, false) == nil)
