@@ -16,7 +16,14 @@ namespace {
 
 constexpr UINT64 constant_slot_bytes = 256U;
 constexpr float near_metres = 0.025F;
-constexpr float far_metres = 100.0F;
+// The boards sit two metres out and the cuffs at arm's length, but the
+// gameplay reticle is placed where the aim ray hits, which the mod clamps at
+// 200 m (darktidevr.lua: publish_gameplay_aim_state). At a 100 m far plane
+// the rasterizer clipped the whole quad away down any long hall, and with the
+// quad layer standing down there was nothing to fall back to: the reticle
+// simply vanished (review, 18 September). Nothing here reads or writes depth,
+// so the range costs nothing.
+constexpr float far_metres = 1000.0F;
 
 void check(HRESULT result, const char* operation) {
   if (FAILED(result)) {
@@ -131,6 +138,14 @@ std::array<float, 4> panel_point_clip(const XrPosef& eye_pose,
       {(u - 0.5F) * size.width, (0.5F - v) * size.height, 0.0F});
   return math::transform(view_projection_matrix(eye_pose, fov),
                          {point.x, point.y, point.z, 1.0F});
+}
+
+bool panel_quad_centre_visible(const XrPosef& eye_pose, const XrFovf& fov,
+                               const XrPosef& quad_pose, XrExtent2Df size) {
+  const auto clip =
+      panel_point_clip(eye_pose, fov, quad_pose, size, 0.5F, 0.5F);
+  // D3D clip space: 0 <= z <= w, and w is the view depth.
+  return clip[3] > 0.0F && clip[2] >= 0.0F && clip[2] <= clip[3];
 }
 
 PanelRenderer::PanelRenderer(ID3D12Device* device, DXGI_FORMAT view_format,

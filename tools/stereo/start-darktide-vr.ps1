@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [ValidateRange(5, 43200)]
     [int] $DurationSeconds = 28800,

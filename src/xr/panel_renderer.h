@@ -35,6 +35,13 @@ std::array<float, 4> panel_point_clip(const XrPosef& eye_pose,
                                       const XrPosef& quad_pose,
                                       XrExtent2Df size, float u, float v);
 
+// Whether a quad's centre is inside the frustum the renderer draws with:
+// in front of the near plane and not past the far one. A caller that stands
+// another path down when it draws needs to know the draw will be SEEN, and
+// `record` only reports that one was issued.
+bool panel_quad_centre_visible(const XrPosef& eye_pose, const XrFovf& fov,
+                               const XrPosef& quad_pose, XrExtent2Df size);
+
 // Draws the flat board (loading screens, menus) and the menu pointer into the
 // eye images, so they reach the runtime inside the projection layer instead
 // of as quad layers. Worn, 16 and 17 September 2026: with Virtual Desktop's

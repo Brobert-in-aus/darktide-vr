@@ -2448,6 +2448,192 @@ class OpenXrProbe {
       // Set when the reticle was drawn into the eye images, which is the one
       // reason not to hand the runtime the quad as well.
       bool rendered_gameplay_reticle{};
+      // Everything the reticle needs to exist: the aim state, the blend,
+      // the scale, and the quad. Drawing it into the eye images needs all
+      // of it before the theatre command list is recorded; the quad layer
+      // does not, and reading the aim state that early costs the shipped
+      // path the samples the producer publishes during the pair wait and
+      // the GPU work (review, 18 September). So it is called early only
+      // when the draw needs it, and at its old place otherwise.
+      bool gameplay_reticle_derived{};
+      const auto derive_gameplay_reticle = [&]() {
+        gameplay_reticle_derived = true;
+          if (enable_gameplay_reticle && submitted_shared_pair_this_frame &&
+              presentation_state.mode == darktidevr::core::
+                                             SharedPresentationMode::stereo_world &&
+              (latest_controller_sample_ || keyboard_mouse_input) &&
+              current_head_valid) {
+            darktidevr::core::SharedGameplayAimState newest_aim{};
+            if (gameplay_aim_state_reader.read(newest_aim) &&
+                (newest_aim.transport_generation !=
+                     gameplay_aim_transport_generation ||
+                 newest_aim.sequence >= gameplay_aim_sequence)) {
+              if (newest_aim.transport_generation !=
+                      gameplay_aim_transport_generation ||
+                  newest_aim.sequence != gameplay_aim_sequence) {
+                ++gameplay_reticle_transport_samples_;
+              }
+              gameplay_aim_state = newest_aim;
+              gameplay_aim_sequence = newest_aim.sequence;
+              gameplay_aim_transport_generation =
+                  newest_aim.transport_generation;
+            }
+            const auto required =
+                darktidevr::core::controller_orientation_valid |
+                darktidevr::core::controller_position_valid;
+            // A hand-aimed reticle disappears with its controller. Keyboard and
+            // mouse aim publishes only world-depth target points from the mouse
+            // pose and never needs a tracked controller.
+            const bool reticle_source_tracked =
+                keyboard_mouse_input
+                    ? gameplay_aim_state.target_point_valid
+                    : (latest_controller_sample_->hands[1].aim_tracking_flags &
+                       required) == required &&
+                          darktidevr::core::pointer_origin_within_reach(
+                              latest_controller_sample_->hands[1].aim_pose.position,
+                              current_head.position, 1.5F);
+            const auto gameplay_aim_now_ns = static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    // The producer can publish while xrWaitFrame or the shared
+                    // pair wait blocks. Sample time after the read; frame_start
+                    // would misclassify that new aim as a future timestamp.
+                    std::chrono::steady_clock::now().time_since_epoch())
+                    .count());
+            constexpr std::uint64_t maximum_gameplay_aim_age_ns = 100'000'000ULL;
+            if (gameplay_aim_state.active &&
+                darktidevr::core::gameplay_aim_state_is_fresh(
+                    gameplay_aim_state, gameplay_aim_now_ns,
+                    maximum_gameplay_aim_age_ns) &&
+                reticle_source_tracked) {
+              const auto reticle_distance_metres =
+                  gameplay_aim_state.distance_metres;
+              if (gameplay_aim_state.target_point_valid && head_pose_writer) {
+                for (auto entry = gameplay_aim_origin_history.rbegin();
+                     entry != gameplay_aim_origin_history.rend(); ++entry) {
+                  if (entry->first != gameplay_aim_state.head_pose_sequence) continue;
+                  const auto target = darktidevr::core::resolve_gameplay_aim_target(
+                      gameplay_aim_state, entry->first,
+                      head_pose_writer->transport_generation(),
+                      head_recenter_generation, entry->second);
+                  if (target) {
+                    gameplay_reticle_pose = darktidevr::math::Pose{
+                        current_head.orientation, *target};
+                  }
+                  break;
+                }
+              } else if (!gameplay_aim_state.target_point_valid) {
+                const auto& right = latest_controller_sample_->hands[1];
+                const auto direction = darktidevr::math::rotate(
+                    right.aim_pose.orientation, {0.0F, 0.0F, -1.0F});
+                gameplay_reticle_pose = darktidevr::math::Pose{
+                    current_head.orientation,
+                    {right.aim_pose.position.x + direction.x * reticle_distance_metres,
+                     right.aim_pose.position.y + direction.y * reticle_distance_metres,
+                     right.aim_pose.position.z + direction.z * reticle_distance_metres}};
+              }
+              if (gameplay_reticle_pose) {
+                ++gameplay_reticle_frames_;
+                const auto frame_start_ns = static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        frame_start.time_since_epoch()).count());
+                if (gameplay_aim_state.timestamp_ns > frame_start_ns) {
+                  ++gameplay_reticle_post_start_frames_;
+                }
+                if (gameplay_aim_state.hit) {
+                  ++gameplay_reticle_hit_frames_;
+                } else {
+                  ++gameplay_reticle_miss_frames_;
+                }
+                gameplay_reticle_distance_metres_ = reticle_distance_metres;
+              }
+            }
+          }
+          {
+            const bool ads_target_active =
+                presentation_state.mode == darktidevr::core::SharedPresentationMode::stereo_world &&
+                gameplay_aim_state.active && gameplay_aim_state.aiming_down_sights;
+            const float ads_target = ads_target_active ? 1.0F : 0.0F;
+            const auto ads_dt = std::clamp(
+                std::chrono::duration<float>(frame_start - ads_last_tick).count(), 0.0F, 0.1F);
+            ads_last_tick = frame_start;
+            const auto ads_blend_before = ads_blend;
+            ads_blend += (ads_target - ads_blend) * (1.0F - std::exp(-ads_dt / 0.15F));
+            if (std::abs(ads_target - ads_blend) < 0.005F) ads_blend = ads_target;
+            if ((ads_blend_before <= 0.0F) != (ads_blend <= 0.0F)) {
+              std::cout << "openxr.ads aiming=" << (ads_blend > 0.0F ? 1 : 0)
+                        << " target=" << ads_target << '\n';
+            }
+          }
+          const auto reticle_scale_now = std::chrono::steady_clock::now();
+          if (enable_gameplay_reticle && reticle_scale_now >= next_reticle_scale_poll &&
+              !reticle_in_eyes_flag.empty()) {
+            // Presence is the switch; the file's contents are not read.
+            std::error_code flag_error;
+            const auto present = std::filesystem::exists(
+                std::filesystem::path{reticle_in_eyes_flag}, flag_error);
+            const auto wanted = reticle_in_eyes_environment ||
+                                (!flag_error && present);
+            if (wanted != reticle_in_eyes_requested) {
+              reticle_in_eyes_requested = wanted;
+              std::cout << "openxr.reticle_in_eyes=" << (wanted ? 1 : 0) << '\n';
+            }
+          }
+          if (enable_gameplay_reticle && reticle_scale_file[0] && reticle_scale_now >= next_reticle_scale_poll) {
+            next_reticle_scale_poll = reticle_scale_now + std::chrono::milliseconds(250);
+            std::ifstream input{std::filesystem::path{reticle_scale_file}};
+            float percent{};
+            char extra{};
+            // Keep the last valid value during missing, partial or invalid writes.
+            // Zero hides the reticle (a stereo cinematic publishes it).
+            if ((input >> percent) && !(input >> extra) && std::isfinite(percent) &&
+                (percent == 0.0F || (percent >= 25.0F && percent <= 150.0F))) {
+              const auto updated = percent / 100.0F;
+              if (updated != reticle_scale) {
+                reticle_scale = updated;
+                std::cout << "openxr.reticle_scale_percent=" << percent << '\n';
+              }
+            }
+          }
+          // The reticle sprite lives in the flat capture atlas, which is painted
+          // only while a capture window exists.
+          if (gameplay_reticle_pose && window_capture &&
+              flat_swapchain != XR_NULL_HANDLE) {
+            constexpr std::int32_t gameplay_reticle_extent = 41;
+            // Leave transparent atlas texels outside the submitted rectangle so
+            // compositor filtering cannot sample the adjacent opaque capture.
+            constexpr std::int32_t gameplay_reticle_inset = 2;
+            constexpr auto gameplay_reticle_sample_extent =
+                gameplay_reticle_extent - 2 * gameplay_reticle_inset;
+            gameplay_reticle_quad.layerFlags =
+                XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+            gameplay_reticle_quad.space = local_space_;
+            gameplay_reticle_quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+            gameplay_reticle_quad.subImage.swapchain = flat_swapchain;
+            gameplay_reticle_quad.subImage.imageRect.offset = {
+                static_cast<std::int32_t>(flat_capture_width) -
+                    gameplay_reticle_extent - 1 + gameplay_reticle_inset,
+                static_cast<std::int32_t>(flat_capture_height) -
+                    gameplay_reticle_extent + gameplay_reticle_inset};
+            gameplay_reticle_quad.subImage.imageRect.extent = {
+                gameplay_reticle_sample_extent, gameplay_reticle_sample_extent};
+            gameplay_reticle_quad.pose.orientation = {
+                gameplay_reticle_pose->orientation.x,
+                gameplay_reticle_pose->orientation.y,
+                gameplay_reticle_pose->orientation.z,
+                gameplay_reticle_pose->orientation.w};
+            gameplay_reticle_quad.pose.position = {
+                gameplay_reticle_pose->position.x,
+                gameplay_reticle_pose->position.y,
+                gameplay_reticle_pose->position.z};
+            const auto angular_size_metres = std::clamp(
+                gameplay_reticle_distance_metres_ * 0.049F, 0.105F, 0.84F) * reticle_scale *
+                (1.0F - 0.4F * ads_blend) *
+                (static_cast<float>(gameplay_reticle_sample_extent) /
+                 static_cast<float>(gameplay_reticle_extent));
+            gameplay_reticle_quad.size = {angular_size_metres,
+                                          angular_size_metres};
+          }
+      };
       bool menu_readback_copied_this_frame{};
       shared_eye_readback_copied_this_frame = false;
       projected_eye_readback_copied_this_frame = false;
@@ -2975,187 +3161,9 @@ class OpenXrProbe {
           }
           submitted_view_projection_valid = true;
         }
-        // The reticle is drawn into the eye images (--reticle-in-eyes), so
-        // its pose, its scale and the aim blend have to be known while
-        // those images are being recorded, not afterwards as a quad layer
-        // would allow. Nothing here depends on the recording; the atlas
-        // branch below now paints the vignette sprite with this frame's
-        // blend rather than the previous one's.
-        if (enable_gameplay_reticle && submitted_shared_pair_this_frame &&
-            presentation_state.mode == darktidevr::core::
-                                           SharedPresentationMode::stereo_world &&
-            (latest_controller_sample_ || keyboard_mouse_input) &&
-            current_head_valid) {
-          darktidevr::core::SharedGameplayAimState newest_aim{};
-          if (gameplay_aim_state_reader.read(newest_aim) &&
-              (newest_aim.transport_generation !=
-                   gameplay_aim_transport_generation ||
-               newest_aim.sequence >= gameplay_aim_sequence)) {
-            if (newest_aim.transport_generation !=
-                    gameplay_aim_transport_generation ||
-                newest_aim.sequence != gameplay_aim_sequence) {
-              ++gameplay_reticle_transport_samples_;
-            }
-            gameplay_aim_state = newest_aim;
-            gameplay_aim_sequence = newest_aim.sequence;
-            gameplay_aim_transport_generation =
-                newest_aim.transport_generation;
-          }
-          const auto required =
-              darktidevr::core::controller_orientation_valid |
-              darktidevr::core::controller_position_valid;
-          // A hand-aimed reticle disappears with its controller. Keyboard and
-          // mouse aim publishes only world-depth target points from the mouse
-          // pose and never needs a tracked controller.
-          const bool reticle_source_tracked =
-              keyboard_mouse_input
-                  ? gameplay_aim_state.target_point_valid
-                  : (latest_controller_sample_->hands[1].aim_tracking_flags &
-                     required) == required &&
-                        darktidevr::core::pointer_origin_within_reach(
-                            latest_controller_sample_->hands[1].aim_pose.position,
-                            current_head.position, 1.5F);
-          const auto gameplay_aim_now_ns = static_cast<std::uint64_t>(
-              std::chrono::duration_cast<std::chrono::nanoseconds>(
-                  // The producer can publish while xrWaitFrame or the shared
-                  // pair wait blocks. Sample time after the read; frame_start
-                  // would misclassify that new aim as a future timestamp.
-                  std::chrono::steady_clock::now().time_since_epoch())
-                  .count());
-          constexpr std::uint64_t maximum_gameplay_aim_age_ns = 100'000'000ULL;
-          if (gameplay_aim_state.active &&
-              darktidevr::core::gameplay_aim_state_is_fresh(
-                  gameplay_aim_state, gameplay_aim_now_ns,
-                  maximum_gameplay_aim_age_ns) &&
-              reticle_source_tracked) {
-            const auto reticle_distance_metres =
-                gameplay_aim_state.distance_metres;
-            if (gameplay_aim_state.target_point_valid && head_pose_writer) {
-              for (auto entry = gameplay_aim_origin_history.rbegin();
-                   entry != gameplay_aim_origin_history.rend(); ++entry) {
-                if (entry->first != gameplay_aim_state.head_pose_sequence) continue;
-                const auto target = darktidevr::core::resolve_gameplay_aim_target(
-                    gameplay_aim_state, entry->first,
-                    head_pose_writer->transport_generation(),
-                    head_recenter_generation, entry->second);
-                if (target) {
-                  gameplay_reticle_pose = darktidevr::math::Pose{
-                      current_head.orientation, *target};
-                }
-                break;
-              }
-            } else if (!gameplay_aim_state.target_point_valid) {
-              const auto& right = latest_controller_sample_->hands[1];
-              const auto direction = darktidevr::math::rotate(
-                  right.aim_pose.orientation, {0.0F, 0.0F, -1.0F});
-              gameplay_reticle_pose = darktidevr::math::Pose{
-                  current_head.orientation,
-                  {right.aim_pose.position.x + direction.x * reticle_distance_metres,
-                   right.aim_pose.position.y + direction.y * reticle_distance_metres,
-                   right.aim_pose.position.z + direction.z * reticle_distance_metres}};
-            }
-            if (gameplay_reticle_pose) {
-              ++gameplay_reticle_frames_;
-              const auto frame_start_ns = static_cast<std::uint64_t>(
-                  std::chrono::duration_cast<std::chrono::nanoseconds>(
-                      frame_start.time_since_epoch()).count());
-              if (gameplay_aim_state.timestamp_ns > frame_start_ns) {
-                ++gameplay_reticle_post_start_frames_;
-              }
-              if (gameplay_aim_state.hit) {
-                ++gameplay_reticle_hit_frames_;
-              } else {
-                ++gameplay_reticle_miss_frames_;
-              }
-              gameplay_reticle_distance_metres_ = reticle_distance_metres;
-            }
-          }
-        }
-        {
-          const bool ads_target_active =
-              presentation_state.mode == darktidevr::core::SharedPresentationMode::stereo_world &&
-              gameplay_aim_state.active && gameplay_aim_state.aiming_down_sights;
-          const float ads_target = ads_target_active ? 1.0F : 0.0F;
-          const auto ads_dt = std::clamp(
-              std::chrono::duration<float>(frame_start - ads_last_tick).count(), 0.0F, 0.1F);
-          ads_last_tick = frame_start;
-          const auto ads_blend_before = ads_blend;
-          ads_blend += (ads_target - ads_blend) * (1.0F - std::exp(-ads_dt / 0.15F));
-          if (std::abs(ads_target - ads_blend) < 0.005F) ads_blend = ads_target;
-          if ((ads_blend_before <= 0.0F) != (ads_blend <= 0.0F)) {
-            std::cout << "openxr.ads aiming=" << (ads_blend > 0.0F ? 1 : 0)
-                      << " target=" << ads_target << '\n';
-          }
-        }
-        const auto reticle_scale_now = std::chrono::steady_clock::now();
-        if (enable_gameplay_reticle && reticle_scale_now >= next_reticle_scale_poll &&
-            !reticle_in_eyes_flag.empty()) {
-          // Presence is the switch; the file's contents are not read.
-          std::error_code flag_error;
-          const auto present = std::filesystem::exists(
-              std::filesystem::path{reticle_in_eyes_flag}, flag_error);
-          const auto wanted = reticle_in_eyes_environment ||
-                              (!flag_error && present);
-          if (wanted != reticle_in_eyes_requested) {
-            reticle_in_eyes_requested = wanted;
-            std::cout << "openxr.reticle_in_eyes=" << (wanted ? 1 : 0) << '\n';
-          }
-        }
-        if (enable_gameplay_reticle && reticle_scale_file[0] && reticle_scale_now >= next_reticle_scale_poll) {
-          next_reticle_scale_poll = reticle_scale_now + std::chrono::milliseconds(250);
-          std::ifstream input{std::filesystem::path{reticle_scale_file}};
-          float percent{};
-          char extra{};
-          // Keep the last valid value during missing, partial or invalid writes.
-          // Zero hides the reticle (a stereo cinematic publishes it).
-          if ((input >> percent) && !(input >> extra) && std::isfinite(percent) &&
-              (percent == 0.0F || (percent >= 25.0F && percent <= 150.0F))) {
-            const auto updated = percent / 100.0F;
-            if (updated != reticle_scale) {
-              reticle_scale = updated;
-              std::cout << "openxr.reticle_scale_percent=" << percent << '\n';
-            }
-          }
-        }
-        // The reticle sprite lives in the flat capture atlas, which is painted
-        // only while a capture window exists.
-        if (gameplay_reticle_pose && window_capture &&
-            flat_swapchain != XR_NULL_HANDLE) {
-          constexpr std::int32_t gameplay_reticle_extent = 41;
-          // Leave transparent atlas texels outside the submitted rectangle so
-          // compositor filtering cannot sample the adjacent opaque capture.
-          constexpr std::int32_t gameplay_reticle_inset = 2;
-          constexpr auto gameplay_reticle_sample_extent =
-              gameplay_reticle_extent - 2 * gameplay_reticle_inset;
-          gameplay_reticle_quad.layerFlags =
-              XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
-          gameplay_reticle_quad.space = local_space_;
-          gameplay_reticle_quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-          gameplay_reticle_quad.subImage.swapchain = flat_swapchain;
-          gameplay_reticle_quad.subImage.imageRect.offset = {
-              static_cast<std::int32_t>(flat_capture_width) -
-                  gameplay_reticle_extent - 1 + gameplay_reticle_inset,
-              static_cast<std::int32_t>(flat_capture_height) -
-                  gameplay_reticle_extent + gameplay_reticle_inset};
-          gameplay_reticle_quad.subImage.imageRect.extent = {
-              gameplay_reticle_sample_extent, gameplay_reticle_sample_extent};
-          gameplay_reticle_quad.pose.orientation = {
-              gameplay_reticle_pose->orientation.x,
-              gameplay_reticle_pose->orientation.y,
-              gameplay_reticle_pose->orientation.z,
-              gameplay_reticle_pose->orientation.w};
-          gameplay_reticle_quad.pose.position = {
-              gameplay_reticle_pose->position.x,
-              gameplay_reticle_pose->position.y,
-              gameplay_reticle_pose->position.z};
-          const auto angular_size_metres = std::clamp(
-              gameplay_reticle_distance_metres_ * 0.049F, 0.105F, 0.84F) * reticle_scale *
-              (1.0F - 0.4F * ads_blend) *
-              (static_cast<float>(gameplay_reticle_sample_extent) /
-               static_cast<float>(gameplay_reticle_extent));
-          gameplay_reticle_quad.size = {angular_size_metres,
-                                        angular_size_metres};
-        }
+        // The draw below needs the reticle before the images are
+        // recorded.
+        if (reticle_in_eyes_requested) derive_gameplay_reticle();
         const bool spatial_menu_overlay =
             presentation_sequence != 0 &&
             presentation_state.mode == darktidevr::core::
@@ -3482,7 +3490,12 @@ class OpenXrProbe {
               // panel renderer's board texture is, and the sprite's texel
               // rectangle is the same in both because the board was created
               // from the flat capture's own description.
-              if (panel_renderer && reticle_in_eyes_requested) {
+              // Not on a frame whose board is also going to be drawn: the
+              // board samples the whole flat rectangle, this corner included,
+              // and the atlas branch skips the full refresh that would have
+              // covered it again (review, 18 September).
+              if (panel_renderer && reticle_in_eyes_requested &&
+                  !use_flat_capture) {
                 auto board_destination = destination;
                 board_destination.pResource = panel_renderer->board_texture();
                 command_list->CopyTextureRegion(&board_destination, left, top,
@@ -3714,6 +3727,10 @@ class OpenXrProbe {
             }
           }
         }
+        // Two different questions: whether the images were drawn into at all
+        // (which decides the barrier below) and whether any cuff was drawn
+        // (which the close diagnostic reports).
+        bool drew_into_eye_images{};
         bool rendered_tracked_cuffs{};
         const bool draw_tracked_cuffs =
             tracked_cuff_renderer && submitted_shared_pair_this_frame &&
@@ -3794,12 +3811,21 @@ class OpenXrProbe {
                                 {static_cast<std::int32_t>(width / 2),
                                  static_cast<std::int32_t>(height)}};
               }
-              rendered_gameplay_reticle |=
+              // Issued is not seen: a quad beyond the far plane is clipped
+              // away, and standing the layer down on a draw that produced
+              // nothing would lose the reticle entirely (review,
+              // 18 September).
+              const auto visible =
+                  darktidevr::harness::panel_quad_centre_visible(
+                      submitted_view_poses[eye], submitted_view_fovs[eye],
+                      reticle_quad.pose, reticle_quad.size);
+              const auto drawn =
                   panel_renderer->record(command_list.Get(), eye_target,
                                          eye_rect, eye,
                                          submitted_view_poses[eye],
                                          submitted_view_fovs[eye],
                                          &reticle_quad, 1, false) != 0U;
+              rendered_gameplay_reticle |= drawn && visible;
             }
             panel_renderer->end(command_list.Get());
             if (rendered_gameplay_reticle && !gameplay_reticle_layer_logged) {
@@ -3880,13 +3906,14 @@ class OpenXrProbe {
                 destination_barriers.data());
             projected_eye_readback_copied_this_frame = true;
           }
-          rendered_tracked_cuffs = true;
+          drew_into_eye_images = true;
+          rendered_tracked_cuffs = draw_tracked_cuffs;
           if (frame_cuff_draws != 0U) {
             ++tracked_cuff_frames;
             tracked_cuff_draws += frame_cuff_draws;
           }
         }
-        if (!rendered_tracked_cuffs &&
+        if (!drew_into_eye_images &&
             (use_shared_pair || use_cached_pair || use_generated_pair)) {
           for (auto& barrier : destination_barriers) {
             std::swap(barrier.Transition.StateBefore,
@@ -4820,6 +4847,9 @@ class OpenXrProbe {
               hit_position.z + panel_normal.z * 0.004F}},
             {0.045F, 0.045F}, pointer_target_texels);
       }
+      // The quad layer keeps its old timing: the freshest aim state this
+      // frame can carry.
+      if (!gameplay_reticle_derived) derive_gameplay_reticle();
       // Head-locked focus vignette while aiming down sights: a metre ahead in
       // view space, wide enough to cover the field of view, sampling the
       // atlas sprite whose alpha follows ads_blend.

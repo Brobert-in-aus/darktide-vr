@@ -316,6 +316,36 @@ int main() {
                     std::to_string(expected[1]));
       }
     }
+    // A draw that is issued is not a draw that is seen. The gameplay reticle
+    // is the first panel quad placed at an arbitrary world depth -- the mod
+    // publishes the aim distance up to 200 m -- and a caller that stands the
+    // quad layer down when it draws has to know the quad is inside the
+    // frustum (review, 18 September).
+    const auto quad_at = [&](float metres) {
+      XrPosef pose = quad.pose;
+      const auto centre = darktidevr::math::transform_point(
+          darktidevr::math::Pose{{eye_pose.orientation.x, eye_pose.orientation.y,
+                                  eye_pose.orientation.z, eye_pose.orientation.w},
+                                 {eye_pose.position.x, eye_pose.position.y,
+                                  eye_pose.position.z}},
+          {0.0F, 0.0F, -metres});
+      pose.position = {centre.x, centre.y, centre.z};
+      return pose;
+    };
+    for (const float metres : {0.5F, 5.0F, 99.0F, 200.0F, 900.0F}) {
+      require(darktidevr::harness::panel_quad_centre_visible(
+                  eye_pose, fov, quad_at(metres), quad.size),
+              std::string("A quad ") + std::to_string(metres) +
+                  " m ahead should be inside the frustum");
+    }
+    require(!darktidevr::harness::panel_quad_centre_visible(
+                eye_pose, fov, quad_at(1200.0F), quad.size),
+            "A quad past the far plane is not visible");
+    require(!darktidevr::harness::panel_quad_centre_visible(
+                eye_pose, fov, quad_at(-2.0F), quad.size),
+            "A quad behind the eye is not visible");
+    std::cout << "panel_renderer.visible_to_metres=900\n";
+
     D3D12_RANGE no_write{0, 0};
     readback->Unmap(0, &no_write);
     std::cout << "panel_renderer.probes=" << probes.size() << '\n';
