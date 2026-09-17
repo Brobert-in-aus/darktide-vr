@@ -6,74 +6,78 @@ runtime package records the exact source revision alongside the version.
 
 ## Unreleased
 
-- Fixed, from 16 September's build: with the item radial or the
-  communication wheel open, a stick flick also fired the stick's own binding
-  (a weapon switch on a flick up).
-- Second worn round of 17 September: the full body sits 10 cm lower and
-  5 cm further back under your eye and turns smoothly; the servo skulls no
-  longer flicker as you move, come to your hand while you hold them and fly
-  out from it; the F8 body mirror is a true copy of your body that stands
-  still as you walk; hand display text is fitted to its space; the item
-  radial's labels are sharper and brighter; the ammo count and the charge
-  display sit 2 cm further from the weapon; a guard against slivers beside
-  distant pickup markers.
-- Worn results of 17 September, the same evening: the sliver of the wrist
-  bars beside the ammo count is gone (with Virtual Desktop's FOV tangent
-  below 100 per cent the smaller eye target let the bars spill into the next
-  overlay cell); the melee charge count and bars sit left of the weapon,
-  like the ammo count; the item radial stays open with a gun out and an
-  empty sector no longer switches weapon; the push-to-talk zone is a third
-  smaller; the servo skulls' sides really swap, and they hold their place as
-  you glance around, swing round after you when you turn and move up to
-  30 cm ahead as you run; "Full body (experimental)" now shows the body
-  scaled to your height with arms solved to your controllers (it used to
-  turn on an older mode whose head floated above the body); F8 stands a
-  copy of your character in front of you in the Psykhanium; "Tag what your
-  off hand points at" is withdrawn.
+Since 0.2.0-alpha.1. Everything called experimental is off until you turn it
+on in the mod's settings; the rest applies to everyone.
+
+### New experimental options
+
+- **Full body.** A copy of your character stands where you do, scaled so its
+  neck meets your head, with its arms solved to your controllers: look down
+  and you see your own body rather than a pair of floating hands. It takes a
+  few seconds to appear and it spawns a second copy of your character, so
+  expect a frame-rate cost. Not in the Mourningstar.
+- **Grab and throw the servo skull.** With the flamethrower skull talented,
+  it hovers at your off-hand side; reach out and grip it to take it, and
+  throw. All your skulls now keep their place as you glance around, swing
+  after you when you turn, and move up to 30 cm ahead of you as you run.
+- **Item radial at your hand.** Hold the carried-items control and your
+  item, stim and device appear at your off hand; flick the stick to one to
+  take it. A plain tap still cycles as it always did.
+- **Push to talk with a hand at your mouth.** Bring your off hand up in
+  front of your mouth to open your microphone and take it away to close it.
+  The hand buzzes faintly while it is open.
+- **Weapon charge display.** A melee weapon's special charges as a count, as
+  the HUD's bars, or neither, drawn beside the weapon.
+- **Aim zoom.** The world comes 12 per cent closer while you aim down the
+  sights, eased in and out; 0 to 30 per cent, or 0 to turn it off.
+
+### New shortcut
+
+- **F8, in the Psykhanium**: a copy of your character stands a few paces in
+  front of you, posed exactly as you are, so you can see what everyone else
+  sees. Press again to remove it.
+
+### Fixed
+
 - Loading screens and menus no longer turn against your head or compress
-  with Virtual Desktop's FOV tangent below 100 per cent: the viewer draws
-  the board and the menu pointer itself, from the same eye poses and field
-  of view as the world, instead of handing Virtual Desktop quad layers
-  (which it drew with a projection that did not match the cropped display).
-- Worn results of 16 September, in the same evening: the item radial
-  picks on the flick (a flick-and-press no longer falls through to the stock
-  weapon cycle); push to talk hums faintly on the talking hand while held;
-  the melee charge count moves to where the charge bars sit and one
-  "Weapon charge display" option chooses count, bars or neither; "Full body
-  (experimental)" is in the settings menu; the movement option reads
-  "Left-hand-relative"; the flamethrower skull rests on the off-hand side
-  (the medical and regular skulls on the other) and every skull follows
-  with a small lag instead of sitting rigidly on the body; loading and
-  menu boards are re-seated in front of you after a recenter; a sliver of a
-  neighbouring cell beside the ammo count is gone.
-- Experimental, opt-in, off by default: `darktidevr_gpu_process_priority.flag`
-  (`above_normal`, `high` or `realtime`) asks Windows for that GPU
-  scheduling class for the game's process; `darktidevr_queue_priority.flag`
-  asks for the game's D3D12 queues at high priority. Measured in the Hub on
-  16 September: the process class at `high` took a third off the pair's GPU
-  time in one run and nothing in two repeats (no demonstrated effect);
-  queue priority did nothing. Neither changes anything without its flag.
-
-New, each an experimental option that is off until you turn it on:
-
-- Reach to interact and inspect by bringing the weapon up were built, tried
-  worn on 16 September, and withdrawn from the menu: reach is impractical
-  (a hand's reach is far shorter than the interaction distance) and inspect
-  is pointless with IK hands. Their saved values are ignored.
-- **Push to talk with a hand at your mouth.** Bring your off hand up in front
-  of your mouth to open your microphone, and take it away to close it. It
-  works alongside your push to talk binding, and never while that hand is on
-  the gun.
-- **Tag what your off hand points at.** Hold your off hand out ahead and press
-  tag: the tag leaves that hand instead of your weapon, so you can point
-  something out while your gun is aimed elsewhere.
-
-Fixes:
-
+  when Virtual Desktop's FOV tangent is below 100 per cent. The viewer now
+  draws them itself, from the same eye poses and field of view as the world.
+- The aim-down-sights focus vignette now appears at all. It had been painted
+  into one of several images and its darkening fell outside what the headset
+  can see, so it has never been visible since it was built.
+- A stick flick with the item radial or the communication wheel open no
+  longer also fires the stick's own binding, which showed up as a weapon
+  switch.
+- The slivers of neighbouring displays beside the ammo count and the charge
+  display are gone, and text on the hand displays is fitted to its space
+  instead of spilling out of it. Both came from Virtual Desktop's FOV
+  tangent making the eye image, and so every display's cell, smaller.
+- The ammo count and the charge display sit to the left of the weapon, clear
+  of the holstered one.
+- Servo skulls sit on the sides they should, and no longer flicker as you
+  move.
 - The neutral eye position the view is built from is measured correctly
-  wherever your character happens to be facing when you enter a level. It was
-  measured against the recentred play space, so entering a level turned away
-  from it lost the forward part of the offset.
+  wherever your character happens to be facing when you enter a level.
+- The item radial stays open while you hold its control with a gun out, and
+  reaching for an interaction works again while a weapon is wielded.
+- The push-to-talk zone at your mouth is a third smaller, so it no longer
+  opens with a hand merely near your face.
+
+### Built, tried and withdrawn
+
+- **Reach to interact** and **inspect by bringing the weapon up**: reach is
+  impractical (a hand's reach is far shorter than the game's interaction
+  distance) and inspecting is pointless when you can already turn the weapon
+  in your hands. **Tag what your off hand points at** did not work reliably
+  worn. All three are out of the menu and their saved values are ignored.
+
+### For tinkerers
+
+- `darktidevr_gpu_process_priority.flag` (`above_normal`, `high` or
+  `realtime`) asks Windows for that GPU scheduling class for the game, and
+  `darktidevr_queue_priority.flag` asks for its D3D12 queues at high
+  priority. Measured in the Hub on 16 September, neither showed a repeatable
+  gain. Nothing changes without the file.
 
 ## 0.2.0-alpha.1 (15 September 2026)
 

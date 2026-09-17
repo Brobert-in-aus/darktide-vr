@@ -23,6 +23,20 @@ have rough edges on yours. Read the "Known limits" section before you judge it.
   runtimes and headsets are untested; controllers other than Touch fall back
   to the basic OpenXR profile (select and menu only) until their bindings
   are added.
+- Virtual Desktop's own settings matter more than they look. Two in
+  particular:
+  - **FOV tangent.** Below 100 per cent it crops the image the headset
+    renders, which costs fewer pixels and gains frames: at 90 per cent the
+    eye image goes from 2112x2304 to 1908x2076, about a fifth fewer pixels,
+    for roughly a tenth off the time each pair of eyes takes. The mod is
+    built to follow whatever you set. If you ever see something drawn in the
+    wrong place or the wrong size, say what your tangent is: it has been the
+    cause more than once.
+  - **Streaming frame rate.** Lowering it can *raise* the game's own frame
+    rate, because the compositor and the encoder take a share of the GPU for
+    every frame they are given. Going from 120 to 100 took this machine from
+    about 55 rendered pairs a second to about 65 to 70. Worth trying both
+    ways on yours.
 - Optional: Custom HUD (continued), the maintained fork of Custom HUD,
   which the VR mod uses for HUD layout editing. That is the version the
   integration was built and tested against (2.1.6); the original Custom
@@ -171,6 +185,38 @@ without choosing and the control cycles through them as it always did, so
 nothing is lost by turning this on. While the radial is open the stick picks
 rather than turns you. Not in the Mourningstar.
 
+### Full body (experimental)
+
+Mod Options, Darktide VR, Experimental features, "Full body". A copy of your
+own character stands where you do, scaled so that its neck meets your head,
+with its arms solved to your controllers: look down and you see your body,
+your gear and your gloves rather than a pair of floating hands. It takes a
+few seconds to appear after you turn it on, and it spawns a second copy of
+your character, so expect it to cost some frames. It is not shown in the
+Mourningstar.
+
+**F8** (rebindable, Mod Options, "Body mirror shortcut") stands another copy
+a few paces in front of you in the Psykhanium, posed exactly as you are and
+facing you, so you can see what everyone else sees. Press it again to remove
+it.
+
+### Grab and throw the servo skull (experimental)
+
+Mod Options, Darktide VR, Experimental features, "Grab and throw the servo
+skull". With the flamethrower servo skull talented, it hovers at your
+off-hand side, a little forward, where you can reach it: grip it and it
+comes to your hand, and letting go with a target marked sends it. All of
+your skulls keep their place as you glance about, swing after you when you
+turn, and move up to 30 cm ahead of you as you run, so the one you want to
+grab is easier to find.
+
+### Aim zoom (experimental)
+
+Mod Options, Darktide VR, "Aim zoom (%)". While you aim down the sights the
+world comes closer by this much, eased in and out with the aim; 12 per cent
+by default, up to 30, and 0 turns it off. It needs "Aim focus" on, which
+also dims the edges of your view and tightens the crosshair while you aim.
+
 ### Wrist display, teammate status (experimental)
 
 - "Wrist display": health (white), toughness (the HUD's blue) and stamina bars
@@ -278,8 +324,9 @@ beside the hand.
 - Ground previews, such as the Skitarii flamethrower skull's target area,
   are decals: keep Decals on in the game's graphics settings or they do not
   show.
-- Weapon charge meters (for example the Skitarii shock maul's) sit at the
-  centre of the HUD panel rather than around the hand-aimed crosshair.
+- Weapon charge meters (for example the Skitarii shock maul's) are on the HUD
+  panel as the game draws them; "Weapon charge display" puts a copy at your
+  weapon hand, as a count, as the HUD's own bars, or neither.
 - The gun hand's glove still follows the character's animation, so it can
   shift slightly while strafing and differs a little between weapons.
 - The crosshair may still sit slightly off a gun's iron sights. Stray
