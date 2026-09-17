@@ -5,15 +5,24 @@ native D3D12 producer, a Lua mod, and a separate OpenXR viewer.
 
 For the proposed first tester release, see [very early alpha readiness](docs/EARLY-ALPHA-READINESS.md).
 
-Start with [current status and operation](docs/CURRENT-STATUS.md),
-[working agreements](AGENTS.md), and the
-[maintenance implementation plan](docs/maintenance-plan-2026-09-05.md).
-For the next development session, read the
-[11 September end-of-day handover](docs/handoffs/2026-09-11-end-of-day.md),
-whose "Next priorities" section names the current focus (DLSS frame-generation
-blur around HUD objects, then cylindrical billboarding), and the
-[11 September todo list](docs/phase1/todo-2026-09-11.md). The
-[docs index](docs/README.md) lists the maintained entry points.
+Start with the [working agreements](AGENTS.md) and the
+[docs index](docs/README.md), which lists the maintained entry points.
+
+**For the next development session, read the newest of each of these** (they
+are dated, and the newest is always the current one):
+[`docs/handoffs/`](docs/handoffs/) for what happened last and why,
+[`docs/phase1/todo-*.md`](docs/phase1/) for what is next, and
+[`docs/phase1/test-checklist-*.md`](docs/phase1/) for what is waiting on a
+worn test. At the time of writing that is the
+[17 September handover](docs/handoffs/2026-09-17-session.md), the
+[18 September list](docs/phase1/todo-2026-09-18.md) with its
+[detailed away-list](docs/phase1/todo-2026-09-18-detailed.md), and the
+[worn checklist](docs/phase1/test-checklist-2026-09-16.md).
+
+[Current status and operation](docs/CURRENT-STATUS.md) and the
+[maintenance implementation plan](docs/maintenance-plan-2026-09-05.md) cover
+the engine and DLSS investigations; both predate the VR presentation work
+above and are not a description of what the mod does today.
 The game integration is build-specific and used with EAC inactive. The project
 contains no anti-cheat bypass implementation.
 

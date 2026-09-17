@@ -1,8 +1,11 @@
 # Phase 1: native stereo VR
 
-Next session: [9 September full todo](todo-2026-09-09.md) and
-[8 September night handoff](../handoffs/2026-09-08-night.md). Tonight's tested
-changes are accepted; billboarding is next and pickup sizing remains open.
+**Next session: read the newest `todo-*.md` in this folder and the newest
+handover in [../handoffs](../handoffs/).** They are dated, the newest is the
+current one, and this line does not need editing when a new one is written.
+The worn checks waiting on the user are in the newest
+`test-checklist-*.md`; the results of past worn rounds are in the
+`worn-results-*.md` files beside it.
 
 Development is in progress. [Current status and operation](../CURRENT-STATUS.md)
 is authoritative for defaults, launch instructions, and pending acceptance.

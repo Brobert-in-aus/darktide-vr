@@ -10,9 +10,15 @@ anything with a date in its name as history unless a current note links to it.
 - [Current status and operation](CURRENT-STATUS.md)
 - [Working agreements](../AGENTS.md) and [project infrastructure](PROJECT-INFRASTRUCTURE.md)
 - [Maintenance implementation plan](maintenance-plan-2026-09-05.md)
-- Latest handover: [12 September](handoffs/2026-09-12.md) (after
-  [11 September end of day](handoffs/2026-09-11-end-of-day.md));
-  latest todo: [11 September](phase1/todo-2026-09-11.md)
+- **The current work is always the newest dated file of each kind**: the
+  newest [handover](handoffs/), the newest `todo-*.md` and the newest
+  `test-checklist-*.md` in [phase1](phase1/). As of 18 September that is the
+  [17 September handover](handoffs/2026-09-17-session.md), the
+  [18 September todo](phase1/todo-2026-09-18.md) and its
+  [detailed away-list](phase1/todo-2026-09-18-detailed.md), and the
+  [worn checklist](phase1/test-checklist-2026-09-16.md) (items 47 to 54).
+  The two worn rounds of 17 September are recorded in
+  [worn-results-2026-09-17.md](phase1/worn-results-2026-09-17.md).
 - [User guide](USER-GUIDE.md) (ships in the package), [very early alpha readiness](EARLY-ALPHA-READINESS.md) and [release package](RUNTIME-PACKAGE.md)
 - [Whole-project code review, 11 September](CODE-REVIEW-2026-09-11.md)
 - [Performance bundle, 11 September](PERFORMANCE-BUNDLE-2026-09-11.md): the
