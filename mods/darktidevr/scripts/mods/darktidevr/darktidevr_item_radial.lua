@@ -101,14 +101,16 @@ function Radial.step(state, grip, x, y)
     return {open = true, index = index, neutral_seen = neutral_seen, delivered = delivered}, deliver
 end
 
--- Whether the radial gives the claim slot to another feature's request this
--- frame. The slot carries one request; two-hand support offers one every
--- frame a gun is out, wherever the off hand is, so yielding to any request
--- closed the radial a moment after it opened with a ranged weapon wielded
--- and left the stick to its stock flick, the weapon switch (worn, 17
--- September). It yields only to a request that wants the hand now (acquire),
--- whose hand is on its way (approach), or whose claim is already held
--- (other_holds: replacing a held grip's request would cancel the grip). Pure.
+-- Whether a feature gives the claim slot to another's request this frame.
+-- The slot carries one request; two-hand support offers one every frame a
+-- gun is out, wherever the off hand is, so yielding to any request closed
+-- the radial a moment after it opened with a ranged weapon wielded and left
+-- the stick to its stock flick, the weapon switch (worn, 17 September), and
+-- it left reach-to-interact dead for as long as a gun was out. Yield only to
+-- a request that wants the hand now (acquire), whose hand is on its way
+-- (approach), or whose claim is already held (other_holds: replacing a held
+-- grip's request would cancel the grip). Pure; shared with the other
+-- claimants through `presentation.claim_yields`.
 function Radial.yields(request, other_holds)
     if type(request) ~= "table" then return request ~= nil and request ~= false end
     return request.acquire == true or request.approach == true or other_holds == true
@@ -185,7 +187,13 @@ function Radial.install(mod, presentation, observation)
         end
         -- One owner table for the whole hold: a changed owner cancels a claim.
         if not claim or claim.control ~= id then claim = {control = id} end
-        return {control = id, owner = claim, action = "unbound", acquire = true, retain = true}, true
+        -- `exclusive_stick`: while this control is physically down the stick
+        -- picks a sector and must not also fire its own binding. The bindings
+        -- apply it from the press itself, not from the radial's open state,
+        -- which is only written after their sample (the user, 17 September:
+        -- "infrequently it'll pull out the item").
+        return {control = id, owner = claim, action = "unbound", acquire = true,
+            retain = true, exclusive_stick = true}, true
     end
 
     -- Whether the stick belongs to the radial this frame.

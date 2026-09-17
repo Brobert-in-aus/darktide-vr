@@ -6461,6 +6461,12 @@ function presentation.eye_pose(unit)
     return Unit.world_position(eye_unit, 1), Unit.world_rotation(eye_unit, 1)
 end
 
+-- Whether a feature hands the one claim slot to another's request this
+-- frame (darktidevr_item_radial's rule, shared).
+function presentation.claim_yields(request, other_holds)
+    return presentation.item_radial_module.yields(request, other_holds)
+end
+
 -- The magnification the rendered frusta carry this sample: 1 unless the
 -- sights are up and the zoom option is above zero, eased in and out with the
 -- vignette's time constant. State hangs off `presentation` because this
@@ -6662,8 +6668,10 @@ function presentation.inject_gameplay_input(self, main_t, input)
             controller_observation.right_aim_usable)
     end
     if presentation.two_hand then
-        -- A holster or radial claim is not the support hand's grip.
-        presentation.two_hand.finish((holster_request or radial_request) and presentation.holsters.idle_grip or
+        -- A holster or radial claim is not the support hand's grip. The
+        -- radial is its own option, so the holsters may not be loaded.
+        local idle = presentation.holsters and presentation.holsters.idle_grip
+        presentation.two_hand.finish((holster_request or radial_request) and idle or
             presentation.controller_bindings.support_grip)
     end
     if presentation.haptics then
@@ -6754,6 +6762,17 @@ mod:hook_safe(
             controller_observation.primary_action_injected = false
             presentation.controller_bindings.sample(false, 0, nil, nil, false,
                 controller_observation.last_transport_generation, active_game_mode_name())
+            -- The cancelled sample raises the grip's cancelled edge; the
+            -- claimants only see it if they are finished as on a live frame,
+            -- or a holster claim and the skull's held state outlive the
+            -- service by a frame.
+            local cancelled_grip = presentation.controller_bindings.support_grip
+            if presentation.holsters then
+                pcall(presentation.holsters.finish_grip, cancelled_grip, true)
+            end
+            if presentation.item_radial then
+                pcall(presentation.item_radial.finish, cancelled_grip, false)
+            end
             if presentation.two_hand then presentation.two_hand.clear(true) end
             if presentation.gameplay_ui then presentation.gameplay_ui.sample(false, 0) end
             presentation.communication_input.cancel()
@@ -15693,9 +15712,11 @@ presentation.holsters = mod:io_dofile(
 presentation.reach_interact = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_reach_interact"
 ).install(mod, presentation)
-presentation.item_radial = mod:io_dofile(
-    "darktidevr/scripts/mods/darktidevr/darktidevr_item_radial"
-).install(mod, presentation, controller_observation)
+-- The module itself is kept: its claim-slot rule is shared (presentation.claim_yields).
+presentation.item_radial_module = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_item_radial")
+presentation.item_radial = presentation.item_radial_module.install(
+    mod, presentation, controller_observation)
 presentation.weapon_inspect = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_weapon_inspect"
 ).install(mod, presentation)

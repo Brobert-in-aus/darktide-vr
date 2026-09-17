@@ -245,8 +245,17 @@ function Reach.install(mod, presentation)
 
     function api.sample(unit, active, t, support_request)
         -- A holster or two-hand claim owns the grip first: reaching for a door
-        -- must not take the grip away from drawing a weapon.
-        if support_request then claim, reach_target = nil, nil; return support_request end
+        -- must not take the grip away from drawing a weapon. Only a claim that
+        -- wants the hand now, though: two-hand support offers a request every
+        -- frame a gun is out, wherever the off hand is, which left reaching
+        -- dead for as long as a weapon was wielded (the same fault the item
+        -- radial had, 17 September).
+        local grip = presentation.controller_bindings and presentation.controller_bindings.support_grip
+        local other_holds = type(grip) == "table" and (grip.held == true or grip.pressed == true)
+        if presentation.claim_yields(support_request, other_holds) then
+            claim, reach_target = nil, nil
+            return support_request
+        end
         local ok, request = pcall(sample, unit, active, t)
         if not ok then
             -- Keep going. One bad frame during a load or a respawn used to

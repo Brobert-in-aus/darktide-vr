@@ -4845,7 +4845,13 @@ class OpenXrProbe {
                     &pointer_quads[pointer_index]);
           }
         }
-        if (gameplay_reticle_pose && reticle_scale > 0.0F) {
+        // The quad carries a swapchain only when the flat capture exists
+        // (its sprite lives in that texture). Submitting it without one sends
+        // a null swapchain to xrEndFrame, which throws and stops the viewer;
+        // reachable today through the synthetic benchmark, which asks for the
+        // reticle and defers the window capture.
+        if (gameplay_reticle_pose && reticle_scale > 0.0F &&
+            gameplay_reticle_quad.subImage.swapchain != XR_NULL_HANDLE) {
           layers[layer_count++] =
               reinterpret_cast<const XrCompositionLayerBaseHeader*>(
                   &gameplay_reticle_quad);

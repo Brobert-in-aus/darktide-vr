@@ -400,13 +400,22 @@ function Bindings.install(mod)
             stick_active=false; active=false; api.held=0
         end
         stick_generation = generation
+        -- The request in the claim slot, resolved early: a claimant that owns
+        -- the stick (the item radial) must own it from the frame its control
+        -- goes down, not from the frame after, or a stick already over its
+        -- threshold fires its own binding as the claim is taken.
+        local request_bit=type(support)=='table' and Bindings.control_bit(support.control) or nil
+        local request_mask=request_bit and Bindings.REQUEST_ACTIONS[support.action] or nil
+        local request_valid=request_bit and request_mask~=nil and support.owner~=nil
+        local claim_owns_stick = request_valid and support.exclusive_stick==true and
+            bit.band(physical,request_bit)~=0
         local axes_valid = enabled == true and stick_usable == true and
             type(stick_x)=="number" and type(stick_y)=="number" and
             stick_x>=-1 and stick_x<=1 and stick_y>=-1 and stick_y<=1
         -- An explicit HUD gesture owns every directional channel together.
         -- Ending/cancelling that claim cannot turn a still-deflected stick into
         -- a gameplay action, even if it changes sectors before reaching neutral.
-        if exclusive_stick==true then stick_rearm=true end
+        if exclusive_stick==true or claim_owns_stick then stick_rearm=true end
         if stick_rearm and exclusive_stick~=true and axes_valid and
             math.max(math.abs(stick_x),math.abs(stick_y))<=0.25 then stick_rearm=false end
         axes_valid=axes_valid and not stick_rearm
@@ -455,9 +464,7 @@ function Bindings.install(mod)
         -- The caller supplies weapon/tracking identity and acquisition/retention
         -- tests; saved user bindings are never rewritten. No caller means the
         -- original mapper behavior, including ordinary keyboard coexistence.
-        local request_bit=type(support)=='table' and Bindings.control_bit(support.control) or nil
-        local request_mask=request_bit and Bindings.REQUEST_ACTIONS[support.action] or nil
-        local request_valid=request_bit and request_mask~=nil and support.owner~=nil
+        -- (request_bit/mask/valid are resolved above, before the stick.)
         local cancelled_grip=0
         if grip_claim then
             local down=bit.band(physical,grip_claim.bit)~=0

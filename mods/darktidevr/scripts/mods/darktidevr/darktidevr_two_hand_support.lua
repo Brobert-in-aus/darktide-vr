@@ -177,6 +177,10 @@ function Support.new(Pose)
     function api.finish(grip)
         api.held=false
         api.stock_active=false
+        -- The caller may have no grip at all (another claimant owns the slot
+        -- and its module is absent): treat that as a released grip rather
+        -- than indexing nil.
+        if type(grip)~='table' then grip={held=false,pressed=false,released=false,cancelled=false} end
         if not context or not identity then filter.reset(); stock_anchor.reset(); api.in_zone=false; api.snap=0; return end
         local stock=stock_anchor.update(context,identity.profile.socket,identity.stock,
             grip.held and not grip.cancelled,identity)
