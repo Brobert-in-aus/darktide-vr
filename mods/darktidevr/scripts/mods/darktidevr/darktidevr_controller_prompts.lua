@@ -213,8 +213,8 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
     end
     -- Stock prologue caching watches keyboard keys and device selection, which
     -- do not change when a VR control is remapped or tracking becomes unavailable.
-    mod:hook("HudElementPrologueTutorialInfoBox","_should_update_input",function(func,self,info)
-        local stock=func(self,info)
+    mod:hook("HudElementPrologueTutorialInfoBox","_should_update_input",function(func,self,info,...)
+        local stock=func(self,info,...)
         if not info or not info.input_descriptions then return stock end
         local current=bindings.revision*2+(enabled() and 1 or 0)
         local changed=revisions[self]~=current

@@ -25,8 +25,8 @@ function CombatDirection.install(mod, aim)
     -- mod boot. Attach after the game requires it in its normal startup order.
     mod:hook_require("scripts/extension_systems/unit_data/player_unit_data_extension",
         function(data_class)
-        mod:hook(data_class, "read_component", function(func, self, name)
-            local component = func(self, name)
+        mod:hook(data_class, "read_component", function(func, self, name, ...)
+            local component = func(self, name, ...)
             if scope and self._unit == scope.unit and name == "first_person" then
                 writes = writes + 1
                 if writes == 1 then

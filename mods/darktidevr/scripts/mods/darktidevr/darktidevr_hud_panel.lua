@@ -1103,13 +1103,13 @@ function HudPanel.install(mod)
                 setting_id == "focus_warning" or
                 setting_id == "hud_visible" then HudPanel.read_settings(mod) end
     end
-    mod:hook("UIConstantElements", "draw", function(func, self, dt, t, input_service)
+    mod:hook("UIConstantElements", "draw", function(func, self, dt, t, input_service, ...)
         local renderer = state.resource_renderer
         if not state.mirror or not state.enabled or not renderer or
                 state.hud_visible == false or not state.last_authored_t or
                 math.abs(state.last_authored_t - t) > 0.1 or
                 type(self._elements_array) ~= "table" then
-            return func(self, dt, t, input_service)
+            return func(self, dt, t, input_service, ...)
         end
         local source = self._ui_renderer
         place_constant_nodes(self)
@@ -1124,7 +1124,7 @@ function HudPanel.install(mod)
                 wrapped[#wrapped + 1] = element
             end
         end
-        local ok, err = pcall(func, self, dt, t, input_service)
+        local ok, err = pcall(func, self, dt, t, input_service, ...)
         for i = 1, #wrapped do wrapped[i].draw = nil end
         if not ok then error(err, 0) end
         if #wrapped > 0 and not state.mirror_logged then
@@ -1134,7 +1134,7 @@ function HudPanel.install(mod)
         end
     end)
 
-    mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
+    mod:hook("UIHud", "update", function(func, self, dt, t, input_service, ...)
         update_enabled_flag(mod, t or 0)
         HudPanel.poll_window_focus(t or 0)
         HudPanel.update_editor_request(self)
@@ -1143,7 +1143,7 @@ function HudPanel.install(mod)
             HudPanel.layout_status(self)
         end
         if state.owner ~= self or not state.resource_renderer then
-            return func(self, dt, t, input_service)
+            return func(self, dt, t, input_service, ...)
         end
         if state.settings_dirty then
             -- Refresh retained fixed widgets on their next normal update. Keep
@@ -1174,7 +1174,7 @@ function HudPanel.install(mod)
         local previous = state.updating_owner
         state.updating_owner = self
         input_service = editor_input(input_service)
-        local result = pack(pcall(func, self, dt, t, input_service))
+        local result = pack(pcall(func, self, dt, t, input_service, ...))
         state.updating_owner = previous
         if not result[1] then error(result[2], 0) end
         if editor_changed then
@@ -1186,10 +1186,10 @@ function HudPanel.install(mod)
         return unpack(result, 2, result.n)
     end)
 
-    mod:hook("UIHud", "draw", function(func, self, dt, t, input_service)
+    mod:hook("UIHud", "draw", function(func, self, dt, t, input_service, ...)
         if not state.enabled or not self._ui_renderer or
                 type(self._elements_array) ~= "table" then
-            return func(self, dt, t, input_service)
+            return func(self, dt, t, input_service, ...)
         end
         if state.resource_renderer then
             local width, height = target_extent()
@@ -1209,7 +1209,7 @@ function HudPanel.install(mod)
                 mod, self, self._ui_renderer, state.pending_world)
         end
         if not resource_renderer then
-            return func(self, dt, t, input_service)
+            return func(self, dt, t, input_service, ...)
         end
         HudPanel.layout_status(self)
         input_service = editor_input(input_service)
@@ -1221,9 +1221,9 @@ function HudPanel.install(mod)
 
         -- Every temporary mutation must unwind even if stock drawing, queue
         -- construction or the dependency sample throws. Restore before rethrow.
-        local ok, result = pcall(function()
+        local ok, result = pcall(function(...)
             self._elements_array = spatial
-            local spatial_result = pack(func(self, dt, t, input_service))
+            local spatial_result = pack(func(self, dt, t, input_service, ...))
 
             if state.last_authored_t ~= t then
                 -- The preceding frame's UI pass has been submitted. Copy it
@@ -1255,7 +1255,7 @@ function HudPanel.install(mod)
                 end
                 self._elements_array = fixed
                 self._ui_renderer = resource_renderer
-                func(self, dt, t, input_service)
+                func(self, dt, t, input_service, ...)
                 HudPanel.draw_editor_notice(resource_renderer)
                 self._ui_renderer = source_renderer
                 if state.diagnostic then
@@ -1273,7 +1273,7 @@ function HudPanel.install(mod)
                 state.last_authored_t = t
             end
             return spatial_result
-        end)
+        end, ...)
         self._ui_renderer = source_renderer
         self._elements_array = source_elements
         if not ok then
@@ -1285,7 +1285,7 @@ function HudPanel.install(mod)
             -- Spatial elements already drew. Restore only fixed status on the
             -- stock renderer, with the same unwind guarantee as normal drawing.
             self._elements_array = fixed
-            local fallback_ok, fallback_error = pcall(func, self, dt, t, input_service)
+            local fallback_ok, fallback_error = pcall(func, self, dt, t, input_service, ...)
             self._elements_array = source_elements
             if not fallback_ok then error(fallback_error, 0) end
         end

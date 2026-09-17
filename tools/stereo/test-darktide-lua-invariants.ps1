@@ -1074,4 +1074,79 @@ if (-not $source.Contains(
     throw 'Calibration must reject unavailable or stale native head-pose samples instead of reusing its FFI buffer.'
 }
 
+# Every mod:hook handler must be variadic. A handler that names the stock
+# signature silently drops anything the engine adds beyond it: the controller
+# bindings lost the ninth argument of their sample that way and the item
+# radial's stick claim went with it for a day (17 September). The named
+# parameters are fine -- the bodies use them -- but the list has to end in
+# `...`, and the forward has to pass it on.
+# Every module beside the main chunk, not just the chunk: the hud panel and
+# the combat direction hooks had the same shape and were missed by scanning
+# one file (18 September).
+$hookedSources = @($resolvedSource)
+$hookedSources += @(Get-ChildItem -LiteralPath (Split-Path -Parent $resolvedSource) `
+    -Filter 'darktidevr_*.lua' | ForEach-Object { $_.FullName })
+$fixedArity = @()
+$droppedTail = @()
+foreach ($hookedSource in $hookedSources) {
+$lines = @(Get-Content -LiteralPath $hookedSource)
+$where = Split-Path -Leaf $hookedSource
+$inHandler = $false
+$handlerIndent = 0
+for ($i = 0; $i -lt $lines.Count; $i++) {
+    if ($lines[$i] -match 'function\(func,\s*self\s*,\s*([^)]*)\)') {
+        $params = $Matches[1].Trim()
+        if ($params -and $params -notmatch '\.\.\.\s*$') {
+            $fixedArity += ('{0}:{1}: function(func, self, {2})' -f $where, ($i + 1), $params)
+        }
+    }
+    # Only inside a hook handler. `atlas_converters.script_draw_text` and its
+    # neighbours wrap a fixed engine API whose arity is the engine's, not the
+    # stock function's, and flagging those would block a legitimate change.
+    if ($lines[$i] -match 'function\(func,\s*self') {
+        $inHandler = $true
+        $handlerIndent = ($lines[$i].Length - $lines[$i].TrimStart().Length)
+    }
+    elseif ($inHandler -and $lines[$i].TrimStart().StartsWith('end)') -and
+            ($lines[$i].Length - $lines[$i].TrimStart().Length) -le $handlerIndent) {
+        $inHandler = $false
+    }
+    if (-not $inHandler) { continue }
+    # The forward itself. A regex cannot be used for the argument list: it
+    # may contain a nested call, and stopping at that call's closing bracket
+    # reads `func(self, dt, t, skip(a, b), ...)` as ending at `b`. Balance the
+    # brackets instead.
+    foreach ($opener in @('func(self', 'pcall(func, self')) {
+        $from = 0
+        while (($at = $lines[$i].IndexOf($opener, $from)) -ge 0) {
+            $from = $at + $opener.Length
+            $depth = 1
+            $close = -1
+            for ($k = $lines[$i].IndexOf('(', $at) + 1; $k -lt $lines[$i].Length; $k++) {
+                if ($lines[$i][$k] -eq '(') { $depth++ }
+                elseif ($lines[$i][$k] -eq ')') {
+                    $depth--
+                    if ($depth -eq 0) { $close = $k; break }
+                }
+            }
+            if ($close -lt 0) { continue }
+            $inside = $lines[$i].Substring($at, $close - $at + 1)
+            $arguments = $inside.Substring($inside.IndexOf('self') + 4).TrimEnd(')').Trim()
+            if ($arguments -and $arguments -notmatch '\.\.\.\s*$') {
+                $droppedTail += ('{0}:{1}: {2}' -f $where, ($i + 1), $inside)
+            }
+        }
+    }
+}
+}
+$lines = @(Get-Content -LiteralPath $resolvedSource)
+if ($fixedArity.Count -gt 0) {
+    throw ("A mod:hook handler names the stock signature and would drop anything added beyond it. Append ', ...' and forward it:`n  " +
+        ($fixedArity -join "`n  "))
+}
+if ($droppedTail.Count -gt 0) {
+    throw ("A forward to the stock function passes a fixed list and drops the rest. Append ', ...':`n  " +
+        ($droppedTail -join "`n  "))
+}
+
 Write-Output "lua_source_assertions=pass"

@@ -400,3 +400,58 @@ through it.
 checks what the author happened to think of is worth much less than one
 checked against the consumer's own validator. The consumer here is thirty
 lines of `validate_*_data` sitting on disk.
+
+## The reticle, drawn into the eye images and measured there
+
+`artifacts/unattended/reticle-eyes-20260918`, Psykhanium, 150 s hold, scene
+reached in 72 s, no crash, clean quit. Flags:
+`darktidevr_reticle_in_eyes.flag` (the gate) and
+`darktidevr_reticle_test.flag` (the published world target standing in for a
+tracked hand). The first attempt did nothing at all -- `openxr.system=
+hmd-unavailable` -- because the headset was asleep and the Virtual Desktop
+client was not running; the Ready preflight woke it, the client was started
+over adb, and the second attempt streamed.
+
+```
+openxr.reticle_in_eyes=1
+openxr.reticle_test=1
+openxr.gameplay_reticle layer=eyes texels=37 size_m=0.530634
+openxr.gameplay_reticle_clip eye=0 ndc=0.123198,-0.359852 pixel=1071.53,1411.53 w=20.2968
+openxr.gameplay_reticle_clip eye=1 ndc=-0.123088,-0.359846 pixel=836.574,1411.52 w=20.297
+openxr.gameplay_reticle_frames=11295
+```
+
+**11295 frames with a reticle, against 0 in every previous run.** That is the
+test flag: nothing unattended has a controller within 1.5 m of the head, which
+is what the reticle required.
+
+### Where it landed, checked rather than admired
+
+The projected-eye readback is the eye image as submitted; the shared-eye
+readback is the game's own pair before the viewer draws. Everything that
+differs between them is the viewer's work. Differencing them at both
+readbacks:
+
+| | pixels changed | box | centroid | predicted | error |
+|---|---|---|---|---|---|
+| 55 s left | 106 | 23x21 | 1071.0, 1411.0 | 1071.5, 1411.5 | **0.7 px** |
+| 55 s right | 109 | 23x21 | 836.0, 1410.9 | 836.6, 1411.5 | **0.8 px** |
+| 105 s left | 106 | 23x21 | 1071.0, 1411.0 | 1071.5, 1411.5 | **0.6 px** |
+| 105 s right | 106 | 23x21 | 836.0, 1411.0 | 836.6, 1411.5 | **0.8 px** |
+
+One compact blob in each image, nothing else changed anywhere in 1908x2076,
+and its centre is within a pixel of what the clip arithmetic predicted. The
+reticle is drawn into the eye images, in both eyes, exactly where the
+projection says it belongs.
+
+The two eyes' horizontal positions are equal and opposite (+0.1232, -0.1231
+NDC). That is not a disparity error: it is each eye's own optical centre,
+7.0 degrees of yaw in opposite directions, which is precisely what a world
+point on the head's forward looks like through the recentered projection the
+images are submitted with. A point 20 m away with a 63 mm interpupillary
+distance has a true disparity of about 0.2 degrees, far below this.
+
+**What is still not proved**: that it looks right to a person. The gate stays
+off by default and checklist item 60 asks for the worn look -- whether it
+stays on target through a head turn, which is the fault it was built to
+remove and which no readback can show.

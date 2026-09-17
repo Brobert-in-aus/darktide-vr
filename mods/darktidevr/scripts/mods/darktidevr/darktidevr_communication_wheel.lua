@@ -80,7 +80,7 @@ function Wheel.install(mod,config)
         return unpack(result,2,result.n)
     end)
 
-    mod:hook('HudElementSmartTagging','_handle_com_wheel',function(func,self,t,renderer,settings,input)
+    mod:hook('HudElementSmartTagging','_handle_com_wheel',function(func,self,t,renderer,settings,input,...)
         local owned=scope_for(self)
         if not owned then
             -- A controller tag press is also a one-frame com_wheel press, as
@@ -99,11 +99,11 @@ function Wheel.install(mod,config)
                     return value
                 end})
             end
-            return func(self,t,renderer,settings,input)
+            return func(self,t,renderer,settings,input,...)
         end
         -- Never let an unscoped reentrant call operate the owned stock context.
         if not inside(owned) then return end
-        if not current(self) or not usable(input) then cancel();return func(self,t,renderer,settings,input) end
+        if not current(self) or not usable(input) then cancel();return func(self,t,renderer,settings,input,...) end
         if owned.handled_t==t then return end
         owned.handled_t=t
         local sample,scope=state.sample,update_scope
@@ -116,28 +116,32 @@ function Wheel.install(mod,config)
             if type(value)=='function' then return function(_,...)return value(input,...)end end
             return value
         end})
-        return func(self,t,renderer,settings,proxy)
+        return func(self,t,renderer,settings,proxy,...)
     end)
 
-    mod:hook('HudElementSmartTagging','_update_wheel_presentation',function(func,self,dt,t,renderer,settings,input)
+    mod:hook('HudElementSmartTagging','_update_wheel_presentation',function(func,self,dt,t,renderer,settings,input,...)
         local owned=scope_for(self)
-        if not owned then return func(self,dt,t,renderer,settings,input) end
+        if not owned then return func(self,dt,t,renderer,settings,input,...) end
         if not inside(owned) then return end
         if not current(self) or not usable(input) then cancel();return end
         -- Preserve the last intentional selection throughout deferred release
         -- and close delay. Do not replace it with the neutral release sample.
         if not state.sample.held then return end
         local sample,scope=state.sample,update_scope
+        -- `...` cannot cross into the callback below, so the handler's tail
+        -- is captured here and closed over (18 September).
+        local tail=pack(...)
         local width,height=config.dimensions()
         return config.Navigation.with_input(input,sample,width,height,config.vector,function(token)
             return state.owned==owned and state.sample==sample and update_scope==scope and
                 owned.token==token and current(self)
-        end,function(proxy)return func(self,dt,t,renderer,settings,proxy)end)
+        end,function(proxy)return func(self,dt,t,renderer,settings,proxy,
+            unpack(tail,1,tail.n))end)
     end)
 
-    mod:hook('HudElementSmartTagging','_on_com_wheel_stop',function(func,self,t,renderer,settings,input)
+    mod:hook('HudElementSmartTagging','_on_com_wheel_stop',function(func,self,t,renderer,settings,input,...)
         local owned=scope_for(self)
-        if not owned then return func(self,t,renderer,settings,input) end
+        if not owned then return func(self,t,renderer,settings,input,...) end
         if not inside(owned) or not current(self) or state.sample.held or owned.release_queued then return end
         owned.release_queued=true
         -- Stock stop only schedules this callback. Capture our token now and

@@ -11656,7 +11656,7 @@ mod:hook(
     require(
         "scripts/extension_systems/character_state_machine/character_states/player_character_state_hub_jog"),
     "_input_to_move_direction",
-    function(func, self, x, y, first_person_component)
+    function(func, self, x, y, first_person_component, ...)
         if presentation.hub_first_person_requested() and
                 presentation.current_game_mode_name() == "hub" and
                 controller_observation.gameplay_yaw then
@@ -11667,7 +11667,7 @@ mod:hook(
             return Quaternion.rotate(
                 movement_rotation, local_direction)
         end
-        return func(self, x, y, first_person_component)
+        return func(self, x, y, first_person_component, ...)
     end)
 
 -- Darktide blends a separate full-body idle layer after the character has
@@ -11679,7 +11679,7 @@ mod:hook(
     require(
         "scripts/extension_systems/aim/third_person_idle_fullbody_animation_control"),
     "update",
-    function(func, self, dt, t)
+    function(func, self, dt, t, ...)
         local local_player = Managers and Managers.player and
             Managers.player:local_player(1)
         if controller_observation.body_visibility_enabled and
@@ -11693,7 +11693,7 @@ mod:hook(
             end
             return
         end
-        return func(self, dt, t)
+        return func(self, dt, t, ...)
     end)
 
 -- The hub unit template installs the components and extensions used by normal
@@ -11732,8 +11732,8 @@ mod:hook(
 mod:hook(
     require("scripts/extension_systems/first_person/player_unit_first_person_extension"),
     "_update_first_person_mode",
-    function(func, self, t)
-        local show_1p_equipment, wants_1p_camera = func(self, t)
+    function(func, self, t, ...)
+        local show_1p_equipment, wants_1p_camera = func(self, t, ...)
         if presentation.hub_first_person_requested() and
                 presentation.is_first_person_body_mode(
                     active_game_mode_name()) and
@@ -12207,8 +12207,8 @@ end)
 mod:hook(
     "BaseView",
     "_create_ui_renderer",
-    function(func, self, context)
-        return func(self, context)
+    function(func, self, context, ...)
+        return func(self, context, ...)
     end)
 
 -- CraftingView.init and CraftingView.draw hard-code `to_screen`. Restore the
@@ -12225,16 +12225,16 @@ mod:hook(
 mod:hook(
     require("scripts/ui/views/crafting_view/crafting_view"),
     "draw",
-    function(func, self, dt, t, input_service, layer)
+    function(func, self, dt, t, input_service, layer, ...)
         if not ui_menu_resource_redirect_requested or
                 not presentation.world_menu_active() then
-            return func(self, dt, t, input_service, layer)
+            return func(self, dt, t, input_service, layer, ...)
         end
         local source_renderer = self._ui_renderer
         local resource_renderer = source_renderer and
             presentation.ensure_menu_resource(source_renderer)
         if not resource_renderer then
-            return func(self, dt, t, input_service, layer)
+            return func(self, dt, t, input_service, layer, ...)
         end
 
         UIRenderer.clear_render_pass_queue(source_renderer)
@@ -12258,7 +12258,7 @@ mod:hook(
                     #self._content_widgets or 0)
         end
         self._ui_renderer = resource_renderer
-        local ok, result = pcall(func, self, dt, t, input_service, layer)
+        local ok, result = pcall(func, self, dt, t, input_service, layer, ...)
         self._ui_renderer = source_renderer
         if not ok then error(result, 0) end
         return result
@@ -12674,9 +12674,9 @@ presentation.hook_legacy_menu(
 -- InventoryView owns a private grid; the full-grid catcher in BaseView must
 -- not consume the button edge intended for these item hotspots.
 presentation.hook_legacy_menu("InventoryView", "_draw_grid",
-    function(func, self, dt, t, input_service, ui_renderer)
+    function(func, self, dt, t, input_service, ui_renderer, ...)
         if presentation.mode ~= 5 then
-            return func(self, dt, t, input_service, ui_renderer)
+            return func(self, dt, t, input_service, ui_renderer, ...)
         end
         local pointer = presentation.read_legacy_menu_pointer()
         local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)
@@ -12699,7 +12699,7 @@ presentation.hook_legacy_menu("InventoryView", "_draw_grid",
             end
         end
         local draw_input = pointer.active and input_service:null_service() or input_service
-        local ok, result = pcall(func, self, dt, t, draw_input, ui_renderer)
+        local ok, result = pcall(func, self, dt, t, draw_input, ui_renderer, ...)
         interaction.is_hover = previous_hover
         if not ok then error(result, 0) end
         return result
@@ -13244,14 +13244,14 @@ presentation.hook_legacy_menu(
 presentation.hook_legacy_menu(
     require("scripts/ui/views/crafting_view/crafting_view"),
     "_draw_widgets",
-    function(func, self, dt, t, input_service, ui_renderer, render_settings)
+    function(func, self, dt, t, input_service, ui_renderer, render_settings, ...)
         -- Flat-interactive crafting views deliberately do not join
         -- world_menu_views: their temporary presentation is the same native
         -- window panel used by character select.  Requiring
         -- world_menu_active() here therefore disabled the semantic input path
         -- for every mode-5 shop even though its panel and pointer were live.
         if presentation.mode ~= 5 and presentation.mode ~= 6 then
-            return func(self, dt, t, input_service, ui_renderer, render_settings)
+            return func(self, dt, t, input_service, ui_renderer, render_settings, ...)
         end
         local pointer = presentation.read_legacy_menu_pointer()
         local widgets = self._button_widgets or {}
@@ -13376,12 +13376,12 @@ presentation.hook_legacy_menu(
 presentation.hook_legacy_menu(
     require("scripts/ui/view_elements/view_element_grid/view_element_grid"),
     "_draw_grid",
-    function(func, self, dt, t, ui_renderer, input_service, render_settings)
+    function(func, self, dt, t, ui_renderer, input_service, render_settings, ...)
         -- See VendorInteractionViewBase._draw_widgets above.  Mode 5 is the
         -- authoritative gate for the temporary flat shop panel; a world-menu
         -- owner is neither expected nor desired on this path.
         if presentation.mode ~= 5 and presentation.mode ~= 6 then
-            return func(self, dt, t, ui_renderer, input_service, render_settings)
+            return func(self, dt, t, ui_renderer, input_service, render_settings, ...)
         end
         local pointer = presentation.read_legacy_menu_pointer()
         local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)
@@ -13493,9 +13493,9 @@ end)
 presentation.hook_legacy_menu(
     require("scripts/ui/views/store_view/store_view"),
     "_draw_grid",
-    function(func, self, dt, t, input_service)
+    function(func, self, dt, t, input_service, ...)
         if presentation.mode ~= 6 then
-            return func(self, dt, t, input_service)
+            return func(self, dt, t, input_service, ...)
         end
         local pointer = presentation.read_legacy_menu_pointer()
         -- The published panel/laser remain native landscape, but live Store
@@ -13556,7 +13556,7 @@ presentation.hook_legacy_menu(
         -- real card without competing native hover state.
         local draw_input_service = pointer.active and
             input_service:null_service() or input_service
-        local result = func(self, dt, t, draw_input_service)
+        local result = func(self, dt, t, draw_input_service, ...)
         if interaction_hotspot then
             interaction_hotspot.force_hover = previous_force_hover
             interaction_hotspot.is_hover = previous_is_hover
@@ -13596,9 +13596,9 @@ function presentation.world_marker_screen_position(camera, world_position)
 end
 
 mod:hook("HudElementWorldMarkers", "_convert_world_to_screen_position",
-    function(func, self, camera, world_position)
+    function(func, self, camera, world_position, ...)
         if not active or not stereo_world_markers_requested or not camera then
-            return func(self, camera, world_position)
+            return func(self, camera, world_position, ...)
         end
         local screen, distance = presentation.world_marker_screen_position(
             camera, world_position)
@@ -13607,11 +13607,11 @@ mod:hook("HudElementWorldMarkers", "_convert_world_to_screen_position",
 
 -- Stock _apply_scale eases mutable sizes, offsets and pivots on each draw.
 -- Replay must reuse the first eye's result rather than advance it a second time.
-mod:hook("HudElementWorldMarkers", "_apply_scale", function(func, self, widget, scale)
+mod:hook("HudElementWorldMarkers", "_apply_scale", function(func, self, widget, scale, ...)
     if world_marker_reprojecting then
         return
     end
-    return func(self, widget, scale)
+    return func(self, widget, scale, ...)
 end)
 
 -- A wide screen-space popup drawn at each eye's projected anchor keeps the
@@ -13845,7 +13845,7 @@ end
 mod:hook(
     "HudElementWorldMarkers",
     "_draw_markers",
-    function(func, self, dt, t, input_service, ui_renderer, render_settings)
+    function(func, self, dt, t, input_service, ui_renderer, render_settings, ...)
         local capture = active and stereo_world_markers_requested and
             not presentation.marker_reprojection_probe_disabled and
             not world_marker_reprojecting
@@ -13920,7 +13920,7 @@ mod:hook(
                 capture and presentation.marker_gui.draw or nil, draw_scaled,
                 self, dt, t, input_service, ui_renderer, render_settings)
         else
-            result = func(self, dt, t, input_service, ui_renderer, render_settings)
+            result = func(self, dt, t, input_service, ui_renderer, render_settings, ...)
         end
 
         if capture then
@@ -13951,7 +13951,7 @@ mod:hook(
 mod:hook(
     "HudElementInteraction",
     "_draw_widgets",
-    function(func, self, dt, t, input_service, ui_renderer, render_settings)
+    function(func, self, dt, t, input_service, ui_renderer, render_settings, ...)
         local capture = active and stereo_world_markers_requested and
             not presentation.marker_reprojection_probe_disabled and
             not world_marker_reprojecting
@@ -14029,7 +14029,7 @@ mod:hook(
                 capture and presentation.marker_gui.draw or nil, draw_scaled,
                 self, dt, t, input_service, ui_renderer, render_settings)
         else
-            result = func(self, dt, t, input_service, ui_renderer, render_settings)
+            result = func(self, dt, t, input_service, ui_renderer, render_settings, ...)
         end
 
         if capture then
@@ -14058,7 +14058,7 @@ function presentation.tag_role()
 end
 
 mod:hook("HudElementSmartTagging", "_find_raycast_targets",
-    function(func, self, force_update_targets)
+    function(func, self, force_update_targets, ...)
         local aim = presentation.controller_aim
         local role = presentation.tag_role()
         -- Pointing with the off hand: let the stock path run. It calls
@@ -14068,9 +14068,9 @@ mod:hook("HudElementSmartTagging", "_find_raycast_targets",
         -- whose reticle is already traced and cached; there is no cached
         -- reticle for the off hand, and using the weapon's would mean the
         -- gesture changed nothing at all.
-        if role ~= "dominant" then return func(self, force_update_targets) end
+        if role ~= "dominant" then return func(self, force_update_targets, ...) end
         local position, rotation = aim.target(role)
-        if not position or not rotation then return func(self, force_update_targets) end
+        if not position or not rotation then return func(self, force_update_targets, ...) end
         local point, unit = aim.cached_reticle_target()
         local player_unit = self._parent:player_unit()
         local extension = unit and Unit.alive(unit) and ScriptUnit.has_extension(unit,"smart_tag_system")
@@ -14079,12 +14079,12 @@ mod:hook("HudElementSmartTagging", "_find_raycast_targets",
     end)
 
 mod:hook("HudElementSmartTagging", "_find_world_marker_target",
-    function(func, self, ui_renderer, render_settings)
+    function(func, self, ui_renderer, render_settings, ...)
         -- The marker hover follows the same hand as the tag above.
         local aim_position, aim_rotation = presentation.controller_aim.target(presentation.tag_role())
         local simulation_aim = presentation.online_rules.simulation_aim_active(self._parent:player_unit())
         if not simulation_aim and (not aim_position or not aim_rotation) then
-            return func(self, ui_renderer, render_settings)
+            return func(self, ui_renderer, render_settings, ...)
         end
         -- The stock screen-centre hover test overrides the controller ray.
         -- Use the same smart-targeting result as the actual tag action.
@@ -14114,10 +14114,10 @@ function presentation.draw_tag_prompt(self, dt, t, input_service, ui_renderer, r
 end
 
 mod:hook("HudElementSmartTagging", "_draw_active_interaction_line",
-    function(func, self, dt, t, input_service, ui_renderer, render_settings)
+    function(func, self, dt, t, input_service, ui_renderer, render_settings, ...)
         if not active or not stereo_world_markers_requested or
                 presentation.marker_reprojection_probe_disabled then
-            return func(self, dt, t, input_service, ui_renderer, render_settings)
+            return func(self, dt, t, input_service, ui_renderer, render_settings, ...)
         end
         if world_marker_reprojecting then
             if presentation.tag_plane_t == t then
@@ -14811,7 +14811,7 @@ mod:hook_safe("UIWorldSpawner", "destroy", function(self)
     end
 end)
 
-mod:hook("MainMenuView", "draw", function(func, self, dt, t, input_service, layer)
+mod:hook("MainMenuView", "draw", function(func, self, dt, t, input_service, layer, ...)
     if ui_offscreen_active and ui_left_render_target and ui_right_render_target then
         if not ui_compositor_package_loaded then
             if not ui_compositor_package_id and not ui_compositor_package_failed and
@@ -14917,7 +14917,7 @@ mod:hook("MainMenuView", "draw", function(func, self, dt, t, input_service, laye
         return
     end
 
-    return func(self, dt, t, input_service, layer)
+    return func(self, dt, t, input_service, layer, ...)
 end)
 
 mod:command("dtvr_billboard_readback", "Capture three candidate billboard draws in census mode", function()
@@ -15855,8 +15855,8 @@ do
 end
 -- Per-pass material handles are tied to the renderer's 2D GUI; the world
 -- surface needs their names to make its own instances.
-mod:hook(UIRenderer, "create_material", function(func, self, material_name, retained_mode)
-    local handle = func(self, material_name, retained_mode)
+mod:hook(UIRenderer, "create_material", function(func, self, material_name, retained_mode, ...)
+    local handle = func(self, material_name, retained_mode, ...)
     presentation.marker_world.note_material(handle, material_name)
     return handle
 end)
@@ -15868,8 +15868,8 @@ end)
 -- a Lua error and a crash dump on every quit after using interactions (worn,
 -- 15 September evening). A failed destroy is logged once and skipped; the GUI
 -- that owns the material releases it with its world. Root cause still open.
-mod:hook(UIRenderer, "destroy_material", function(func, self, material, retained_mode)
-    local ok, err = pcall(func, self, material, retained_mode)
+mod:hook(UIRenderer, "destroy_material", function(func, self, material, retained_mode, ...)
+    local ok, err = pcall(func, self, material, retained_mode, ...)
     if not ok and not presentation.destroy_material_logged then
         presentation.destroy_material_logged = true
         mod:warning("DARKTIDEVR_UI destroy_material_skipped renderer=%s error=%s",

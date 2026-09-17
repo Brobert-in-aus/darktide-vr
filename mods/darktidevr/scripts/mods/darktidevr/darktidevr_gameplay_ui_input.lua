@@ -111,10 +111,12 @@ function Input.install(mod, local_player_unit)
         manager:open_view("system_view")
     end
 
-    local function run_tag(func,self,t,renderer,settings,source,pressed)
+    -- `pressed` leads so the stock arguments can be a tail: naming them
+    -- drops whatever the engine adds beyond them (17 September).
+    local function run_tag(pressed,func,self,t,renderer,settings,source,...)
         -- Unowned/nested HUD handlers must not inherit an outer injection.
         -- Keep the ordinary no-request path free of proxy/scope allocation.
-        if not pressed and not tag_owner then return func(self,t,renderer,settings,source) end
+        if not pressed and not tag_owner then return func(self,t,renderer,settings,source,...) end
         local previous=tag_owner
         local scope=pressed and {hud=self,sample=state.sample} or nil
         tag_owner=scope
@@ -132,23 +134,23 @@ function Input.install(mod, local_player_unit)
             end})
         end
         local function pack(...)return {n=select('#',...),...}end
-        local result=pack(pcall(func,self,t,renderer,settings,input))
+        local result=pack(pcall(func,self,t,renderer,settings,input,...))
         tag_owner=previous
         if not result[1] then error(result[2],0) end
         return unpack(result,2,result.n)
     end
 
     mod:hook("HudElementSmartTagging", "_handle_tagging",
-        function(func,self,t,renderer,settings,source)
+        function(func,self,t,renderer,settings,source,...)
             local owner = current_owner()
             if not owner or owner ~= state.owner then
                 state.owner = nil -- Cancel the sample across every HUD, even if an old owner returns.
                 state.tag = false
                 tag_frames[self] = nil
-                return run_tag(func,self,t,renderer,settings,source,false)
+                return run_tag(false,func,self,t,renderer,settings,source,...)
             end
             local local_hud = owner and self._parent and self._parent:player_unit() == owner
-            if not local_hud then return run_tag(func,self,t,renderer,settings,source,false) end
+            if not local_hud then return run_tag(false,func,self,t,renderer,settings,source,...) end
             local blocked = not usable(source)
             local previous = tag_frames[self]
             local sample
@@ -160,7 +162,7 @@ function Input.install(mod, local_player_unit)
                 tag_frames[self] = {t=t,sample=state.sample,pressed=sample}
             end
             if blocked then tag_frames[self].pressed = false end
-            return run_tag(func,self,t,renderer,settings,source,sample and not blocked)
+            return run_tag(sample and not blocked,func,self,t,renderer,settings,source,...)
         end)
     -- In stock play the middle mouse button carries both smart_tag and
     -- com_wheel, so a tap with nothing under the reticle becomes a location
