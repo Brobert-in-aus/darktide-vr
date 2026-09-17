@@ -217,6 +217,50 @@ for _, id in ipairs(expected) do
     if not seen[id] then fail("the setting " .. id .. " is no longer in the menu") end
 end
 
+-- DMF HIDES a checkbox's or dropdown's children while it is off or on the
+-- wrong option (mod_options.lua: `is_visible = get(parent) == true`). It is
+-- not an indent and it is not a collapse. So a setting may only be nested
+-- under one it cannot work without -- otherwise the feature still works and
+-- the row that controls it is nowhere to be found, which is what happened to
+-- the body mirror's key and nearly happened to the holster counts (review,
+-- 18 September).
+--
+-- Every nesting under a value-holding parent is listed here with the line
+-- that proves the child no-ops without it. A new one fails this test until
+-- someone writes that line down.
+local justified = {
+    vr_ads_zoom = "ads_focus: darktidevr.lua:6484, active needs `focus`",
+    vr_two_hand_grip_mode = "vr_two_hand_support: two_hand_support.lua:232, behind is_enabled()",
+    vr_virtual_stock = "vr_two_hand_support: two_hand_support.lua:235, behind is_enabled()",
+    vr_wrist_display_scale = "vr_wrist_display: wrist_display.lua:143",
+    vr_weapon_charge_style = "vr_ammo_readout: ammo_readout.lua:359 is inside the :352 gate",
+    vr_haptics_strength = "vr_haptics_mode: nothing vibrates when the mode is off",
+    keyboard_mouse_recenter_keybind = "keyboard_mouse_mode",
+    keyboard_mouse_disable_controllers = "keyboard_mouse_mode",
+    keyboard_mouse_horizontal_only = "keyboard_mouse_mode",
+    keyboard_mouse_deadzone = "keyboard_mouse_mode",
+}
+local function check_nesting(list, parent)
+    for _, widget in ipairs(list) do
+        if type(widget) == "table" then
+            if parent and holds_value[parent.type] and widget.setting_id then
+                if not justified[widget.setting_id] then
+                    fail(widget.setting_id .. " is nested under " .. parent.setting_id ..
+                        ", which HIDES it while that is off. Say in `justified` why it " ..
+                        "cannot work without it, or make it a sibling.")
+                end
+            end
+            check_nesting(widget.sub_widgets or {}, widget)
+        end
+    end
+end
+check_nesting(widgets, nil)
+for id, why in pairs(justified) do
+    if not seen[id] then
+        fail("`justified` still lists " .. id .. " (" .. why .. "), which is gone")
+    end
+end
+
 -- The keyboard and mouse toggle takes a different title and tooltip when the
 -- KeyboardMouseOn file is present, and the stub above never walks that branch
 -- because it has no Mods.lua to find the file with (review, 18 September).

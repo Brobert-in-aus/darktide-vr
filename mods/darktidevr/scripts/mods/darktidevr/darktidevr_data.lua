@@ -142,13 +142,17 @@ return {
                         setting_id = "vr_forearm_holsters",
                         type = "checkbox",
                         default_value = false,
-                        sub_widgets = {
-                            {
-                                setting_id = "vr_holster_counts",
-                                type = "checkbox",
-                                default_value = false,
-                            },
-                        },
+                    },
+                    {
+                        -- A sibling, though it reads like a child: the counts
+                        -- label a BODY holster's zone and are suppressed on a
+                        -- forearm one (darktidevr_holster_counts.lua:117), so
+                        -- they do their work precisely when forearm holsters
+                        -- are off. Nesting would hide the option exactly when
+                        -- it applies.
+                        setting_id = "vr_holster_counts",
+                        type = "checkbox",
+                        default_value = false,
                     },
                     {
                         setting_id = "vr_item_radial",
