@@ -95,6 +95,17 @@ Mirror.MODES = {
     -- soft stretch (both4 against follow3).
     overlayswing = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true, body_yaw = true},
+    -- The body at the player's own proportions (18 September). No uniform
+    -- scale at all: the spine bends to bring the neck to the head, so the
+    -- shoulders stay where the player's shoulders are, and the arms take
+    -- their calibrated lengths. Scaling the whole copy 1.21 to 1.30 to reach
+    -- the neck is what put its shoulders where no true arm could reach the
+    -- hands (unattended-results-2026-09-18.md), so the two changes only make
+    -- sense together. Dev flag only, for measurement.
+    overlaytrue = {distance = 0, facing = false, hide_head = true, solve_arms = true,
+        near_eye = true, hand_rig = true, follow_neck = true, clavicles = true,
+        body_yaw = true, spine_bend = true, protract = true, stretch = true,
+        arm_length = {min = 0.70, max = 1.20}},
     -- "overlay" with clavicles but the avatar's root yaw, for A/B of the body yaw.
     overlayrootyaw = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true},
