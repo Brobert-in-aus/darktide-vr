@@ -62,15 +62,44 @@ local function normalize(a)
 end
 
 -- The panel axes at anchor for an eye: right to the viewer's LEFT, forward
--- toward the viewer, up upright (the atlas quad's convention). Arrays. Nil
--- when the eye is on the anchor or straight above or below it. Pure.
-function Overlay.facing(anchor, eye)
+-- toward the viewer, up upright (the atlas quad's convention). Arrays.
+--
+-- The up vector is world up, so the roll comes from crossing it with the
+-- direction of view, and that cross is ill-conditioned when the two are
+-- nearly parallel -- which is exactly looking straight down at your own
+-- wrist, the pose the wrist display is FOR. Within a few degrees of vertical
+-- the panel's roll swings wildly for a millimetre of head movement, and at
+-- vertical it used to vanish outright. `fallback_right` (the last roll that
+-- was well conditioned) holds it steady through that cone instead, which is
+-- what z_up_billboard_basis does for the world markers. Nil only when the eye
+-- is on the anchor, or is vertical with no fallback to hold. Pure.
+Overlay.ROLL_FALLBACK_SINE = 0.05
+function Overlay.facing(anchor, eye, fallback_right)
     local away = normalize(sub(anchor, eye))
     if not away then return nil end
     local viewer_right = normalize(cross(away, {0, 0, 1}))
-    if not viewer_right then return nil end
+    -- |away x up| is the sine of the angle from vertical.
+    local horizontal = math.sqrt(away[1] * away[1] + away[2] * away[2])
+    local held_roll = not viewer_right or horizontal < Overlay.ROLL_FALLBACK_SINE
+    if held_roll then
+        -- The caller hands back the right it was given, which is the
+        -- negated internal one.
+        local held = fallback_right and normalize(
+            {-fallback_right[1], -fallback_right[2], -fallback_right[3]})
+        if not held then return nil end
+        -- Re-orthogonalise the held roll against the new view direction, so
+        -- the panel still faces the eye squarely.
+        local held_up = normalize(cross(held, away))
+        if not held_up then return nil end
+        viewer_right = normalize(cross(away, held_up))
+        if not viewer_right then return nil end
+    end
     local up = cross(viewer_right, away)
-    return {-viewer_right[1], -viewer_right[2], -viewer_right[3]}, {-away[1], -away[2], -away[3]}, up
+    -- The fourth return says the roll came from the fallback, so a caller
+    -- keeping one does not overwrite it with a re-orthogonalised copy of
+    -- itself frame after frame.
+    return {-viewer_right[1], -viewer_right[2], -viewer_right[3]}, {-away[1], -away[2], -away[3]}, up,
+        held_roll
 end
 
 -- The cell width for a resolution lookup, as the atlas is built. Pure.
@@ -106,6 +135,18 @@ function Overlay.text_room(x, cell_width, align)
     if align == "right" then return math.max(0, half + x) end
     return math.max(0, 2 * (half - math.abs(x)))
 end
+
+-- The room above and below a line's centre, in pixels, at y pixels below the
+-- cell's centre: to the nearer edge, less the margin. A line is drawn centred
+-- on its y, so that is what has to hold. Pure.
+function Overlay.vertical_room(y, cell_height)
+    local half = cell_height * 0.5 - Overlay.CELL_MARGIN
+    return math.max(0, half - math.abs(y))
+end
+
+-- Glyphs reach about this much of the font size above and below the line's
+-- centre, descenders included.
+Overlay.TEXT_HALF_HEIGHT = 0.6
 
 -- The font size that makes a line of measured width fit the room: unchanged
 -- when it fits, scaled down in proportion when it does not (the whole name
@@ -214,6 +255,13 @@ function Overlay.install(mod, presentation, Atlas, api)
             font_px = Overlay.fitted_font(font_px, measured or Overlay.estimated_width(text, font_px),
                 Overlay.text_room(cx / mpp, atlas.CELL_WIDTH, align))
             if not font_px then return end
+            -- Width was guarded and height was not, so a line near a cell's
+            -- top or bottom reached into the neighbour exactly as the wrist
+            -- bars did sideways (survey, 18 September). Same rule: shrink to
+            -- the room, drop rather than spill.
+            font_px = Overlay.fitted_font(font_px, font_px * Overlay.TEXT_HALF_HEIGHT,
+                Overlay.vertical_room(cy / mpp, atlas.CELL_HEIGHT))
+            if not font_px then return end
             local width, height = atlas.CELL_WIDTH, font_px * 1.5
             local sx, sy = pixel(cx, cy)
             local left, top = Overlay.text_box(sx, sy, width, height, align)
@@ -233,9 +281,14 @@ function Overlay.install(mod, presentation, Atlas, api)
             if presentation.eye_pose then eye = presentation.eye_pose(nil) end
             if not eye or not anchor.position or not anchor.metres then return nil end
             local p = anchor.position:unbox()
-            local right, forward, up = Overlay.facing({Vector3.x(p), Vector3.y(p), Vector3.z(p)},
-                {Vector3.x(eye), Vector3.y(eye), Vector3.z(eye)})
+            -- The roll the anchor last had while it was well conditioned, so
+            -- a panel looked at from straight above holds still instead of
+            -- spinning (see Overlay.facing).
+            local right, forward, up, held = Overlay.facing(
+                {Vector3.x(p), Vector3.y(p), Vector3.z(p)},
+                {Vector3.x(eye), Vector3.y(eye), Vector3.z(eye)}, anchor.roll)
             if not right then return nil end
+            if not held then anchor.roll = right end
             local tm = Matrix4x4.identity()
             Matrix4x4.set_right(tm, Vector3(right[1], right[2], right[3]))
             Matrix4x4.set_forward(tm, Vector3(forward[1], forward[2], forward[3]))

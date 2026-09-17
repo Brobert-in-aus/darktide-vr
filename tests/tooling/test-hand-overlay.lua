@@ -9,7 +9,28 @@ local c={forward[2]*up[3]-forward[3]*up[2],forward[3]*up[1]-forward[1]*up[3],for
 near(c[1],right[1]); near(c[2],right[2]); near(c[3],right[3])
 right=Overlay.facing({1,0,1},{0,0,1}); near(right[2],1,'looking +x: viewer left is +y')
 assert(Overlay.facing({0,0,1},{0,0,1})==nil,'eye on the anchor')
-assert(Overlay.facing({0,0,0},{0,0,1})==nil,'straight below')
+assert(Overlay.facing({0,0,0},{0,0,1})==nil,'straight below with nothing to hold')
+-- Looking straight down at your own wrist is the pose the wrist display is
+-- for, and it is where world up and the view direction are parallel: the roll
+-- swings for a millimetre of head movement and at vertical there is none at
+-- all. The last well-conditioned roll holds it steady through that cone.
+local held_right,held_forward,held_up,held = Overlay.facing({0,0,0},{0,0,1},{1,0,0})
+assert(held,'straight down reports a held roll')
+near(held_forward[3],1,'forward still points at the eye, which is above')
+near(held_right[1],1,'the held roll is kept'); near(held_right[2],0); near(held_right[3],0)
+near(held_up[1],0,'up is square to both'); near(held_up[2],-1)
+-- Just inside the cone it holds too, and just outside it does not.
+local _,_,_,inside = Overlay.facing({0,0,0},{0.04,0,1},{1,0,0})
+local _,_,_,outside = Overlay.facing({0,0,0},{0.5,0,1},{1,0,0})
+assert(inside and not outside,'the cone is where the cross is ill conditioned')
+-- A held frame is still orthonormal, which is what the quad needs.
+local function dot(a,b) return a[1]*b[1]+a[2]*b[2]+a[3]*b[3] end
+for _,pair in ipairs({{held_right,held_forward},{held_forward,held_up},{held_up,held_right}}) do
+    near(dot(pair[1],pair[2]),0,'held basis stays orthogonal')
+end
+near(dot(held_right,held_right),1,'held basis stays unit length')
+-- And a roll that is parallel to the view cannot be re-orthogonalised.
+assert(Overlay.facing({0,0,0},{0,0,1},{0,0,1})==nil,'a degenerate fallback is no fallback')
 local l,t=Overlay.text_box(100,50,40,10); near(l,80); near(t,45)
 l=Overlay.text_box(100,50,40,10,'left'); near(l,100)
 l=Overlay.text_box(100,50,40,10,'right'); near(l,60)
@@ -66,6 +87,25 @@ assert(Overlay.fitted_font(54,300,475)==54,'fits: unchanged')
 assert(Overlay.fitted_font(54,730,475)==35,'a long name shrinks to the cell')
 assert(Overlay.fitted_font(54,5000,475)==nil and Overlay.fitted_font(54,10,0)==nil,'too long, or no room: not drawn')
 near(Overlay.estimated_width('Ammunition Crate',54),16*54*.6)
+-- Width was guarded and height was not, so a line near a cell's top or bottom
+-- reached into the neighbour the way the wrist bars did sideways. Same rule:
+-- the room to the nearer edge, shrink to it, drop rather than spill.
+near(Overlay.vertical_room(0,1080),531,'a line on the centre has the whole half cell')
+near(Overlay.vertical_room(400,1080),131); near(Overlay.vertical_room(-400,1080),131)
+assert(Overlay.vertical_room(600,1080)==0 and Overlay.vertical_room(531,1080)==0,'past the edge: no room')
+assert(Overlay.fitted_font(54,54*Overlay.TEXT_HALF_HEIGHT,Overlay.vertical_room(0,1080))==54,'fits: unchanged')
+assert(Overlay.fitted_font(54,54*Overlay.TEXT_HALF_HEIGHT,Overlay.vertical_room(511,1080))==33,'near the edge it shrinks')
+assert(Overlay.fitted_font(54,54*Overlay.TEXT_HALF_HEIGHT,Overlay.vertical_room(529,1080))==nil,'too near: not drawn')
+-- And through canvas.text, which is what actually spilled: a line at the top
+-- of the cell must not be drawn at its asked-for size.
+texts={}
+local tall=assert(overlay.canvas('world','wrist',{1,2,3},.001))
+tall.text('88',54,0,0.1,{255,255,255,255})
+assert(#texts==1 and texts[1][2]==54,'100 px above the centre: unchanged')
+tall.text('88',54,0,0.5,{255,255,255,255})
+assert(#texts==2 and texts[2][2]==51,'500 px up leaves 31 px of room, so it shrinks')
+tall.text('88',54,0,0.529,{255,255,255,255})
+assert(#texts==2,'529 px up is 2 px from the edge: dropped, not spilled')
 -- The anchors were a fixed handful of hand displays; a teammate's is one per
 -- player ever seen, each holding a Vector3Box, so a display that stops drawing
 -- must let its anchor go. What keeps drawing keeps its anchor.

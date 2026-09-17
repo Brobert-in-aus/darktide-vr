@@ -368,6 +368,32 @@ any reticle change. `summarize-hub-arms.py` reads the arms.
   may show no reticle at all in VR. That is a user-visible bug hiding in the
   same class as the servo skulls.
 
+- **The options menu: nested submenus, and a reorganisation either way**
+  (user, 18 September: "the mod options are getting pretty extensive - if the
+  mod tools support further nested submenus (not just segments on one big
+  list) then let's do that, and can we reorganise the segments either way?").
+
+  *They do support it.* DMF unfolds `sub_widgets` recursively with no depth
+  limit (`dmf/modules/core/options.lua:649-666`), `group` is in
+  `allowed_parent_widget_types` alongside `header`, `checkbox` and `dropdown`,
+  and each widget's `depth` becomes `indentation_level` in the options view
+  (`dmf/modules/ui/options/mod_options.lua:40` and throughout). So a group
+  inside a group renders as a further indented, collapsible section. What is
+  not yet known is how it *reads* at depth two -- indentation alone, or
+  something clearer -- which one launch with a trial tree would answer.
+
+  *Where we are*: 43 settings under three groups (`hud_options`,
+  `mode_options`, `experimental_options`), which is what the user is calling
+  extensive. The reorganisation is worth doing whether or not the nesting is,
+  and should come first: group by what the player is trying to change (the
+  body, the hands and what they hold, the world and its markers, comfort and
+  movement, performance, developer) rather than by when each setting was
+  added. Then nest only where a group has more than about six entries.
+
+  *Care*: `setting_id`s are the saved keys, so the tree can be rearranged
+  freely but no id may be renamed without dropping the player's setting.
+  Every entry needs its localisation pair in `darktidevr_localization.lua`.
+
 ## D. Needs the user
 
 Checklist items 47 to 54 worn; the two body constants in centimetres; a
