@@ -66,6 +66,28 @@ it has no image for.
 **Check**: the ammo count, the wrist display, world markers and the
 interaction prompt all look as they did; nothing flickers or is missing.
 
+### 59. The body, two ways (worth a look, not a change)
+
+Nothing here is switched on by default. Today measured the full body two
+ways and neither is finished, so the useful thing is your eye on which is
+less wrong:
+
+- **What ships now** (`Full body` on): the copy is enlarged about 1.3 times
+  until its neck reaches your head. Its neck therefore meets your head, but
+  its shoulders move outward and upward with it, and the arm solve then
+  stretches the forearm 13 to 19 per cent to reach your hands.
+- **`darktidevr_body_mirror.flag` = `overlaytrue`** (write that file in the
+  installed mod folder, delete it after): no enlargement at all. The spine
+  bends to bring the neck up and the arms take the lengths your calibration
+  implies (0.52 m shoulder to wrist). The arms then reach your hands with
+  under 3 cm of stretch instead of 42 cm — but 18 cm of the neck-to-head gap
+  remain, so your head still sits above the body.
+
+**If you have five minutes**: try the flag, look down, and say which reads
+better — a body that meets your head with long arms, or one with your own
+arms whose head sits high. That decides whether the next body work is the
+legs (to close the remaining 18 cm honestly) or something else.
+
 ## Suggested order
 
 1. In the Psykhanium with a ranged weapon: 55 and 56 together (aim, hold,
