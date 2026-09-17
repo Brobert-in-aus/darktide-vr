@@ -1,4 +1,5 @@
-# Nexus Mods page text (12 September 2026, updated for 0.2.0-alpha.1 on 15 September)
+# Nexus Mods page text (12 September 2026; the feature list and the draft
+# notes below updated 18 September, for the release after 0.2.0-alpha.1)
 
 Paste-ready sections for the Nexus page. Keep the claims in step with
 USER-GUIDE.md; anything not listed under "What works" has not been checked
@@ -33,8 +34,11 @@ like any other Darktide mod and is launched through Steam as usual.
   front of the scene.
 - Experimental: seated keyboard and mouse play (see below); two-hand gun
   support with a virtual stock; holsters above the gun hand's forearm;
-  ammo, health and teammate status in the world;
-  controller vibration.
+  ammo, health and teammate status in the world; controller vibration; your
+  character's own body under you, with its arms solved to your controllers;
+  grabbing and throwing the flamethrower servo skull; an item radial at your
+  hand; push to talk by bringing a hand to your mouth; a melee weapon's
+  charges at the hand; and a small zoom while you aim down the sights.
 - Optional removal of the game's artificial weapon sway, so only your own
   hands' steadiness counts.
 - A two-pose calibration that also sets your character's official height.
@@ -100,6 +104,36 @@ the Psykhanium and part of a mission.
   it at the native frame rate; other GPUs untested).
 - Optional: Custom HUD (continued), for HUD layout editing (tested with
   2.1.6; the original Custom HUD is untested).
+
+## Changelog post: the next release (draft, not published)
+
+Written 18 September from what has actually changed since 0.2.0-alpha.1.
+Keep it in step with the Unreleased section of `CHANGELOG.md`, which carries
+the same text in full; this is the shortened form for the page.
+
+**New, each experimental and off until you turn it on:** your character's
+full body under you, scaled to your height with its arms solved to your
+controllers; grab and throw the flamethrower servo skull; an item radial at
+your off hand; push to talk by bringing a hand to your mouth; a melee
+weapon's special charges shown at the hand as a count or as the game's own
+bars; and a small zoom while you aim down the sights.
+
+**New shortcut:** F8 in the Psykhanium stands a copy of your character in
+front of you, posed exactly as you are, so you can see what everyone else
+sees.
+
+**Fixed:** loading screens and menus no longer turn or distort when Virtual
+Desktop's FOV tangent is below 100 per cent; the aim-down-sights vignette
+appears at all, which it never had; a stick flick with the item radial or
+the communication wheel open no longer also fires the stick's own binding;
+slivers of neighbouring displays beside the ammo count are gone and hand
+display text is fitted to its space; the ammo count and the charge display
+sit clear of the weapon; servo skulls sit on the right sides and no longer
+flicker as you move; your eye is placed correctly whichever way you face on
+entering a level.
+
+**Built, tried, withdrawn:** reach to interact, inspect by raising the
+weapon, and tag by pointing.
 
 ## Changelog post: 0.2.0-alpha.1
 
