@@ -51,9 +51,27 @@ def circular_delta_seconds(first: float, second: float) -> float:
 
 
 def load_rgb(path: Path, size: tuple[int, int]) -> np.ndarray:
+    """The image at `path`, refusing a size this run was not set up for.
+
+    It used to resize whatever it was given. That mattered once Virtual
+    Desktop's FOV tangent came into use: at 90 per cent an eye is 1908x2076
+    rather than 2112x2304, so a capture squashed to the assumed 264x288 has
+    the wrong aspect and is then warped with the 100 per cent half-angles
+    (--horizontal-half-fov / --vertical-half-fov, which default to the
+    2112-wide eye). Every number printed was wrong and nothing said so, which
+    is the failure this whole day has been about. Pass --width/--height to
+    match the capture, and scale the half-angles by width / 2112.
+    """
     with Image.open(path) as source:
-        resized = source.convert("RGB").resize(size, Image.Resampling.LANCZOS)
-    return np.asarray(resized, dtype=np.float32)
+        if source.size != tuple(size):
+            raise SystemExit(
+                f"{path.name} is {source.size[0]}x{source.size[1]}, not "
+                f"{size[0]}x{size[1]}. Pass --width/--height for this capture "
+                f"and scale the half field of view by width / 2112 "
+                f"(Virtual Desktop's FOV tangent changes both)."
+            )
+        converted = source.convert("RGB")
+    return np.asarray(converted, dtype=np.float32)
 
 
 def yaw_warp(
