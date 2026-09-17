@@ -18,6 +18,17 @@ return {
     remote_mission_input_description = {en = "On a mission server you do not host, use the same stock-input route as Psykhanium's online rules: controller buttons and movement, hand-aimed firing through the server's normal firing position, and local hand and weapon presentation. Off keeps online missions view-only. Applies immediately."},
     mode_options = {en = "Hub and missions"},
     experimental_options = {en = "Experimental features"},
+    -- The sections the options are grouped into (18 September). Each one
+    -- answers "what am I trying to change?", so the first screen of the menu
+    -- is a short list rather than forty-odd settings in a column.
+    aiming_options = {en = "Aiming and weapons"},
+    aiming_options_description = {en = "The crosshair, how steady your aim is held, what happens when you bring up the sights, and the displays that belong to the weapon in your hands."},
+    body_options = {en = "Your body and hands"},
+    body_options_description = {en = "The body you see when you look down, what you can reach for on it, and what your hands are told through the controllers."},
+    world_options = {en = "The world around you"},
+    world_options_description = {en = "What is drawn out in the world rather than on you: markers, your teammates, the things you can throw or point at."},
+    movement_options = {en = "Movement and turning"},
+    movement_options_description = {en = "What direction you walk in and how you turn."},
     keyboard_mouse_mode = {en = "Keyboard and mouse in VR"},
     keyboard_mouse_mode_description = {en = "Play with keyboard and mouse. Menus take the mouse cursor and prompts show your keyboard bindings. The mouse moves the reticle inside a deadzone; move further and the view turns with it. Turning your head carries the reticle along. The HUD follows your head as usual. Applies immediately. Without controllers, rename the empty KeyboardMouseOff file in the mod folder to KeyboardMouseOn before launching."},
     keyboard_mouse_mode_switch_on = {en = "Keyboard and mouse in VR (on: KeyboardMouseOn file)"},

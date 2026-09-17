@@ -238,6 +238,12 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-marker-world.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_marker_world.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_marker_plane.lua")
+  add_test(NAME options_data COMMAND "${LUAJIT_VALIDATOR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-options-data.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_data.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_localization.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr")
+  set_tests_properties(options_data PROPERTIES PASS_REGULAR_EXPRESSION "options_data=pass")
   add_test(NAME marker_atlas COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-marker-atlas.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_marker_atlas.lua")

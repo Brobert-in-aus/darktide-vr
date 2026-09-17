@@ -88,11 +88,28 @@ for id,index in pairs(order) do
     assert(id=='controller_bindings' or groups[id].type~='group' or index<=order.experimental_options)
 end
 assert(experimental.sub_widgets[1].setting_id=='keyboard_mouse_mode')
-local moved={}
-for _,widget in ipairs(experimental.sub_widgets) do moved[widget.setting_id]=true end
-assert(moved.marker_plane and moved.psykhanium_online_rules)
+-- Reorganised 18 September at the user's request: what had found its place
+-- moved to a section that names what it is for, and only the genuinely
+-- unfinished was left behind. Settings keep their ids wherever they sit, so
+-- the saved values carry over; test-options-data.lua is what holds every id
+-- to that.
+local placed={}
+local function place(list,section)
+    for _,widget in ipairs(list) do
+        placed[widget.setting_id]=section
+        place(widget.sub_widgets or {},section)
+    end
+end
+for _,widget in ipairs(data.options.widgets) do place(widget.sub_widgets or {},widget.setting_id) end
+assert(placed.marker_plane=='world_options' and placed.vr_teammate_status=='world_options')
+assert(placed.psykhanium_online_rules=='mode_options')
+assert(placed.vr_crosshair_scale=='aiming_options' and placed.vr_ads_zoom=='aiming_options')
+assert(placed.vr_wrist_display_scale=='body_options' and placed.vr_haptics_strength=='body_options')
+assert(placed.movement_reference=='movement_options' and placed.vr_turn_mode=='movement_options')
+assert(placed.keyboard_mouse_mode=='experimental_options')
 local options=assert(groups.hud_options, 'missing HUD settings')
-assert(groups.vr_turning and groups.vr_turning.type=='group')
+-- Turning is a section's subsection now, not a section of its own.
+assert(not groups.vr_turning and groups.movement_options.type=='group')
 assert(groups.controller_bindings and groups.controller_bindings.type=='group')
 assert(options.setting_id=='hud_options' and options.type=='group')
 assert(#options.sub_widgets==6)
