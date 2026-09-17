@@ -275,7 +275,13 @@ function Overlay.install(mod, presentation, Atlas, api)
             -- (review, 18 September).
             font_px = Overlay.fitted_font(font_px, font_px * Overlay.TEXT_HALF_HEIGHT,
                 Overlay.vertical_room(cy / mpp, atlas.CELL_HEIGHT))
-            if not font_px or font_px < asked_font_px * Overlay.MIN_FONT_SCALE then return end
+            -- Floored, because fitted_font floors: a single fit sitting
+            -- exactly on its own permitted floor returns floor(asked * scale),
+            -- which is below asked * scale, and an unfloored comparison would
+            -- drop a line that never compounded at all (review, 18 September).
+            if not font_px or font_px < math.floor(asked_font_px * Overlay.MIN_FONT_SCALE) then
+                return
+            end
             local width, height = atlas.CELL_WIDTH, font_px * 1.5
             local sx, sy = pixel(cx, cy)
             local left, top = Overlay.text_box(sx, sy, width, height, align)

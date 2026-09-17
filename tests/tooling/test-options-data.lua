@@ -3,6 +3,10 @@
 -- quietly disappears in a reorganisation takes the player's saved value with
 -- it (the ids are the saved keys). Walked here against the rules DMF applies
 -- in mods/dmf/scripts/mods/dmf/modules/core/options.lua.
+--
+-- `tools/lua/mutate-options-data.py` puts ten real ways to break the tree
+-- through this file and every one must be caught. Run it after changing
+-- either: the first version of this test passed six of them.
 local data_path = assert(arg[1])
 local localization_path = assert(arg[2])
 local mod_root = assert(arg[3])
@@ -38,13 +42,24 @@ local can_parent = {header = true, group = true, checkbox = true, dropdown = tru
 local holds_value = {checkbox = true, dropdown = true, numeric = true, keybind = true}
 -- Every type DMF will accept (options.lua: initialize_widget_data). A typo'd
 -- one is not a widget that misbehaves, it is `dmf.throw_error` during
--- registration and a mod that does not load at all.
+-- registration and a mod that does not load at all. All ten, including the
+-- three the mod does not use yet: refusing one DMF accepts would block a
+-- legitimate change, which is the opposite of this test's job.
 local known_types = {header = true, group = true, checkbox = true, dropdown = true,
-    numeric = true, keybind = true, button = true}
--- The fields each type must carry, from DMF's validate_*_data.
+    numeric = true, keybind = true, button = true, color = true, text = true,
+    text_input = true}
+-- The fields each type must carry, from DMF's validate_*_data. `button_trigger`
+-- is NOT among them: initialize_button_data defaults it before validating.
 local required = {
-    button = {"button_text", "button_trigger", "function_name"},
+    button = {"button_text", "function_name"},
     keybind = {"keybind_trigger", "keybind_type"},
+}
+-- The values DMF will accept for them, not merely that something is there: a
+-- typo in one of these strings is the same unloadable mod as a typo in a type.
+local allowed = {
+    button_trigger = {pressed = true, released = true, held = true},
+    keybind_trigger = {pressed = true, released = true, held = true},
+    keybind_type = {function_call = true, mod_toggle = true, view_toggle = true},
 }
 
 local seen, order, problems = {}, {}, {}
@@ -86,13 +101,26 @@ local function walk(list, depth, parent)
                     fail(where .. " is a " .. kind .. " with no " .. field)
                 end
             end
+            for field, values in pairs(allowed) do
+                if widget[field] ~= nil and not values[widget[field]] then
+                    fail(where .. " has " .. field .. " = " .. tostring(widget[field]) ..
+                        ", which DMF does not accept")
+                end
+            end
             if kind == "keybind" then
                 if widget.keybind_type == "function_call" and widget.function_name == nil then
                     fail(where .. " calls a function on its key and names none")
                 end
+                if widget.keybind_type == "view_toggle" and widget.view_name == nil then
+                    fail(where .. " toggles a view on its key and names none")
+                end
                 if type(widget.default_value) ~= "table" then
                     fail(where .. " is a keybind whose default is not a table of keys")
                 end
+            end
+            if kind == "checkbox" and type(widget.default_value) ~= "boolean" then
+                fail(where .. " is a checkbox whose default is " ..
+                    type(widget.default_value) .. ", not a boolean")
             end
             if widget.sub_widgets ~= nil then
                 if not can_parent[kind] then
@@ -227,13 +255,16 @@ end
 --
 -- Every nesting under a value-holding parent is listed here with the line
 -- that proves the child no-ops without it. A new one fails this test until
--- someone writes that line down.
+-- someone writes that line down -- and the line has to be CHECKED, not
+-- asserted: `vr_weapon_charge_style` was justified here by the gate its
+-- `count` value sits behind, which is true, while its `bars` value is drawn
+-- by another module that never mentions the parent (review, 18 September).
+-- One value of a dropdown obeying the parent is not the dropdown obeying it.
 local justified = {
     vr_ads_zoom = "ads_focus: darktidevr.lua:6484, active needs `focus`",
     vr_two_hand_grip_mode = "vr_two_hand_support: two_hand_support.lua:232, behind is_enabled()",
     vr_virtual_stock = "vr_two_hand_support: two_hand_support.lua:235, behind is_enabled()",
     vr_wrist_display_scale = "vr_wrist_display: wrist_display.lua:143",
-    vr_weapon_charge_style = "vr_ammo_readout: ammo_readout.lua:359 is inside the :352 gate",
     vr_haptics_strength = "vr_haptics_mode: nothing vibrates when the mode is off",
     keyboard_mouse_recenter_keybind = "keyboard_mouse_mode",
     keyboard_mouse_disable_controllers = "keyboard_mouse_mode",

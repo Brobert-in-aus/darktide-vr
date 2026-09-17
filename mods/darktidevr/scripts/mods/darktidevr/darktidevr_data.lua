@@ -94,22 +94,29 @@ return {
                         setting_id = "vr_ammo_readout",
                         type = "checkbox",
                         default_value = false,
-                        sub_widgets = {
-                            {
-                                -- One display for a melee weapon's special
-                                -- charges (user, 16 September: the count and
-                                -- the bars showed the same thing in two
-                                -- places). Its count shares the ammo readout's
-                                -- panel, so it belongs under it.
-                                setting_id = "vr_weapon_charge_style",
-                                type = "dropdown",
-                                default_value = "count",
-                                options = {
-                                    {text = "vr_weapon_charge_style_count", value = "count"},
-                                    {text = "vr_weapon_charge_style_bars", value = "bars"},
-                                    {text = "vr_weapon_charge_style_off", value = "off"},
-                                },
-                            },
+                    },
+                    {
+                        -- One display for a melee weapon's special charges
+                        -- (user, 16 September: the count and the bars showed
+                        -- the same thing in two places).
+                        --
+                        -- A sibling of the ammo readout, though only one of
+                        -- its three values needs it. The COUNT draws inside
+                        -- the readout's gate; the BARS are a different module
+                        -- with a gate of its own that never mentions the
+                        -- readout (darktidevr_weapon_charge_display.lua:120),
+                        -- so nesting hid the only row that can turn the bars
+                        -- off from anyone who had turned the readout off
+                        -- (review, 18 September). The mod's own tooltip says
+                        -- as much: "The count also needs Ammo count at the
+                        -- hand on."
+                        setting_id = "vr_weapon_charge_style",
+                        type = "dropdown",
+                        default_value = "count",
+                        options = {
+                            {text = "vr_weapon_charge_style_count", value = "count"},
+                            {text = "vr_weapon_charge_style_bars", value = "bars"},
+                            {text = "vr_weapon_charge_style_off", value = "off"},
                         },
                     },
                 },
