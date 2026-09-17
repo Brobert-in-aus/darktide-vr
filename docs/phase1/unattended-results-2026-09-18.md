@@ -214,3 +214,41 @@ So the lesson is not about the capture at all:
   inside a 15 mm stillness gate, so it cannot correct a player who does not
   fully extend). But at 1.6 SD it is **not** what is blocking the arms, and
   today's A/B is not evidence against it.
+
+## The body at the player's own proportions (`overlaytrue`, `body-true-20260918`)
+
+Acting on the correction above: a dev-flag mode that drops the uniform scale
+entirely, bends the spine to bring the neck up (the existing `spine_bend`
+step) and applies the calibrated arm lengths. Same scene, character and
+conditions as the two arms above.
+
+| | `overlay` (shipping) | `overlayarmlength` | **`overlaytrue`** |
+|---|---|---|---|
+| uniform scale | 1.30 (at the cap) | 1.21 | **none** |
+| world arm (upper + forearm) | 0.709 m | 0.538 m | 0.518 m |
+| shoulder to target | 0.75-0.80 m | 0.82-0.87 m | **0.57-0.60 m** |
+| worst soft stretch | 0.00 m (ratio 1.13-1.19) | 0.42 m | **0.0006 m left, 0.031 m right** |
+| length ratios | none | 0.815 / 0.700 (floor) | 0.985 / 0.776 (free) |
+
+**The arm solve stops fighting the body.** With the shoulders left where the
+player's are, the calibrated 0.518 m arm reaches its target with under 3 cm
+of stretch on the worse side and essentially none on the better, against
+0.42 m when the same arms were fitted to a copy scaled up to reach the neck.
+The forearm ratio also comes off its clamp floor (0.776 against 0.700), which
+means the derivation is being applied as it was designed rather than being
+truncated.
+
+**What is not solved**: `spine neck_gap_m=0.254->0.181`. Bending the spine
+closes the gap between the copy's neck and the player's head from 25 cm to
+18 cm, so 18 cm remain — the head still sits above the body, which is the
+user's original complaint (worn item 52). The uniform scale was hiding that
+by enlarging everything. So the honest position is:
+
+- scaling the whole copy makes the neck meet the head and ruins the arms;
+- bending the spine fixes the arms and leaves the head 18 cm high;
+- neither is finished. The remaining 18 cm is what the legs milestone (or a
+  larger spine range, or scaling only below the neck) is for.
+
+This is measurement, not a recommendation to change the default: `overlay`
+still ships and `overlaytrue` is a flag. The worn question for the user is
+which of the two looks less wrong, and that needs a head.
