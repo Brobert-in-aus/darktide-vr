@@ -69,7 +69,10 @@ function Projection.zoom_blend(previous, active, dt)
     local p = tonumber(previous)
     local step = tonumber(dt)
     if not p or p ~= p then return target end
-    if not step or step ~= step or step <= 0 or step > 0.5 then return target end
+    -- No usable time step: hold. Snapping to the target here would make the
+    -- zoom jump whenever two callers read the same clock value in one frame,
+    -- which the head-tracking path does (review, 18 September).
+    if not step or step ~= step or step <= 0 or step > 0.5 then return p end
     local value = p + (target - p) * (1 - math.exp(-step / Projection.ZOOM_TAU))
     if math.abs(target - value) < 0.005 then value = target end
     return value

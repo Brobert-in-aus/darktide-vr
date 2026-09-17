@@ -3231,6 +3231,12 @@ class OpenXrProbe {
               consumed_capture.reset();
             } else {
               command_list->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+              // The whole captured image goes over this swapchain image,
+              // including the corner the vignette and reticle sprites live
+              // in, so this image must be painted again before it is shown.
+              if (flat_image_index < ads_painted_blend.size()) {
+                ads_painted_blend[flat_image_index] = -1.0F;
+              }
               if (panel_renderer && use_flat_capture) {
                 auto board_destination = destination;
                 board_destination.pResource = panel_renderer->board_texture();
@@ -4630,8 +4636,13 @@ class OpenXrProbe {
       // view space, wide enough to cover the field of view, sampling the
       // atlas sprite whose alpha follows ads_blend.
       XrCompositionLayerQuad ads_vignette_quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+      // `enable_gameplay_reticle`: the sprite is painted only inside the
+      // reticle atlas branch (update_reticle_atlas), so without it the quad
+      // would sample a corner of the captured game window instead -- opaque
+      // pixels across the whole view (review, 18 September).
       const bool submit_ads_vignette =
-          ads_blend > 0.01F && window_capture && flat_swapchain != XR_NULL_HANDLE &&
+          ads_blend > 0.01F && enable_gameplay_reticle && window_capture &&
+          flat_swapchain != XR_NULL_HANDLE &&
           view_space_ != XR_NULL_HANDLE && submitted_shared_pair_this_frame;
       if (submit_ads_vignette) {
         ads_vignette_quad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;

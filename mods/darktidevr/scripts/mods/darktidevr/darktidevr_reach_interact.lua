@@ -243,6 +243,8 @@ function Reach.install(mod, presentation)
         return reach_target.unit, reach_target.node
     end
 
+    -- Whether last frame's request in the claim slot was this module's.
+    local ours_last = false
     function api.sample(unit, active, t, support_request)
         -- A holster or two-hand claim owns the grip first: reaching for a door
         -- must not take the grip away from drawing a weapon. Only a claim that
@@ -250,13 +252,20 @@ function Reach.install(mod, presentation)
         -- frame a gun is out, wherever the off hand is, which left reaching
         -- dead for as long as a weapon was wielded (the same fault the item
         -- radial had, 17 September).
+        -- "Another claim is already held" must not count this module's own:
+        -- once reach holds the grip, `grip.held` is true, and yielding then
+        -- would hand the slot back, change the owner the bindings hold and
+        -- cancel the very grip it just took -- one armed frame per press
+        -- (review, 18 September).
         local grip = presentation.controller_bindings and presentation.controller_bindings.support_grip
-        local other_holds = type(grip) == "table" and (grip.held == true or grip.pressed == true)
+        local other_holds = type(grip) == "table" and not ours_last and
+            (grip.held == true or grip.pressed == true)
         if presentation.claim_yields(support_request, other_holds) then
-            claim, reach_target = nil, nil
+            claim, reach_target, ours_last = nil, nil, false
             return support_request
         end
         local ok, request = pcall(sample, unit, active, t)
+        ours_last = ok and request ~= nil
         if not ok then
             -- Keep going. One bad frame during a load or a respawn used to
             -- switch the feature off for the rest of the session, which reads

@@ -88,7 +88,7 @@ assert(projection.zoomed_frustum(nil, 1.12) == nil)
 
 -- The eased blend and the magnification it produces.
 assert(projection.zoom_blend(nil, true, 0.016) == 1, "no previous blend: take the target")
-assert(projection.zoom_blend(0, true, nil) == 1, "no time step: take the target")
+assert(projection.zoom_blend(0, true, nil) == 0, "no time step: hold")
 local b = projection.zoom_blend(0, true, projection.ZOOM_TAU)
 assert(math.abs(b - (1 - math.exp(-1))) < 1e-9, "one time constant closes 63 per cent")
 for _ = 1, 200 do b = projection.zoom_blend(b, true, 0.016) end

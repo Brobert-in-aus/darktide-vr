@@ -516,10 +516,14 @@ function Haptics.install(mod, presentation, send)
     local last_template, last_melee = nil, false
     -- Sub-sections for the frame profiler (profile doc, step 3): where the
     -- microseconds go inside one sample. A pass-through without it.
-    local function section(name, fn, a, b, c, d, e, f)
+    -- Variadic, like the profiler's own: a wrapper that names its parameters
+    -- silently drops the rest, which is how the bindings lost the ninth
+    -- argument of their sample for a day (17 September). Six was enough for
+    -- every call here, so this was latent rather than broken.
+    local function section(name, fn, ...)
         local profile = presentation.frame_profile
-        if profile then return profile.section(name, fn, a, b, c, d, e, f) end
-        return fn(a, b, c, d, e, f)
+        if profile then return profile.section(name, fn, ...) end
+        return fn(...)
     end
     local function body_events_of(previous_body, body) return Haptics.body_events(previous_body, body) end
     local function gauge_events_of(previous_gauges, gauges) return Haptics.gauge_events(previous_gauges, gauges) end

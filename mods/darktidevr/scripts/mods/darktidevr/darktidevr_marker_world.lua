@@ -567,6 +567,7 @@ state.extent = {dx = 0, dy = 0, reported_dx = 0, reported_dy = 0, at = nil}
 local function observe_extent(x, y, scope_atlas)
     local extent = state.extent
     local ax, ay = x < 0 and -x or x, y < 0 and -y or y
+    if ax <= extent.dx and ay <= extent.dy then return end
     if ax > extent.dx then extent.dx = ax end
     if ay > extent.dy then extent.dy = ay end
     local now = Application and Application.time_since_launch and Application.time_since_launch()
@@ -586,8 +587,14 @@ end
 
 local function shifted(scope, position, logical_scale)
     local factor = scope.factor or 1
-    observe_extent((position[1] or 0) * factor - scope.origin_x,
-        (position[2] or 0) * factor - scope.origin_y, scope.atlas)
+    -- The cell question only. The HUD panel's mirror scope draws in full
+    -- screen pixels about an origin of zero and has no cell at all, so
+    -- including it would saturate the maximum and mask what this measures.
+    if not scope.mirror and scope.atlas then
+        local unit = logical_scale or 1
+        observe_extent((position[1] or 0) * unit * factor - scope.origin_x,
+            (position[2] or 0) * unit * factor - scope.origin_y, scope.atlas)
+    end
     local dx = scope.atlas_x - scope.origin_x
     local dy = scope.atlas_y - scope.origin_y
     local unit = logical_scale

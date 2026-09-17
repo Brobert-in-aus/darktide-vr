@@ -86,6 +86,7 @@ inline float vignette_ramp(float squared_radius) {
 // degrees it reached 9 of 255 (built 12 September, never seen working; the
 // user, 17 September: "I suspect it's never worked"). Angles are OpenXR's
 // signed field-of-view angles in radians. Pure.
+constexpr float kVignetteMaxHalfExtent = 4.0F;  // about 76 degrees
 inline float vignette_half_extent(float angle_left, float angle_right,
                                   float angle_up, float angle_down) {
   const float tangents[4] = {std::tan(angle_left), std::tan(angle_right),
@@ -95,7 +96,9 @@ inline float vignette_half_extent(float angle_left, float angle_right,
     if (!std::isfinite(tangent)) continue;
     half = (std::max)(half, std::fabs(tangent));
   }
-  return half;
+  // An angle near a right angle has an enormous tangent, and one bad frame
+  // would otherwise ask the runtime for a quad kilometres across.
+  return (std::min)(half, kVignetteMaxHalfExtent);
 }
 
 // The alpha the vignette shows at a direction given as tangents from the
