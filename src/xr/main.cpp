@@ -999,6 +999,7 @@ class OpenXrProbe {
     // Polled from the flag file below as well, so a run can turn it on and
     // off while the game is up.
     bool reticle_in_eyes_requested = reticle_in_eyes_environment;
+    bool reticle_test_requested{};
     std::unique_ptr<darktidevr::harness::PanelRenderer> panel_renderer;
     std::array<XrSwapchain, 2> board_swapchains{XR_NULL_HANDLE, XR_NULL_HANDLE};
     std::array<std::vector<XrSwapchainImageD3D12KHR>, 2> board_images;
@@ -1468,6 +1469,12 @@ class OpenXrProbe {
     // environment and an environment-only switch could not be proved without
     // a head on (18 September).
     std::wstring reticle_in_eyes_flag;
+    // Presence makes the published world target stand in for a tracked hand,
+    // so an unattended run can see the reticle at all. Nothing else can drive
+    // it: the reticle needs a controller within reach of the head, and the
+    // synthetic path deliberately puts the hands out of reach and out of
+    // tracking for part of its cycle (18 September).
+    std::wstring reticle_test_flag;
     wchar_t reticle_scale_file[32768]{};
     const auto reticle_scale_path_length = GetEnvironmentVariableW(
         L"DTVR_RETICLE_SCALE_FILE", reticle_scale_file, 32768);
@@ -1490,6 +1497,8 @@ class OpenXrProbe {
         }
         reticle_in_eyes_flag = executable_directory +
             L"..\\darktidevr_reticle_in_eyes.flag";
+        reticle_test_flag = executable_directory +
+            L"..\\darktidevr_reticle_test.flag";
       }
     }
     float reticle_scale = 0.7F;
@@ -2461,7 +2470,8 @@ class OpenXrProbe {
           if (enable_gameplay_reticle && submitted_shared_pair_this_frame &&
               presentation_state.mode == darktidevr::core::
                                              SharedPresentationMode::stereo_world &&
-              (latest_controller_sample_ || keyboard_mouse_input) &&
+              (latest_controller_sample_ || keyboard_mouse_input ||
+               reticle_test_requested) &&
               current_head_valid) {
             darktidevr::core::SharedGameplayAimState newest_aim{};
             if (gameplay_aim_state_reader.read(newest_aim) &&
@@ -2484,14 +2494,18 @@ class OpenXrProbe {
             // A hand-aimed reticle disappears with its controller. Keyboard and
             // mouse aim publishes only world-depth target points from the mouse
             // pose and never needs a tracked controller.
+            // `reticle_test_requested` (darktidevr_reticle_test.flag) lets the
+            // published world target stand in for the tracked hand, which is
+            // what makes the reticle reachable without one.
             const bool reticle_source_tracked =
-                keyboard_mouse_input
+                (keyboard_mouse_input || reticle_test_requested)
                     ? gameplay_aim_state.target_point_valid
-                    : (latest_controller_sample_->hands[1].aim_tracking_flags &
-                       required) == required &&
+                    : (latest_controller_sample_ &&
+                       (latest_controller_sample_->hands[1].aim_tracking_flags &
+                        required) == required &&
                           darktidevr::core::pointer_origin_within_reach(
                               latest_controller_sample_->hands[1].aim_pose.position,
-                              current_head.position, 1.5F);
+                              current_head.position, 1.5F));
             const auto gameplay_aim_now_ns = static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(
                     // The producer can publish while xrWaitFrame or the shared
@@ -2576,6 +2590,15 @@ class OpenXrProbe {
             if (wanted != reticle_in_eyes_requested) {
               reticle_in_eyes_requested = wanted;
               std::cout << "openxr.reticle_in_eyes=" << (wanted ? 1 : 0) << '\n';
+            }
+            std::error_code test_error;
+            const auto test_present = !reticle_test_flag.empty() &&
+                std::filesystem::exists(
+                    std::filesystem::path{reticle_test_flag}, test_error);
+            const auto test_wanted = !test_error && test_present;
+            if (test_wanted != reticle_test_requested) {
+              reticle_test_requested = test_wanted;
+              std::cout << "openxr.reticle_test=" << (test_wanted ? 1 : 0) << '\n';
             }
           }
           if (enable_gameplay_reticle && reticle_scale_file[0] && reticle_scale_now >= next_reticle_scale_poll) {
