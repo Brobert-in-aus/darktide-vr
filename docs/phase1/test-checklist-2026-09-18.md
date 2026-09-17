@@ -137,11 +137,53 @@ off, say so.
 Say which sections you would move things between and it is a five-minute
 change.
 
+### 62. The aim zoom, now that it lands where it points
+
+This is the one item below that is a *correction to something you may already
+have felt*. The zoom went in this morning at 12 per cent and the reticle was
+not moving with it: the world magnifies about the centre of your view and the
+reticle stayed where the unmagnified image said, so it sat inside its target,
+further in the further off centre you looked. Then the first fix was made in
+the wrong frame and displaced targets that had been right. Both are fixed and
+the maths is pinned by a test, but it has never been in a headset.
+
+With a ranged weapon, sights up:
+
+- Put the reticle on something small about ten metres away, **near the edge of
+  your view rather than in the middle**, and bring the sights up. Does the
+  reticle stay on it?
+- Now hold the aim and turn your head slowly, keeping the gun still. The
+  reticle should stay on the target through the turn. (If it drifts only
+  while you turn *fast*, that is a known one-tick lag, about 0.4 degrees at a
+  hard turn — say so and it can be chased.)
+- Then look well away from where you were facing when the view last
+  recentred, and repeat. This is what the second fix was about: it should
+  behave the same there as straight ahead.
+
+### 63. The wrist display looked at from straight above (30 seconds)
+
+Two small things changed in how the hand panels are drawn.
+
+- Hold your wrist up and look **straight down** at it. The panel should hold
+  still. It used to spin for a millimetre of head movement at that angle, and
+  at dead vertical it vanished; now it holds its last roll and, if you turn
+  right round while looking down at it, it will snap once when you look up.
+  That snap is deliberate — say if it is worse than the spin was.
+- Drop your hand out of tracking and bring it back while still looking down
+  at it. The display should appear. It would not before.
+- Any text on the hand panels that is cut off at the top or bottom, or missing
+  where you expected it: it is now dropped rather than allowed to spill into
+  the neighbouring panel, so a label that is simply absent is worth naming.
+
 ## Suggested order
 
 1. In the Psykhanium with a ranged weapon: 55 and 56 together (aim, hold,
    release), then 57.
 2. Anywhere: 58, which is really "does anything look different that
    should not".
-3. 60 only if this session's notes say an unattended run saw the reticle in
+3. 62 in the Psykhanium with the same weapon — it is the correction most
+   likely to be felt, and it needs no setup.
+4. 63 anywhere, in half a minute.
+5. 61 at the desk, with the headset off.
+6. 60 only if this session's notes say an unattended run saw the reticle in
    the right place.
