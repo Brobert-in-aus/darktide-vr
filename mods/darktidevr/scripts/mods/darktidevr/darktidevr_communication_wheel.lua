@@ -128,15 +128,13 @@ function Wheel.install(mod,config)
         -- and close delay. Do not replace it with the neutral release sample.
         if not state.sample.held then return end
         local sample,scope=state.sample,update_scope
-        -- `...` cannot cross into the callback below, so the handler's tail
-        -- is captured here and closed over (18 September).
-        local tail=pack(...)
         local width,height=config.dimensions()
         return config.Navigation.with_input(input,sample,width,height,config.vector,function(token)
             return state.owned==owned and state.sample==sample and update_scope==scope and
                 owned.token==token and current(self)
-        end,function(proxy)return func(self,dt,t,renderer,settings,proxy,
-            unpack(tail,1,tail.n))end)
+        -- The tail rides through with_input, which forwards its own to the
+        -- callback on both paths: no table per frame (review, 18 September).
+        end,function(proxy,...)return func(self,dt,t,renderer,settings,proxy,...)end,...)
     end)
 
     mod:hook('HudElementSmartTagging','_on_com_wheel_stop',function(func,self,t,renderer,settings,input,...)

@@ -5498,7 +5498,7 @@ local function update_stereo(manager)
     ScriptCamera.force_update(world, right_camera)
 end
 
-mod:hook(World, "update_lod_levels", function(func, world, camera)
+mod:hook(World, "update_lod_levels", function(func, world, camera, ...)
     local rendered_fov = camera == presentation.lod_primary_camera and
         presentation.lod_primary_fov or
         camera == presentation.lod_right_camera and presentation.lod_right_fov
@@ -5512,7 +5512,7 @@ mod:hook(World, "update_lod_levels", function(func, world, camera)
         return presentation.projection_math.update_lod_levels(
             func, world, camera, rendered_fov)
     end
-    return func(world, camera)
+    return func(world, camera, ...)
 end)
 
 mod:hook(
@@ -7390,14 +7390,14 @@ mod:hook(
     "_update_script_driven_movement",
     function(func, self, unit, dt, t, locomotion_component,
             steering_component, current_position, calculate_fall_velocity,
-            on_ground, mover)
+            on_ground, mover, ...)
         local original_velocity = presentation.apply_body_follow_translation(
             unit, dt, t, locomotion_component, steering_component,
             current_position)
         local before_x, before_y = Vector3.x(current_position), Vector3.y(current_position)
         local result = func(
             self, unit, dt, t, locomotion_component, steering_component,
-            current_position, calculate_fall_velocity, on_ground, mover)
+            current_position, calculate_fall_velocity, on_ground, mover, ...)
         if presentation.roomscale and result then
             -- PlayerUnitInputExtension delegates frame ownership to its human
             -- reader. A frame read from the extension itself is nil and silently
@@ -11520,7 +11520,7 @@ end
 mod:hook(
     require("scripts/managers/mission/mission_manager"),
     "force_third_person_mode",
-    function(func, self)
+    function(func, self, ...)
         -- The hub and the onboarding hub missions both force third person
         -- in stock; the first-person body request overrides either.
         if presentation.hub_first_person_requested() and
@@ -11528,7 +11528,7 @@ mod:hook(
                     presentation.onboarding_hub_active()) then
             return false
         end
-        return func(self)
+        return func(self, ...)
     end)
 
 -- HumanGameplay, not PlayerUnitFirstPersonExtension, owns the orientation
@@ -11537,12 +11537,12 @@ mod:hook(
 mod:hook(
     require("scripts/managers/game_mode/game_mode_manager"),
     "default_player_orientation",
-    function(func, self)
+    function(func, self, ...)
         if presentation.hub_first_person_requested() and
                 self:game_mode_name() == "hub" then
             return "DefaultPlayerOrientation"
         end
-        return func(self)
+        return func(self, ...)
     end)
 
 -- Hub locomotion remains server-authoritative. The public hub server publishes
@@ -13345,7 +13345,7 @@ presentation.hook_legacy_menu(
             end
         end
         local result = func(
-            self, dt, t, input_service, ui_renderer, render_settings)
+            self, dt, t, input_service, ui_renderer, render_settings, ...)
         if pointer.primary_pressed and not pointer.available and
                 not source_widget then
             for i = #widgets, 1, -1 do
@@ -13452,7 +13452,7 @@ presentation.hook_legacy_menu(
             end
         end
         local result = func(
-            self, dt, t, ui_renderer, input_service, render_settings)
+            self, dt, t, ui_renderer, input_service, render_settings, ...)
         if pointer.primary_pressed and not pointer.available and
                 not source_widget then
             for i = #widgets, 1, -1 do
@@ -14324,7 +14324,7 @@ mod:hook(
     "create_viewport",
     function(func, self, camera_unit, viewport_name, viewport_type,
             viewport_layer, shading_environment, shading_callback,
-            render_targets)
+            render_targets, ...)
         local key = tostring(self._world_name) .. ":" .. tostring(viewport_name)
 
         if not observed_ui_viewports[key] then
@@ -14374,7 +14374,7 @@ mod:hook(
             viewport_layer,
             shading_environment,
             shading_callback,
-            render_targets
+            render_targets, ...
         )
 
         local target_main_menu_viewport =
@@ -16073,11 +16073,11 @@ function presentation.marker_atlas_frame(anchor)
 end
 -- Marker widgets mapped to a plane this frame draw through it; the right-eye
 -- replay skips them because the world surface already serves both eyes.
-mod:hook(require("scripts/managers/ui/ui_widget"), "draw", function(func, widget, ui_renderer)
+mod:hook(require("scripts/managers/ui/ui_widget"), "draw", function(func, widget, ui_renderer, ...)
     local scopes = presentation.marker_plane_widgets
     local scope = scopes and scopes[widget]
     if not scope or scope.renderer ~= ui_renderer then
-        return func(widget, ui_renderer)
+        return func(widget, ui_renderer, ...)
     end
     if world_marker_reprojecting then
         -- The world surface already serves both eyes; the screen surface

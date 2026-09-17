@@ -26,7 +26,7 @@ function EyeTargets.install(mod, script_world, extent)
 
     mod:hook(script_world, "create_viewport", function(func, world, name,
             template, layer, camera_unit, position, rotation, shadow,
-            shading, callback, mood, targets)
+            shading, callback, mood, targets, ...)
         local side = names[name]
         local owned = worlds[world]
         -- The primary gameplay camera establishes ownership. Never redirect
@@ -35,7 +35,7 @@ function EyeTargets.install(mod, script_world, extent)
                 (side == "left" and template ~= "default") or
                 (side == "right" and not (owned and owned.player1)) then
             return func(world, name, template, layer, camera_unit, position,
-                rotation, shadow, shading, callback, mood, targets)
+                rotation, shadow, shading, callback, mood, targets, ...)
         end
         assert(not (owned and owned[name]), "gameplay eye viewport already owns targets")
         local width, height
@@ -55,7 +55,7 @@ function EyeTargets.install(mod, script_world, extent)
                     tostring(name))
             end
             return func(world, name, template, layer, camera_unit, position,
-                rotation, shadow, shading, callback, mood, targets)
+                rotation, shadow, shading, callback, mood, targets, ...)
         end
         local entry = { width = width, height = height }
         entry.back_buffer = create("darktidevr_" .. side .. "_eye_final", width, height)
@@ -70,7 +70,7 @@ function EyeTargets.install(mod, script_world, extent)
         entry.hudless_color = hudless
         local mapping = { back_buffer = entry.back_buffer, hudless_color = hudless }
         local created, viewport = pcall(func, world, name, template, layer,
-            camera_unit, position, rotation, shadow, shading, callback, mood, mapping)
+            camera_unit, position, rotation, shadow, shading, callback, mood, mapping, ...)
         if not created or not viewport then
             release(entry)
             error(created and "gameplay viewport creation returned nil" or viewport, 0)

@@ -115,25 +115,25 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
         return text
     end
     mod:hook(InputUtils,"input_text_for_current_input_device",
-        function(func,service,alias,tint)
+        function(func,service,alias,tint,...)
             if menu_prompts then
                 local menu_text=menu_prompts.input_text(service,alias,tint)
                 if menu_text then return menu_text end
             end
-            if not enabled() then return func(service,alias,tint) end
+            if not enabled() then return func(service,alias,tint,...) end
             local action = aliases[alias]
             local inventory=service=="View" and alias=="hotkey_inventory" and bindings.context=="hub"
             if inventory then action="inventory" end
             if service=="View" and not inventory then
-                if type(alias)~="string" then return func(service,alias,tint) end
+                if type(alias)~="string" then return func(service,alias,tint,...) end
                 -- Every menu alias, hotkeys included, is answered by the VR
                 -- adapter or reads Unbound: no keyboard key can be pressed in
                 -- controller play (the end screen's "[E] Merge Strike Teams?"
                 -- came through a hotkey passthrough).
                 return view_text(alias,tint)
             end
-            if service~="Ingame" and not inventory then return func(service,alias,tint) end
-            if action==nil then return func(service,alias,tint) end
+            if service~="Ingame" and not inventory then return func(service,alias,tint,...) end
+            if action==nil then return func(service,alias,tint,...) end
             local switch = weapon_switch and (alias=="wield_1" or alias=="wield_2")
             if switch then action="quick_wield" end
             if action==false then

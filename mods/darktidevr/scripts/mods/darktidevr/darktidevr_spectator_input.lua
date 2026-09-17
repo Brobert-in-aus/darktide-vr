@@ -77,10 +77,10 @@ function Spectator.install(mod, Bindings, Context, sample, allowed)
     local function hint_enabled()
         return available and owner[1] and owner[2] and admitted(owner[1],owner[2])
     end
-    mod:hook('HudElementSpectatorText','_get_cycle_input_text',function(func,self)
-        if not hint_enabled() then return func(self) end
+    mod:hook('HudElementSpectatorText','_get_cycle_input_text',function(func,self,...)
+        if not hint_enabled() then return func(self,...) end
         local controls=bindings.controls_for_action('jump')
-        if not controls[1] then return func(self) end
+        if not controls[1] then return func(self,...) end
         local InputUtils=require('scripts/managers/input/input_utils')
         return InputUtils.apply_color_to_input_text(
             '['..mod:localize('vr_prompt_'..controls[1])..']',Color.ui_input_color(255,true))
