@@ -246,7 +246,45 @@ name, so `darktidevr_body_mirror.flag` = `reflection` runs the whole
 pipeline and puts the copy 2.5 m ahead, where an eye readback sees it. Worth
 its own arm because it must not run beside the overlay while unproven.
 
-### B3. Cost, when the behaviour is settled
+### B3. Virtual Desktop's streaming frame rate against performance (user, 18 September)
+
+"test different virtual desktop streaming framerates to see how they impact
+performance. Previous testing was done at 120, it's currently set to 100."
+
+The logs bear that out and sharpen it. Every Hub arm of 16 September records
+`last_display_period_ms=8` (120 Hz), including the ones that concluded the
+pipeline pins near 55 game pairs a second whatever we do to it; the user's
+17 September session records 10 ms (100 Hz) and 64 to 75 pairs. So dropping
+the streaming rate by a sixth *raised* the game's own frame rate by about a
+fifth. That is the opposite of the usual intuition and it is the single
+largest performance lever found so far, larger than the FOV tangent's 10 per
+cent. The likely reason: the compositor and the encoder take a fixed share
+of the GPU per submitted frame, so submitting fewer leaves more for the
+game. (Correcting the 17 September handover, which said the 16 September
+arms ran at 90 Hz: they ran at 120.)
+
+What to measure: one Hub arm per rate (72, 80, 90, 100, 120), each with the
+frame-profile flag, reading game pairs a second, the pair's GPU time and the
+loop's wait from `summarize-hub-arms.py`, and the eye target at each rate
+(Virtual Desktop may change it with the rate, which would confound the
+comparison -- read `openxr.recommended_size` per arm and say so).
+
+The obstacle: the rate is chosen in the headset's Virtual Desktop app, not
+on the PC. Nothing under `%APPDATA%\Virtual Desktop` or the streamer's
+registry holds it. Three ways, in order of preference:
+1. Try `adb shell setprop debug.oculus.refreshRate <hz>` before a run. This
+   is **self-verifying**: the viewer's own `last_display_period_ms` says
+   what rate actually happened, so a failed override is obvious and costs
+   nothing. Try it once before planning around it.
+2. Drive the Virtual Desktop app's streaming menu over adb (`input tap`)
+   from a known state. Brittle, and it needs the headset awake and the app
+   in the foreground; only worth it if 1 fails and the user wants the sweep
+   done unattended.
+3. Ask the user to set each rate; the runs themselves are unattended. Each
+   change is seconds in the headset menu, so a sweep could be: they set 72,
+   we run the arm, they set 80, and so on -- but that is not away-work.
+
+### B4. Cost, when the behaviour is settled
 
 One Hub launch with the frame-profile flag, before and after, for: the two
 spawned character profiles (`draw.body_mirror`), the new atlas section, and
