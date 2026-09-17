@@ -197,7 +197,18 @@ local function new(options)
     function Atlas.claim(t, anchor)
         if not Atlas.begin_frame(t) then return nil, "atlas" end
         local index = #state.pending + 1
-        if index > COLUMNS * ROWS then return nil, "atlas_full" end
+        if index > COLUMNS * ROWS then
+            -- Every caller answers this by hiding, so a full atlas reads as a
+            -- display quietly going missing with nothing in the log to say
+            -- why. Said once per session; the count is what a report needs.
+            if not state.full_logged and state.api and state.api.log then
+                state.full_logged = true
+                state.api.log(string.format(
+                    "%s atlas_full cells=%d anchor=%s", TAG, COLUMNS * ROWS,
+                    tostring(anchor and anchor.key or "?")))
+            end
+            return nil, "atlas_full"
+        end
         local column, row = (index - 1) % COLUMNS, math.floor((index - 1) / COLUMNS)
         local x, y = column * CELL_WIDTH + CELL_WIDTH * 0.5, row * CELL_HEIGHT + CELL_HEIGHT * 0.5
         state.pending[index] = {anchor = anchor, x = x, y = y}
