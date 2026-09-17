@@ -163,3 +163,35 @@ app driven over adb.
 the game-started viewer writes `game-viewer.log`, so its pair and submission
 columns read zero for such a run. The numbers above come from the viewer log
 directly.
+
+## Arm lengths from the calibration, measured against the uniform scale
+
+`body-armlength-20260918` runs the `overlayarmlength` mode, which applies the
+calibrated upper-arm and forearm lengths after the uniform scale, against the
+first run's plain `overlay`. Both in the Psykhanium as Robobert, neither with
+tracked controllers, so the hand targets come from the character's own
+animation in both: the arm *lengths* below are calibration-driven and
+comparable, the shoulder-to-target distances are not the worn case.
+
+| | `overlay` | `overlayarmlength` |
+|---|---|---|
+| world upper arm | 0.355 m | 0.290 m |
+| world forearm | 0.354 m | 0.248 m |
+| **reach (upper + forearm)** | **0.709 m** | **0.538 m** |
+| length ratios applied | none | 0.815 and **0.700** (at the clamp floor) |
+| soft stretch, worst | 0.00 m (ratio 1.13-1.19) | **0.42 m** |
+
+**Applying the calibration as it stands makes the arms markedly worse**, and
+the reason is in the same log line: `arm_length source=span span_m=1.559
+reach_m=0.518 upper_m=0.290 lower_m=0.228`. A 1.56 m span for a 1.78 m player
+is short — the 16 September capture was 150.6 cm against 163 expected, and
+this one is no better — so the derived forearm hits the mode's 0.70 clamp
+floor and the arm ends up a fifth shorter than the rig's own.
+
+So the next step for the body is **not** to switch the overlay to calibrated
+lengths. It is to fix the capture first: the design's step 1 asks for the
+90th percentile of grip-to-grip over the hold, and the code still averages 45
+frames (`darktidevr_calibration_view.lua:231-252`), which is exactly the
+under-extension the design predicted. Until the span is trustworthy, the
+uniform scale — capped, and stretching by 13 to 19 per cent — is the better
+of the two.
