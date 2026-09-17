@@ -6,6 +6,17 @@ runtime package records the exact source revision alongside the version.
 
 ## Unreleased
 
+- Fixed, from 16 September's build: with the item radial or the
+  communication wheel open, a stick flick also fired the stick's own binding
+  (a weapon switch on a flick up).
+- Second worn round of 17 September: the full body sits 10 cm lower and
+  5 cm further back under your eye and turns smoothly; the servo skulls no
+  longer flicker as you move, come to your hand while you hold them and fly
+  out from it; the F8 body mirror is a true copy of your body that stands
+  still as you walk; hand display text is fitted to its space; the item
+  radial's labels are sharper and brighter; the ammo count and the charge
+  display sit 2 cm further from the weapon; a guard against slivers beside
+  distant pickup markers.
 - Worn results of 17 September, the same evening: the sliver of the wrist
   bars beside the ammo count is gone (with Virtual Desktop's FOV tangent
   below 100 per cent the smaller eye target let the bars spill into the next

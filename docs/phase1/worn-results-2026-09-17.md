@@ -186,3 +186,43 @@ they match), recorded before acting.
   should match my IK identically, a true mirror." Open.
 - **39, clarified**: "The bleed over is pickups like the stims in the psykh, medipack etc." So the world markers on pickups, not a hand display.
 - **New, item radial**: "the text in the selection wheel is low resolution and too hard to see before you switch to it". Open: sharper and brighter labels.
+
+## What was done for the second round
+
+Committed, tested (274 pass), each batch read by a second reader, deployed
+with the game closed (`2559f28`), and listed as checklist items 47 to 54.
+
+- **Radial (42)**: not the radial. The frame profiler's `section` wrapper (16
+  September) named eight parameters; the bindings' `sample` takes nine, and
+  the ninth, `exclusive_stick`, was dropped for every player, profile on or
+  off. The session log shows `quick_wield` delivered on the frame of each
+  pick, a frame before `wield_3`. The wrapper is variadic now, with a test
+  (`ac3aebc`). The communication wheel had the same fault since the 16th.
+  Lesson: a pass-through wrapper must be variadic; "covers every call site"
+  was checked against results, not arguments.
+- **Counts (40)**: 2 cm further (`ac3aebc`).
+- **Full body (44)**: the rig's `j_neck` (base of the neck) was matched to
+  the body frame's neck (the skull's pivot, 8 cm under the eye): 10 cm high,
+  5 cm forward, and scaled 1.2 to 1.3 times to get there (the log's
+  `scale_ratio`). Target lowered 10 cm and moved back 5 cm, level and
+  vertical; clavicle targets with it; heading eased over 0.3 s (`d0965ea`).
+- **Pickup sliver (39, clarified)**: no picture of it; an 8-texel gutter on
+  every atlas cell against minified sampling (`d0965ea`). A guess until a
+  screenshot says otherwise.
+- **Overlay text** (from the FOV-tangent audit): measured and fitted to the
+  cell, since text cannot be clipped (`d0965ea`).
+- **Radial labels**: 1.6 times the resolution, brighter (`d0965ea`).
+- **Skulls (43)**: one writer. The stock `post_update` is wrapped and fed the
+  lazy heading (the owner's `extrapolated_rotation` shadowed on the instance
+  for its length), rest offsets carrying the side swap, forward rest and
+  lead, and the hand while the grab is held; the shared settings tables are
+  restored after every call, so other players' skulls are no longer
+  mirrored. The log had the throw's fault: `nodes=27 root_children=9`, and
+  only the first child was moved; all nine now (`1814783`). The review then
+  found four real faults, fixed in `2559f28`: a lost undo on a mid-feed
+  error (shared tables left changed for the session), engine calls on a dead
+  unit, the stock heading smoothing pulling a held skull off the hand, and
+  the player's FOV setting scaling the lead and the hold sideways.
+- **Mirror (45)**: a second instance of the body mirror module running a
+  `reflection` mode: the whole overlay pipeline, then the root turned about
+  the player's neck and stood 2.5 m ahead (`9911f4a`).

@@ -1,166 +1,133 @@
 # Worn checklist: 16 and 17 September 2026
 
 Branch `codex/alpha-4-2026-09-14`, after the 0.2.0-alpha.1 release
-(`d6d0e90`, tag `v0.2.0-alpha.1`). Session state and evidence:
-[handover](../handoffs/2026-09-16-session.md). Each deployment adds an item
-here when it is installed.
+(`d6d0e90`, tag `v0.2.0-alpha.1`). Each deployment adds an item here when it
+is installed. Only what is still to try worn is listed; the results of the
+worn rounds and the fixes they led to are in the
+[16 September handover](../handoffs/2026-09-16-session.md) ("The evening: the
+worn session") and [worn-results-2026-09-17.md](worn-results-2026-09-17.md)
+(both of that evening's rounds).
 
-Rewritten on the evening of 17 September to what is still to try worn. The
-results of the two worn rounds and the fixes they led to:
-[16 September](../handoffs/2026-09-16-session.md) ("The evening: the worn
-session") and [17 September](worn-results-2026-09-17.md).
-
-Items are headings, not a numbered list: a Markdown viewer renumbers a list
-that starts at 6 as 6, 7, 8, which is how the 17 September results came back
-against different numbers. The numbers are the ones the handover, the results
-and the changelog cite.
+Items are headings, not a numbered list, so a Markdown viewer cannot renumber
+them: the number you see is the number the results, the handover and the
+changelog cite.
 
 ## Start state
 
-- The installed Lua and viewer match the branch head (`9741baa`), checked file
-  by file against the previously deployed commit before copying, 17 September
-  evening. The capture DLL and proxy are the 16 September build. The viewer
-  before the board fix is kept as
-  `artifacts/unattended/board-projection-20260917/darktidevr-xr-harness.before-board-projection.exe`.
-- **Check the flags before putting the headset on.** Several features read a
-  `*.flag` file in the installed mod folder and turn themselves on when one
-  is there, whatever the option says. Anything other than
-  `darktidevr_crosshair_scale.flag` should be deleted first. (Checked at the
-  17 September deployment: only that one.)
-- None of items 39 to 46 has had an unattended run: you were at the headset
-  all evening, and no launch is made while you are. Their pure parts are unit
-  tested (274 pass) and a review read the engine side; what that cannot
-  show is said in each item.
+- The installed Lua matches the branch head (`2559f28`), each file checked
+  against the previously deployed commit before copying, 17 September late
+  evening. The viewer is the board-fix build of the same evening; the
+  capture DLL and proxy are the 16 September build.
+- **Check the flags before putting the headset on.** Anything in the
+  installed mod folder named `*.flag` other than
+  `darktidevr_crosshair_scale.flag` should be deleted first.
+- Nothing below has had an unattended run (you were at the headset, and no
+  launch is made while you are). The pure parts are unit tested (274 pass)
+  and a second reader reviewed the engine side of each batch; what that
+  cannot show is said in each item.
 
-## Passed worn, 17 September (nothing to do)
+## Closed on 17 September
 
-6 viewer survives a zero field of view; 9 eye anchor; 15 and 16 hand roles;
-22 to 28 the "still works" family (profiler wrapping, haptics, flag polls,
-sampler gates, marker values, marker head frame, native rebuild); 30 boards
-re-seat on a recenter; 34 and 38 the boards ("board fix worked": the viewer
-draws them itself, right with the FOV tangent at 90 per cent).
+Passed: 6, 8 (calibration), 9, 15, 16, 22 to 28, 30, 34 and 38 (the boards),
+39 (no sliver beside the ammo count), 41 (talk zone). Withdrawn or nothing
+to test: 13, 14, 46. Replaced by an item below: 40, 42, 43, 44, 45.
 
-## Still open from before
+## To try
 
-### 8. Calibration T-pose guidance
+### 47. Item radial: a flick no longer also switches weapon
 
-Restart; open the VR calibration. The T-pose instruction asks for arms
-straight out at shoulder height, fully extended, controllers pointing
-outward. After saving, the result shows the arm span with the span expected
-for your height, and names any problem with the T-pose. 17 September: "see
-later note"; waiting for the note. (From the full-body report: height 178 cm,
-eye height measured about 172 cm, span captured with arms in the right
-position.)
+Restart; Experimental features, "Item radial". The cause was not in the
+radial: the frame profiler's timing wrapper (16 September) passed on eight
+arguments and the bindings take nine, the ninth being "the stick is owned by
+a radial or the communication wheel". It was dropped for a day, so every
+flick inside the radial also fired the stick's own binding. Your log shows
+`quick_wield` delivered on the frame of each pick, one frame before the item
+wield; when the weapon switch won, you saw a weapon switch. Check: hold the
+carried-items control, flick up: the item comes out, every time; flick to an
+empty sector: nothing happens. The same fault applied to the communication
+wheel: flicking in the wheel should no longer also trigger the stick's
+binding.
 
-### 13. Tag what your off hand points at
+### 48. Ammo count and charge display 2 cm further from the weapon
 
-Withdrawn. 17 September: "left hand tag pointing doesn't seem to work (also
-disable it for now)". See 46.
+Restart. Both the ammo count beside a gun (6 cm from it, was 4) and the
+melee count and bars (8 cm, were 6).
 
-### 14. The body overlay (dev flag)
+### 49. No sliver beside distant pickups' markers
 
-Superseded by 44: the option now turns the overlay on.
+Restart. My reading, without a picture of it: a marker far away is drawn
+many times smaller than its cell of the marker atlas, and a minified sample
+reaches well past the half-texel guard into the neighbouring cell. Every
+cell is now shown without its outer 8 texels, the quad shrunk to match so
+nothing changes size. Check the stims and medipacks in the Psykhanium from
+across the room. **If a sliver is still there, a headset screenshot of it
+would settle what it is** (the last one on the headset was of the mirror).
 
-## New on 17 September
+### 50. Hand display text fitted to its cell
 
-### 39. No sliver beside the ammo count
+Restart. Text on the hand displays cannot be clipped the way rectangles
+are, so it is now measured and its font scaled down to the room it has. The
+one that needed it: an item's name on the forearm holsters when you hover
+(54 px tall, about 730 px for a long name, in a 477 px cell), which spilled
+into the cells either side. Check: hover a holstered item with a long name:
+the whole name shows, smaller; nothing appears beside other displays.
 
-Restart; no option. The sliver was the left ends of the wrist display's
-three bars. They are laid out 243 px left of their overlay cell's centre:
-inside the 528 px cell of a 2112-wide eye target, 4 px outside the 477 px
-cell that Virtual Desktop's 90 per cent FOV tangent gives, and so inside the
-ammo count's cell next door. (It went away whenever a bar was not drawn to
-its full width or the cells were claimed in another order.) The wrist
-panel's scale now fits its layout to the cell, and every overlay rectangle
-is clipped to its own cell. Check: nothing beside the ammo count or the
-charge count at any health, toughness or stamina; the wrist display looks
-the same (at the 90 per cent tangent it is drawn about 6 per cent coarser,
-the same size in the world).
+### 51. Item radial labels sharper and brighter
 
-### 40. Charge display left of the weapon
+Restart. The panel is drawn at 1.6 times the resolution (as fine as one
+overlay cell allows), the letters a little larger (1.5 cm), unpicked labels
+near white, the picked one amber.
 
-Restart; Experimental features, "Weapon charge display". The melee count and
-the charge bars sit ahead of the weapon hand's grip and toward your midline
-as you look at it, level with the hand, where the ammo count sits beside a
-gun. Above the grip they landed on the forearm holster's count (your
-screenshot: "1/8" over "8 / 49"). Check: count and bars each sit left of a
-right-hand melee weapon, clear of the holstered gun's count; say if it wants
-to be nearer or further (6 cm to the side, 8 cm ahead; the bars' centre a
-further 5 cm out so their near end clears the hand).
+### 52. Full body: lower, further back, turning smoothly
 
-### 41. Talk zone a third smaller
+Restart; Experimental features, "Full body (experimental)". The copy's
+`j_neck` is the base of the neck; it was being put on a point 8 cm below the
+eye (the skull's pivot), which stood the body about 10 cm too high and
+enlarged it 1.2 to 1.3 times to get there (your log). Its target is now
+10 cm lower and 5 cm further back, and the shoulders' targets move with it.
+Its heading now eases after your body over about a third of a second
+instead of stepping; a stick snap turn is still taken at once. Check: the
+eye sits about where your own does, above and ahead of the collar; on a
+reset view it no longer grows up to your head; turning on the spot, the body
+follows without a snap; at the mouth for push to talk, your hand is outside
+the head (see it in the mirror, 54). Say which way it is still off, in
+centimetres: the two numbers are constants.
 
-Restart; "Push to talk with the off hand at the mouth". The zone is 13.5 cm
-around the mouth to start talking and 19 cm to keep talking (were 20 and
-28). Check: it still opens with the hand cupped at the mouth, and no longer
-with the hand merely near the face.
+### 53. Servo skulls: no flicker, held in the hand, thrown from the hand
 
-### 42. Item radial with a gun out
+Restart; Experimental features, "Grab and throw the servo skull". The
+flicker of the skull's physics parts came from two writers (the game placed
+the skull, then the mod moved it). Now there is one: the game's own update
+is given the mod's heading, rest offsets and lead for its duration, and the
+mod writes nothing while a skull follows. While your off hand holds the
+grab, the offset it is given is your hand, so the skull should sit just
+above the hand during targeting; on release, on a local server (the
+Psykhanium, solo play), the ordered skull really leaves from there. The
+throw's own arc never showed because the skull's parts are nine siblings
+under its root and only the first was being moved; all nine move now (that
+matters on a remote server, where the real skull leaves from the server's
+side). Check: run and strafe with the skulls in view: nothing on them
+flickers; sides, lazy turning and the 30 cm lead as before; grab the
+flamethrower skull: it comes to your hand and stays there as you aim;
+release: it flies out from the hand.
 
-Restart; Experimental features, "Item radial". With a ranged weapon wielded
-the radial closed a moment after opening, and a flick then went to the
-stick's own binding (the weapon switch): two-hand support offers its claim
-every frame a gun is out, wherever the off hand is, and the radial gave way
-to any offer. It now gives way only when that hand is at or approaching the
-foregrip, or a grip is already held. Check: with a gun out, hold the
-carried-items control: the radial stays while held; flick to an empty
-sector: nothing happens, and no weapon switch; flick to a filled one: it
-wields. By design it will not open while your off hand is on or near the
-foregrip, or while a toggled two-hand grip is latched.
+### 54. Body mirror: a true copy of your body
 
-### 43. Servo skulls: sides, following, leading
-
-Restart; Experimental features, "Grab and throw the servo skull". Neither
-change showed on 17 September because the first-person body reports third
-person to the game's equipment code, so the skulls read their third-person
-rest table (flamethrower 55 cm to the right, medical to the left) and only
-the first-person one was mirrored; and the stock skull is placed from your
-head's look direction, so a drawn skull chasing it 0.2 s behind still read
-as head-locked. Now: both tables are mirrored (for a right-handed player;
-left-handed, stock already has the throwable skull at the off hand); every
-skull of yours keeps its place relative to a heading that follows your head
-only beyond 20 degrees, tracks your head's position exactly as the HUD does,
-and leans up to 30 cm ahead along your run. The drawn skull is now the
-skull's own root, so the grab zone is where you see it. Check: flamethrower
-skull at your left, 30 cm forward, medical and regular on the right; glance
-left and right: they stay put; turn: they swing round after you; run: they
-move ahead of you; grab the flamethrower skull with the off hand where you
-see it; send it and let it return. Not proven unattended; the log's
-`DARKTIDEVR_SKULL_THROW follow=root` line gives the node counts that say
-whether the throw's child-node placement can ever have shown.
-
-### 44. Full body (experimental) is the body overlay
-
-Restart (for the new files; after that the option takes effect within a
-couple of seconds); Experimental features, "Full body (experimental)"; not
-in the hub. The option used to turn on the older headless body, which keeps
-the character's own height, hence the head floating above it. It now turns
-on the overlay: a copy of your character scaled until its neck meets your
-head, arms solved to your controllers, clavicle swing, protraction and soft
-stretch (the `both4` result). A few seconds to appear. Check, as item 14
-asked: looking down, are the arms, gloves and gun readable, one pair of
-hands; reach across, up and out: do the arms stay on the controllers; strafe
-and turn: does the body follow your head rather than the run animation; is
-the neck placed behind your eye; and whether enlarging the copy 17 to 24 per
-cent is worth it against arms of their calibrated length.
-
-### 45. Body mirror on F8, in the Psykhanium
-
-Restart (a new key binding); "Body mirror shortcut", default F8. A copy of
-your character stands 2.5 m ahead facing you; press again to remove it.
-While it is up it replaces the overlay of 44 (one copy at a time), and it
-shows the game's own animated pose, not the solved arms. It turns itself
-off when you leave the Psykhanium.
-
-### 46. Tag by pointing out of the menu
-
-Restart. The option is gone and a saved value is ignored; tagging follows
-the weapon.
+Restart; F8 in the Psykhanium. The mirror is now a second copy posed by the
+same pipeline as the full-body overlay (neck, scale, shoulders, arms solved
+to your wrists), head shown, then turned about you and stood 2.5 m ahead. It
+is placed from your tracked head, not from the character's root, which is
+what made it jump about while moving. It runs beside the overlay instead of
+replacing it, and works with the overlay off too. Check: it stands still
+relative to you while you walk and strafe; its arms, shoulders and hands
+match yours; raise a hand to your mouth and see where it is against the
+head (this is the check for 52's numbers). It faces you as another person
+would (your right hand is on your left as you look at it), not as a glass
+mirror.
 
 ## Suggested order
 
-1. At launch: 39 (look beside the ammo count), 46 (the option is gone).
-2. In the Psykhanium as Robobert: 43 (skulls), 40 (charge display), 42 (the
-   radial with the gun out), 41 (talk zone), then 44 (turn Full body on) and
-   45 (F8).
-3. When the note arrives: 8.
+1. At launch, anywhere: 48 (the counts), 51 and 47 (the radial).
+2. In the Psykhanium as Robobert: 53 (skulls), 49 (pickup markers across the
+   room), 50 (hover a holstered item).
+3. Then turn Full body on: 52, with F8 for 54.
