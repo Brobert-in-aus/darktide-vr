@@ -363,3 +363,34 @@ controller path, `darktidevr_reticle_in_eyes.flag`, eye readbacks, and
 `openxr.gameplay_reticle_clip` to check the picture against arithmetic. It was
 not launched: the standing rule is to stop unattended launches as soon as any
 message arrives, and two did.
+
+## The options menu, and a test that was not doing its job
+
+The user asked in the afternoon whether DMF supports nested submenus and for
+the segments to be reorganised either way. It does: `sub_widgets` unfold
+recursively with no depth limit, and the mod was already two deep in two
+places. So the menu is eight sections instead of forty-three settings in a
+column, with a setting nested under the one it depends on. No `setting_id`
+changed, so every saved value carries over.
+
+The review of that found the thing worth writing down: **DMF hides a
+checkbox's children while it is off** -- `is_visible = get(parent) == true`,
+not an indent and not a collapse. So nothing may be nested under a setting it
+can work without. The body mirror's key had been nested under Full body, and
+F8 toggles the mirror whether Full body is on or not: the default
+configuration was a working key with no row anywhere that named it, and the
+user guide sends you there by name.
+
+And the test written to guard the tree was checking none of DMF's own
+required-field rules. Six mutations of the real file -- a typo'd `type`, a
+default outside its options, a button with no text, a keybind with no
+trigger, a one-option dropdown, a duplicate option value -- all passed the
+test, and all six stop the mod loading. Its census of saved keys listed 43 of
+106, so a module could have dropped any of the other 63 and been waved
+through. Both are fixed, and a mutation script now drives all seven failures
+through it.
+
+**The lesson for the rest of the tooling**: a test that walks a structure and
+checks what the author happened to think of is worth much less than one
+checked against the consumer's own validator. The consumer here is thirty
+lines of `validate_*_data` sitting on disk.
