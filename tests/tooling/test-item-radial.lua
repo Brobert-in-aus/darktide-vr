@@ -81,4 +81,13 @@ local dev, dev_deliver = Radial.step(Radial.step(Radial.step(nil, PRESSED, 0, 0)
 assert(dev_deliver == 262144, 'device delivers wield_5 on the flick')
 assert(select(2, Radial.step(dev, RELEASED, 0, 0)) == nil, 'and nothing again on release')
 
+-- The claim slot: two-hand support offers a request every frame a gun is
+-- out. The radial yields only when that request wants the hand, its hand is
+-- approaching, or its claim is already held.
+assert(not Radial.yields(nil, false), 'nothing asked: the radial keeps the slot')
+assert(not Radial.yields({acquire = false, approach = false, retain = true}, false), 'an idle two-hand offer does not close it')
+assert(Radial.yields({acquire = true, retain = true}, false), 'the hand at the foregrip takes it')
+assert(Radial.yields({acquire = false, approach = true}, false), 'a hand on its way takes it')
+assert(Radial.yields({acquire = false, approach = false}, true), 'a grip already held is never replaced')
+assert(Radial.yields(true, false), 'an opaque request is honoured')
 print('item_radial=pass select labels claim_edges flick_delivers neutral_gate cancel device tap_cycles')

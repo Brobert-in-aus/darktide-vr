@@ -101,6 +101,19 @@ function Radial.step(state, grip, x, y)
     return {open = true, index = index, neutral_seen = neutral_seen, delivered = delivered}, deliver
 end
 
+-- Whether the radial gives the claim slot to another feature's request this
+-- frame. The slot carries one request; two-hand support offers one every
+-- frame a gun is out, wherever the off hand is, so yielding to any request
+-- closed the radial a moment after it opened with a ranged weapon wielded
+-- and left the stick to its stock flick, the weapon switch (worn, 17
+-- September). It yields only to a request that wants the hand now (acquire),
+-- whose hand is on its way (approach), or whose claim is already held
+-- (other_holds: replacing a held grip's request would cancel the grip). Pure.
+function Radial.yields(request, other_holds)
+    if type(request) ~= "table" then return request ~= nil and request ~= false end
+    return request.acquire == true or request.approach == true or other_holds == true
+end
+
 -- Engine side. The pure part above is what the tests exercise.
 Radial.TEST_FLAG = "./../mods/darktidevr/darktidevr_item_radial_test.flag"
 Radial.RADIUS = 0.055
@@ -111,6 +124,8 @@ Radial.FORWARD = 0.06
 function Radial.install(mod, presentation, observation)
     local api = {}
     local state, claim, failures, opened = Radial.closed(), nil, 0, 0
+    -- Whether last frame's request in the slot was the radial's.
+    local ours_last = false
 
     local test_poll, test_enabled = 0, false
     local function test_flag()
@@ -149,7 +164,10 @@ function Radial.install(mod, presentation, observation)
     -- slot first; ineligibility closes the radial without delivering, so a pick
     -- made before a menu or a downing never fires later out of nowhere.
     function api.sample(active, support_request)
-        if not active or not api.enabled() or support_request then
+        local bindings = presentation.controller_bindings
+        local grip = bindings and bindings.support_grip
+        local other_holds = type(grip) == "table" and (grip.held == true or grip.pressed == true) and not ours_last
+        if not active or not api.enabled() or Radial.yields(support_request, other_holds) then
             state, claim = Radial.closed(), nil
             return support_request, false
         end
@@ -170,6 +188,7 @@ function Radial.install(mod, presentation, observation)
     -- pick is delivered as a one-frame press into the next sample.
     function api.finish(grip, ours, stick_x, stick_y, stick_usable)
         local bindings = presentation.controller_bindings
+        ours_last = ours == true
         if not ours or not grip then
             state = Radial.closed()
             return
