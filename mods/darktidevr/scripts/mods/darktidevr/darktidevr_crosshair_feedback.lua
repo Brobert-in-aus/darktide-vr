@@ -43,18 +43,30 @@ end
 function Feedback.install(mod,presentation,tracking)
     local api={}
     local scale_percent,published,hidden
+    -- A write that fails leaves `published` unset, and the draw retries while
+    -- it is unset: with the folder read-only or the file locked that was a
+    -- failed main-thread io.open on EVERY frame, which is exactly the kind of
+    -- per-frame file work the frame-profile document blamed for the mod's
+    -- spikes. Retry on the same five-second cadence the test flags use.
+    local retry_after,attempted=0,nil
     function api.update_scale()
         scale_percent=Feedback.scale(mod.get and mod:get('vr_crosshair_scale'))*100
         -- A stereo cinematic publishes zero so the viewer draws no reticle.
         if hidden then scale_percent=0 end
         if published==scale_percent then return end
+        -- A value the player just chose is written at once; only a repeated
+        -- failure at the same value backs off.
+        if attempted~=scale_percent then attempted=scale_percent;retry_after=0 end
+        retry_after=retry_after-1
+        if retry_after>0 then return end
+        retry_after=300
         local io_api=Mods and Mods.lua and Mods.lua.io
         if not io_api then return end
         local file=io_api.open('./../mods/darktidevr/darktidevr_crosshair_scale.flag','w')
         if not file then return end
         local ok,result=pcall(file.write,file,string.format('%.0f\n',scale_percent))
         file:close()
-        if ok and result then published=scale_percent end
+        if ok and result then published=scale_percent;retry_after=0 end
     end
     local previous_setting_changed=mod.on_setting_changed
     mod.on_setting_changed=function(id,...)
