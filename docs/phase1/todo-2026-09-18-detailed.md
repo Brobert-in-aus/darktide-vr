@@ -306,12 +306,56 @@ any reticle change. `summarize-hub-arms.py` reads the arms.
 
 ## C. Bigger pieces, worth starting only when A and B are clear
 
-- **The reticle out of Virtual Desktop's quad layer.** The cheap route is
-  not the board projection layer (which costs a second command list and a
-  blocking fence every frame) but the `TrackedCuffRenderer` pattern: draw it
-  straight into the eye images inside the main command list
-  (`src/xr/main.cpp:3415`). That also makes the reticle visible to an eye
-  readback, which it is not today.
+- **The reticle out of Virtual Desktop's quad layer** — the last piece of the
+  FOV-tangent work, and the only one the user could still notice. Worth a day;
+  here is the plan, so it does not have to be worked out again.
+
+  *Why*: the gameplay reticle is a world-locked quad layer
+  (`gameplay_reticle_quad`, `local_space_`), and Virtual Desktop draws quad
+  layers with a projection that does not match a cropped display. Estimated
+  from the same fault that moved the boards: nothing dead ahead, about
+  1 degree at 10 degrees off the view's centre, 2.5 at 30, and it swims as
+  the head turns against the aim. It is also invisible to an eye readback,
+  so nothing can check it unattended.
+
+  *Route*: not the board projection layer. That costs a second
+  `ExecuteCommandLists` and a blocking fence every frame
+  (`src/xr/main.cpp`, the board pass) and it is menus-only today; making it
+  per-gameplay-frame would pay that always. Use the `TrackedCuffRenderer`
+  pattern instead: draw into the theatre eye images inside the **main**
+  command list, where the cuffs already draw (`record(command_list, eye,
+  image_indices[eye], ...)`), with render target views that already exist.
+
+  *The four things it needs*:
+  1. **The sprite in a texture we sample.** It is painted into the flat
+     swapchain image inside the `update_reticle_atlas` branch; the
+     `PanelRenderer`'s `board_texture()` is only filled on the flat-capture
+     path. Add the same `CopyTextureRegion` of the 41x41 sprite box into
+     `board_texture()` in that branch.
+  2. **The pose and field of view the layer is submitted with**, not the
+     runtime's raw ones: `recentered_symmetric_projection(located_views[eye]
+     .fov, render_aspect_ratio)` and the pose composed with its orientation
+     offset. Those are computed after the theatre command list today, so
+     hoist the computation above it (it depends only on `located_views` and
+     the aspect) and let the layer assembly reuse the result.
+  3. **The eye's own rectangle**: `separate_shared_eye_swapchains` decides
+     whether each eye is its own swapchain or a half of one, and
+     `stereo_top_bottom_layout` which half.
+  4. **Resource states**: the theatre images are in `COPY_DEST` after the
+     pair copy; the cuff path already transitions to `RENDER_TARGET` and
+     back, and the reticle draw belongs beside it, under the same barrier.
+
+  *Gate and proof*: behind `DTVR_XR_RETICLE_IN_EYES` (default off, so the
+  quad stays until the user has seen the new one), logged once as
+  `openxr.gameplay_reticle layer=quad|eyes`. An eye readback then **shows**
+  the reticle, which it cannot today, so its placement can be checked
+  unattended against `tracked_cuff_clip_center`-style clip arithmetic. Also
+  worth a Hub arm before and after: this removes one of the two quad layers
+  Virtual Desktop's compositor pre-processes over the whole flat swapchain.
+
+  *Risk*: it draws into the world image, so a mistake is visible corruption
+  rather than a missing overlay. That is why it is gated and why the
+  readback matters.
 - **Arm lengths from the calibration in the `overlay` mode** instead of the
   17 to 24 per cent uniform scale, with the design's 0.85 to 1.15 clamp
   (`arm-length-calibration-2026-09-16.md:268`).
