@@ -179,8 +179,11 @@ if arg[2] then
                     distance(moved, target), yaw, pitch))
         end
     end
-    -- Off the view's centre it moves outward by the magnification, measured as
-    -- a tangent from the eye, and the depth along the view does not change.
+    -- Off the view's centre the RAY turns outward by the magnification, and the
+    -- range from the eye is kept. The depth along the view gives a little so
+    -- that it can: scaling across and holding depth moved the point off the
+    -- surface it was measured on, which worn put the reticle underneath the
+    -- ground and further away than the thing it marked (18 September).
     local q = set_head(0.9, -0.3)
     local right = Q.rotate(q, v3(1, 0, 0))
     local ahead = forward_point(q, 10)
@@ -190,8 +193,16 @@ if arg[2] then
     local forward = Q.rotate(q, v3(0, 1, 0))
     local depth = delta[1]*forward[1] + delta[2]*forward[2] + delta[3]*forward[3]
     local across = delta[1]*right[1] + delta[2]*right[2] + delta[3]*right[3]
-    assert(math.abs(depth - 10) < 1e-4, 'the depth along the view must not change: ' .. depth)
-    assert(math.abs(across - 0.7 * 1.12) < 1e-4, 'across the view it scales: ' .. across)
+    -- The tangent is what has to be magnified, and it still is exactly.
+    assert(math.abs((across / depth) - (0.7 / 10) * 1.12) < 1e-6,
+        'the tangent across the view is the magnified one: ' .. (across / depth))
+    -- The range is what must not move, because that is where it sits in depth.
+    local range_before = math.sqrt(0.7 * 0.7 + 10 * 10)
+    local range_after = math.sqrt(depth * depth + across * across)
+    assert(math.abs(range_after - range_before) < 1e-4,
+        'the range from the eye is preserved: ' .. range_after .. ' vs ' .. range_before)
+    assert(depth < 10 and depth > 9.99, 'the depth gives a little so the range can hold: ' .. depth)
+    assert(across > 0.7, 'and the point still moves outward: ' .. across)
     -- No zoom, no movement; and nothing to work with is not an error.
     zp.ads_zoom_applied = 1
     assert(distance(zp.zoom_corrected_aim_point(off), off) < 1e-9, 'no zoom, no correction')

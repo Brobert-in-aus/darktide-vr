@@ -104,12 +104,35 @@ end
 -- does not. The axis is the head's, not each eye's, so the two eyes disagree
 -- by (m - 1) times half the IPD -- under 4 mm at a tenth magnification, which
 -- is a fiftieth of a degree at ten metres. Pure.
+--
+-- The RANGE is preserved, and that is not a detail. Scaling the two across
+-- components and leaving the depth alone moves the point off the surface it
+-- was measured on: aiming down at the ground, the vertical component grows by
+-- the magnification and the reticle ends up BELOW the ground plane and further
+-- away than the thing it is marking. Worn, 18 September: "if I aim at the
+-- ground then ads the cursor appears to be inside the ground -- in any case
+-- it's further away than it should be."
+--
+-- What the correction is for is the ANGLE. The viewer places the reticle at
+-- this world point and the runtime projects it, so only the direction decides
+-- where it lands; the distance decides where it sits in depth, and that was
+-- never the zoom's to change. Scaling the across components turns the ray,
+-- then putting the result back to its original length leaves it on the
+-- surface. Pure.
 function Projection.magnified_target(x, y, z, magnification)
     local m = tonumber(magnification)
     if not m or m ~= m or m <= 1.0001 or m > 4 then return x, y, z end
-    local ax, ay = tonumber(x), tonumber(y)
+    local ax, ay, az = tonumber(x), tonumber(y), tonumber(z)
     if not ax or not ay or ax ~= ax or ay ~= ay then return x, y, z end
-    return ax * m, ay * m, z
+    if not az or az ~= az then return x, y, z end
+    local before = math.sqrt(ax * ax + ay * ay + az * az)
+    local mx, my = ax * m, ay * m
+    local after = math.sqrt(mx * mx + my * my + az * az)
+    -- A point at the view's centre has nothing across to scale, and a point at
+    -- zero range has no direction to correct.
+    if not (before > 1e-6) or not (after > 1e-6) then return x, y, z end
+    local k = before / after
+    return mx * k, my * k, az * k
 end
 
 function Projection.binocular_visibility_scale(left, right)

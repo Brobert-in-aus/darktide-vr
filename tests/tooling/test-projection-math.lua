@@ -106,15 +106,27 @@ assert(projection.zoom_magnification(0 / 0, 1) == 1 and projection.zoom_magnific
 -- rendered with while the zoom is on, so everything off the view's centre has
 -- to move out by the magnification to stay where it is seen.
 local x, y, z = projection.magnified_target(0.3, -0.2, -10, 1.12)
-assert(math.abs(x - 0.336) < 1e-9 and math.abs(y + 0.224) < 1e-9, "across the view, scaled")
-assert(z == -10, "depth is along the axis and does not scale")
+-- The RANGE is kept. Scaling the across components and leaving the depth alone
+-- moved the point off the surface it was measured on -- worn, aiming at the
+-- ground put the reticle underneath it and further away than the thing it
+-- marked. The correction is for the angle; the distance was never the zoom's.
+local before = math.sqrt(0.3 * 0.3 + 0.2 * 0.2 + 10 * 10)
+local after = math.sqrt(x * x + y * y + z * z)
+assert(math.abs(after - before) < 1e-9, "the range is preserved: " .. after .. " vs " .. before)
+assert(z > -10 and z < -9.99, "the depth gives a little so the range can hold: " .. z)
+assert(x > 0.3 and y < -0.2, "and the across components still move outward")
 x, y, z = projection.magnified_target(0, 0, -10, 1.12)
 assert(x == 0 and y == 0 and z == -10, "a point dead ahead does not move")
--- The same tangents: that is what makes it cancel.
+-- The same tangents: that is what makes it cancel, and renormalising cannot
+-- disturb them because both components are divided by the same number.
 local real_tangent = 0.3 / 10
-local published_tangent = select(1, projection.magnified_target(0.3, 0, -10, 1.12)) / 10
+local mx, _, mz = projection.magnified_target(0.3, 0, -10, 1.12)
+local published_tangent = mx / math.abs(mz)
 assert(math.abs(published_tangent - real_tangent * 1.12) < 1e-12,
     "the published tangent is the magnified one")
+-- A point at no range has no direction to correct.
+local zx, zy, zz = projection.magnified_target(0, 0, 0, 1.12)
+assert(zx == 0 and zy == 0 and zz == 0, "a point at the eye is left alone")
 for _, m in ipairs({1, 1.00005, 0, -2, 4.5, 0 / 0}) do
     x, y, z = projection.magnified_target(0.3, -0.2, -10, m)
     assert(x == 0.3 and y == -0.2 and z == -10, "magnification " .. tostring(m) .. " was applied")

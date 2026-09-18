@@ -426,11 +426,16 @@ Mirror.TRACE_FLAG = "./../mods/darktidevr/darktidevr_body_trace.flag"
 -- deliberately below what a person can see: half a millimetre of root travel
 -- and a tenth of a degree of yaw, so a jitter too small to describe is still
 -- above the line.
-Mirror.TRACE_EVERY = 2
+-- Every third frame and twenty-five thousand lines, both raised after the
+-- first worn session spent the entire budget inside five minutes and missed
+-- the stick turns it was written for. A head in a headset micro-moves
+-- constantly, so nearly every sample clears the movement threshold; the answer
+-- is a bigger budget rather than a threshold high enough to hide a jitter.
+Mirror.TRACE_EVERY = 3
 Mirror.TRACE_HEARTBEAT_FRAMES = 120
 Mirror.TRACE_MOVED_M = 0.0005
 Mirror.TRACE_MOVED_DEG = 0.1
-Mirror.TRACE_MAX_LINES = 6000
+Mirror.TRACE_MAX_LINES = 25000
 Mirror.OPTION_MODE = "overlay"
 function Mirror.requested_mode(flag_mode, mirror_toggled, in_psykhanium, option_on)
     if flag_mode and Mirror.MODES[flag_mode] then return flag_mode end
@@ -1057,7 +1062,7 @@ function Mirror.install(mod, presentation, options)
                 mod:info("DARKTIDEVR_BODY_TRACE t=%.3f dt=%.4f head=%s target=%s frame=%s mirror=%s avatar=%s unit=%s " ..
                     "d_head=%s d_target=%s d_frame=%s d_mirror=%s d_avatar=%s d_unit=%s " ..
                     "root=%.4f,%.4f,%.4f root_step_m=%s neck_m=%s scale=%.4f why=%s " ..
-                    "solver=%s visual=%s solver_head=%s delta=%s still_s=%s conv=%s stick=%s",
+                    "solver=%s visual=%s solver_head=%s delta=%s still_s=%s conv=%s move_stick=%s turn_deg=%s",
                     type(t) == "number" and t or 0, type(dt) == "number" and dt or 0,
                     degrees("head"), degrees("target"), degrees("frame"),
                     degrees("mirror"), degrees("avatar"), degrees("unit"),
@@ -1073,7 +1078,11 @@ function Mirror.install(mod, presentation, options)
                     heading and heading.delta and string.format("%.2f", math.deg(heading.delta)) or "na",
                     heading and heading.still_seconds and string.format("%.2f", heading.still_seconds) or "na",
                     heading and heading.convergence and string.format("%.1f", heading.convergence) or "na",
-                    heading and tostring(heading.stick) or "na")
+                    heading and tostring(heading.stick) or "na",
+                    heading and heading.turn_accum and
+                        string.format("%.2f", math.deg(heading.turn_accum)) or "na")
+                -- Consumed, so each line reports the turn since the last one.
+                if heading then heading.turn_accum = 0 end
                 sample.root = root_world
                 trace_previous = sample
             end)

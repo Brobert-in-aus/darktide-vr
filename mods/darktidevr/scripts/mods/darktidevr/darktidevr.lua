@@ -6385,6 +6385,15 @@ function presentation.apply_controller_turning(main_t,exclusive_stick)
         controller_observation.right_aim_usable,
         controller_observation.last_transport_generation,
         controller_observation.head_recenter_generation, active_world, main_t,exclusive_stick)
+    -- The turn, for the body trace. It is the column item 4 actually needs and
+    -- the first cut did not have: `gameplay_stick_active` is the MOVEMENT
+    -- stick, so the trace's `solver=stick` rows were the player walking, not
+    -- turning, and the two were read as the same thing. Accumulated rather
+    -- than sampled, because the input path runs more often than the trace.
+    local heading_trace = presentation.body_heading_trace
+    if heading_trace then
+        heading_trace.turn_accum = (heading_trace.turn_accum or 0) + delta
+    end
     if delta ~= 0 and active_base_rotation then
         -- One shared world-up rotation: head, both hands, body-follow translation
         -- and gameplay heading all read this anchor. Never inject mouse motion.
@@ -8963,11 +8972,17 @@ function presentation.zoom_corrected_aim_point(world_point)
         controller_observation.head_aim_qy, controller_observation.head_aim_qz,
         controller_observation.head_aim_qw)
     local v = Quaternion.rotate(Quaternion.inverse(head), world_point - eye)
-    -- Darktide axes: +y is forward, so +x and +z are the two across the view.
-    local across_x, across_z = presentation.projection_math.magnified_target(
+    -- Darktide axes: +y is forward, so +x and +z are the two across the view
+    -- and +y is the depth passed in third.
+    --
+    -- All THREE returns are used. The depth comes back changed now, because
+    -- the correction turns the ray and then puts it back to its original
+    -- length -- and taking two of the three and reusing the original depth
+    -- silently undoes that, which is exactly what this line did until the
+    -- reticle's own test caught it.
+    local across_x, across_z, depth = presentation.projection_math.magnified_target(
         Vector3.x(v), Vector3.z(v), Vector3.y(v), magnification)
-    return eye + Quaternion.rotate(head,
-        Vector3(across_x, Vector3.y(v), across_z))
+    return eye + Quaternion.rotate(head, Vector3(across_x, depth, across_z))
 end
 
 function presentation.publish_gameplay_aim_state(active, hit, distance, world_point)
