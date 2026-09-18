@@ -19,23 +19,30 @@ local function new(options)
     options = options or {}
     local Atlas = {}
 
-    -- Measured 18 September in the hub, with the drawing's own size included
-    -- rather than only where it is anchored (`extents ... boxed=1`): the box a
-    -- marker needs is 425 x 15 about the cell's centre, against a half-cell of
-    -- 512 x 256. So the width is nearly right -- 18 per cent of headroom -- and
-    -- the height was eleven times what anything used.
+    -- Eight cells, and that is too few: `atlas_full cells=8` fired in the
+    -- Psykhanium, which is a nearly empty room, and past the ceiling a marker
+    -- is simply not drawn.
     --
-    -- Halving it buys two things. The atlas holds sixteen markers instead of
-    -- eight, and `atlas_full cells=8` had already fired in the Psykhanium,
-    -- which is a nearly empty room: past the ceiling a marker is simply not
-    -- drawn. And the quad shrinks with the cell, so every marker stops paying
-    -- for half a cell of transparent overdraw on every frame.
+    -- It was briefly halved in height to buy sixteen, on a hub measurement of
+    -- 425 x 15 against this 512 x 256 half-cell. That measurement does not
+    -- hold (review, 18 September). 425.3 is 428 x 0.99375 and 428 is exactly
+    -- the interaction popup's description box right edge, so the width came
+    -- from the popup -- and the same popup's background top edge is about
+    -- 30 px from the shifted origin even at its smallest, so the height
+    -- cannot have. The two numbers are not consistent with one another, and
+    -- the height was the one being spent.
     --
-    -- A further halving (32 cells) is available and not taken: one quiet
-    -- scene is thin evidence, and the extents line reports against the
-    -- half-cell every run, so the margin can be watched before it is spent.
-    local CELL_WIDTH, CELL_HEIGHT = options.cell_width or 1024, options.cell_height or 256
-    local COLUMNS, ROWS = options.columns or 2, options.rows or 8
+    -- Worse, the popup's box runs from -H/6 to +5H/6 about the cell centre
+    -- with H computed at runtime from its text, so a two-line description
+    -- (H ~ 147) would have clipped at a 256 cell -- and there is no scissor
+    -- anywhere in this path, so the overflow lands on the NEXT cell's quad.
+    -- That is the sliver the 17 September gutter work cured.
+    --
+    -- So: unchanged until a run that actually has interaction prompts and
+    -- tags in it reports, with the instrument mended (marker_world's
+    -- observe_extent, and the demand line below).
+    local CELL_WIDTH, CELL_HEIGHT = options.cell_width or 1024, options.cell_height or 512
+    local COLUMNS, ROWS = options.columns or 2, options.rows or 4
     local NAME, TAG = options.name or "darktidevr_markers", options.log_tag or "DARKTIDEVR_MARKER_ATLAS"
     local WIDTH, HEIGHT = CELL_WIDTH * COLUMNS, CELL_HEIGHT * ROWS
     Atlas.CELL_WIDTH, Atlas.CELL_HEIGHT = CELL_WIDTH, CELL_HEIGHT
@@ -250,8 +257,13 @@ local function new(options)
             -- and the first measurement run reported nothing at all because
             -- nothing overflowed (18 September). Throttled by growth, so a
             -- busy scene does not fill the log a line at a time.
+            -- The step is fixed, NOT a share of the grid: tying it to the
+            -- ceiling meant raising the ceiling silenced the line for exactly
+            -- the quiet scenes the measurement came from -- a peak of two
+            -- reported nothing once the grid held sixteen (review,
+            -- 18 September).
             if state.api and state.api.log and state.wanted >= 2 and
-                    state.wanted >= state.peak_logged + math.max(2, COLUMNS * ROWS * 0.25) then
+                    state.wanted >= state.peak_logged + 2 then
                 state.peak_logged = state.wanted
                 state.api.log(string.format(
                     "%s demand cells=%d wanted=%d claimant=%s", TAG,

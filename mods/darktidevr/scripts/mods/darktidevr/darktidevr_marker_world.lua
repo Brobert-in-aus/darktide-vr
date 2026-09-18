@@ -564,6 +564,11 @@ end
 -- question with nothing measuring it. Reported when a new maximum stands for
 -- a second, so a log carries the worst case without a line per draw.
 state.extent = {dx = 0, dy = 0, reported_dx = 0, reported_dy = 0, at = nil}
+-- The report runs on every call, not only when a new maximum arrives: a
+-- maximum that lands less than a second after the last report and is never
+-- beaten again was simply never said, and a marker on screen for half a
+-- second -- an interaction prompt, a tag -- is exactly that (review,
+-- 18 September). That is how a run reported a smaller worst case than it saw.
 local function observe_extent(x, y, scope_atlas, width, height)
     local extent = state.extent
     -- A draw's box, not its anchor. `position` is one corner and the size
@@ -574,7 +579,6 @@ local function observe_extent(x, y, scope_atlas, width, height)
     local y2 = y + (tonumber(height) or 0)
     local ax = math.max(x < 0 and -x or x, x2 < 0 and -x2 or x2)
     local ay = math.max(y < 0 and -y or y, y2 < 0 and -y2 or y2)
-    if ax <= extent.dx and ay <= extent.dy then return end
     if ax > extent.dx then extent.dx = ax end
     if ay > extent.dy then extent.dy = ay end
     local now = Application and Application.time_since_launch and Application.time_since_launch()
@@ -677,7 +681,12 @@ atlas_converters.draw_slug_icon = function(scope, func, self, resource, index, p
     end
     local instance, ok = atlas_material(scope, optional_material)
     if not ok then state.atlas_skipped = state.atlas_skipped + 1; return nil end
-    return atlas_call(scope, self, func, resource, index, shifted(scope, position, self.scale or 1),
+    -- The size goes to `shifted` like every other converter's: an icon is
+    -- precisely the square, tall draw the boxing was added to catch, and this
+    -- one was still being measured by its anchor alone (review,
+    -- 18 September).
+    return atlas_call(scope, self, func, resource, index,
+        shifted(scope, position, self.scale or 1, size),
         size, color, instance, material_flags)
 end
 

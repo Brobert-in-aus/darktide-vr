@@ -212,18 +212,29 @@ assert(Atlas.claimant_name(boxed) == "at v(1,2,3)", "a marker says where it is")
 assert(Atlas.claimant_name({position = {unbox = function() error("gone") end}}) == "unnamed",
     "an anchor whose position throws is still named, not an error")
 assert(Atlas.claimant_name({x = 12.34, y = 56.78}) == "at 12.3,56.8", "a plain point")
--- The grid, and the measurement it was sized from. `extents ... boxed=1` in
--- the hub on 18 September: a marker's drawing needs 425 x 15 about the cell's
--- centre. The width is nearly spent; the height was eleven times what
--- anything used, so it was halved -- sixteen markers instead of eight, and
--- half the transparent quad on every marker, every frame.
-assert(Atlas.CELLS == 16, "the atlas holds sixteen markers: " .. Atlas.CELLS)
-assert(Atlas.CELL_WIDTH * 0.5 - Atlas.GUTTER >= 433,
-    "a marker needs 425 px of half-width plus the gutter")
-assert(Atlas.CELL_HEIGHT * 0.5 - Atlas.GUTTER >= 23,
-    "a marker needs 15 px of half-height plus the gutter")
-assert(Atlas.CELL_HEIGHT * 0.5 - Atlas.GUTTER >= 23 * 3,
-    "and the margin over the measurement is thin: one quiet scene is thin evidence")
+-- What the cell has to hold, rather than what it happens to be. Asserting the
+-- number the author chose is how this test came to endorse a cell height that
+-- would have clipped the interaction popup (review, 18 September): a test
+-- that repeats the decision cannot check it.
+--
+-- The binding constraint is the interaction popup, whose box runs from -H/6
+-- to +5H/6 about the cell centre with H computed at runtime from its text
+-- (hud_element_interaction: interaction_height + description_height). A
+-- two-line description puts H near 147, so the visible half-cell must clear
+-- 5H/6 ~ 123 px, and there is no scissor in this path -- overflow lands on
+-- the NEXT marker's quad.
+local POPUP_TWO_LINE_HEIGHT = 147
+local POPUP_BELOW_PIVOT = POPUP_TWO_LINE_HEIGHT * 5 / 6
+assert(Atlas.CELL_HEIGHT * 0.5 - Atlas.GUTTER >= POPUP_BELOW_PIVOT,
+    string.format("the visible half-cell is %.0f px and a two-line interaction popup reaches %.0f",
+        Atlas.CELL_HEIGHT * 0.5 - Atlas.GUTTER, POPUP_BELOW_PIVOT))
+-- The widest thing measured is that popup's description box, 428 logical px
+-- at a UI scale of about 1.
+assert(Atlas.CELL_WIDTH * 0.5 - Atlas.GUTTER >= 428,
+    "a marker needs 428 px of half-width inside the gutter")
 assert(Atlas.WIDTH <= 2048 and Atlas.HEIGHT <= 2048,
     "the atlas texture must not grow to buy cells")
+-- Eight is known to be too few -- `atlas_full` fired in a nearly empty room --
+-- so this is a floor that must not be lowered, not a target.
+assert(Atlas.CELLS >= 8, "the atlas holds at least eight markers: " .. Atlas.CELLS)
 print("marker_atlas.result=pass")

@@ -606,3 +606,39 @@ hub with two markers in view. The extents line reports against the half-cell
 in every run, so the margin can be watched before it is spent -- and the
 demand line now reports the peak whether or not it overflows, which is the
 whole reason the second run answered anything.
+
+### The sizing does not hold, and the cell goes back
+
+A review took the two numbers apart. `max_dx=425.3` is 428 x 0.99375, and 428
+is exactly the interaction popup's description box right edge -- so the width
+came from the popup. The same popup's background top edge is about 30 px from
+the shifted origin even at its smallest, so `max_dy=14.9` cannot have come
+from it. **The two figures are not consistent with one another**, and the
+height was the one being spent.
+
+It would have clipped. The popup's box runs from -H/6 to +5H/6 about the cell
+centre with H computed at runtime from its text; a two-line description puts H
+near 147, reaching 122 px where a 256-tall cell leaves 120. There is no
+scissor in this path, so the overflow lands on the **next marker's quad** --
+the sliver the 17 September gutter work cured.
+
+Three faults in the instrument helped produce it, all now fixed:
+
+- the extents report only fired on a frame that set a new maximum, and its
+  one-second clock only advanced when a report fired, so a maximum arriving
+  just after a report and never beaten was never said -- which is what a
+  half-second interaction prompt is;
+- `draw_slug_icon` was the one converter of five still measured by its anchor
+  alone, and an icon is the tall draw the boxing was added to catch;
+- the demand line's growth step was a quarter of the grid, so raising the grid
+  to sixteen muted it below a peak of four -- silencing it for exactly the
+  quiet scene the evidence came from.
+
+**The capacity problem stays open.** Eight cells is too few; it is not being
+closed on evidence that contradicts itself. What would settle it is a run with
+interaction prompts and tags actually on screen, with the mended instrument.
+
+The general lesson, and the third of its kind today: **the test agreed because
+it asserted the number I had chosen.** It now asserts what the cell must hold,
+derived from the popup's own geometry, and re-applying the 256 cell fails it
+by name.
