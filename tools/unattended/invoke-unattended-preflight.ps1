@@ -91,6 +91,19 @@ if (-not (Test-Path -LiteralPath $gameExe -PathType Leaf)) {
     throw "Darktide executable not found: $gameExe"
 }
 
+. (Join-Path $PSScriptRoot 'xr-readiness.ps1')
+$runtimeProperty = Get-ItemProperty `
+    -Path 'HKLM:\SOFTWARE\Khronos\OpenXR\1' `
+    -Name ActiveRuntime `
+    -ErrorAction SilentlyContinue
+$activeRuntime = if ($runtimeProperty) { $runtimeProperty.ActiveRuntime } else { '' }
+$runtimeProfile = Get-XrRuntimeProfile -Runtime $activeRuntime
+# Only the Virtual Desktop path has a Quest behind it. Under SteamVR the
+# headset is on its own link and there is nothing for ADB to talk to, so the
+# transport, the proximity override and the power dump are all skipped rather
+# than failed.
+$questExpected = $runtimeProfile -ne 'SteamVR'
+
 $adb = Get-AdbPath
 . (Join-Path $repoRoot 'tools/quest/resolve-quest-transport.ps1')
 if ($RunXrSmoke) { $Mode = 'Ready' }
@@ -101,7 +114,7 @@ $authorizedDevices = @(
         }
 )
 $deviceQueryExitCode = $LASTEXITCODE
-if ($deviceQueryExitCode -ne 0 -and $Mode -eq 'Ready') {
+if ($deviceQueryExitCode -ne 0 -and $Mode -eq 'Ready' -and $questExpected) {
     throw 'Failed to query authorized ADB devices'
 }
 $device = $null
@@ -117,13 +130,13 @@ if ($deviceQueryExitCode -eq 0) {
     $physicalQuestCount = $questTransportSelection.PhysicalQuestCount
     $duplicateTransports = $questTransportSelection.DuplicateTransports
 }
-if ($Mode -eq 'Ready' -and $deviceSelection -ne 'selected') {
+if ($Mode -eq 'Ready' -and $questExpected -and $deviceSelection -ne 'selected') {
     throw "Expected exactly one proven authorized Quest; selection status: $deviceSelection"
 }
 $proximityApplied = $false
 $powerLines = @()
 $powerExitCode = $null
-if ($deviceSelection -eq 'selected') {
+if ($questExpected -and $deviceSelection -eq 'selected') {
     if ($Mode -eq 'Ready' -and -not $SkipProximityApply) {
         $broadcast = @(& $adb -s $device shell am broadcast `
             -a com.oculus.vrpowermanager.prox_close)
@@ -144,15 +157,11 @@ if ($deviceSelection -eq 'selected') {
 }
 
 $vdProcesses = @(Get-Process 'VirtualDesktop.Streamer' -ErrorAction SilentlyContinue)
-$runtimeProperty = Get-ItemProperty `
-    -Path 'HKLM:\SOFTWARE\Khronos\OpenXR\1' `
-    -Name ActiveRuntime `
-    -ErrorAction SilentlyContinue
-$activeRuntime = if ($runtimeProperty) { $runtimeProperty.ActiveRuntime } else { '' }
-. (Join-Path $PSScriptRoot 'xr-readiness.ps1')
+$steamVrProcesses = @(Get-Process vrserver -ErrorAction SilentlyContinue)
 if ($Mode -eq 'Ready') {
     Assert-XrReadiness -StreamerCount $vdProcesses.Count -Runtime $activeRuntime `
-        -PowerLines $powerLines -PowerExitCode $powerExitCode
+        -PowerLines $powerLines -PowerExitCode $powerExitCode `
+        -SteamVrServerCount $steamVrProcesses.Count
 }
 
 $gameProcesses = @(Get-Process Darktide -ErrorAction SilentlyContinue)
@@ -238,7 +247,10 @@ $report = [ordered]@{
     }
     runtime = [ordered]@{
         virtual_desktop_streamer_processes = $vdProcesses.Count
+        steamvr_server_processes = $steamVrProcesses.Count
         active_openxr_runtime = $activeRuntime
+        openxr_runtime_profile = $runtimeProfile
+        quest_expected = $questExpected
         darktide_processes = $gameProcesses.Count
         launcher_processes = $launcherProcesses.Count
         crash_reporter_processes = $crashProcesses.Count

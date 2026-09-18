@@ -70,7 +70,42 @@ The OpenXR viewer is written against the core specification, not against VDXR:
 
 ## What needs work, in priority order
 
-### 1. Controller bindings — the one true blocker
+### 1. Controller bindings — the one true blocker — DONE (18 September)
+
+Valve's own documentation turned out to be richer than the summary below, and
+corrected it twice: **the left controller has four face buttons**, spelled
+`dpad_up/down/left/right`, and **the left hand does have a menu button** --
+it is spelled `view/click`, while the right hand's is `menu/click`.
+
+What shipped: `XR_VALVE_frame_controller_interaction` probed and enabled from
+the enumerated list (the enabled-extension array is a built vector now), a full
+20-binding set for `/interaction_profiles/valve/frame_controller_valve`, and a
+21-binding set for `/interaction_profiles/valve/index_controller`. The Frame
+face buttons are mapped by POSITION so Touch muscle memory carries over: bottom
+is primary (Touch X/A), top is secondary (Touch Y/B) -- on the Frame's right
+hand the top button is spelled `y`, where Touch puts `b`. `menu` is read from
+the LEFT hand only (`core/gameplay_input.cpp`), so left `view/click` keeps
+today's behaviour rather than moving the menu to the other hand.
+
+Index has no menu button and `system/click` is runtime-reserved, so its menu is
+the left trackpad's force press -- SteamVR's binding editor can move it.
+
+Neither new profile can stop the session: both are suggested through a
+non-fatal helper that logs `openxr.interaction_profile.<name>=suggested` or
+`=rejected result=<n>`, because a path that differs from the documentation by a
+character rejects the whole call, and a viewer that then refuses to start is
+worse than one that comes up emulated and says so. `--no-simple-profile`
+withholds the generic binding SteamVR prefers.
+
+`tests/tooling/test-interaction-profiles.py` holds the contract from source,
+since no runtime here can: a Frame or Index session must not reach the game
+with fewer actions, on fewer hands, than a Touch session, and every component
+path must be one the vendor documents.
+`tools/lua/mutate-interaction-profiles.py` proves it catches all of that.
+
+*The original analysis follows.*
+
+#### The original analysis
 
 The viewer suggests exactly two profiles: `oculus/touch_controller` with the
 full gameplay set, and `khr/simple_controller` with select and menu only
@@ -118,7 +153,36 @@ aim poses, not Frame ones; Valve offers the native profile partly for
 to sit slightly off until the native profile is in use, and re-check the worn
 calibration afterwards rather than tuning against the emulated poses.
 
-### 2. Readiness and preflight tooling
+### 2. Readiness and preflight tooling — DONE (18 September)
+
+`Assert-XrReadiness` takes a runtime profile now, decided by
+`Get-XrRuntimeProfile` from the active manifest's name:
+`virtualdesktop-openxr.json` is VDXR, `steamxr_win64.json` is SteamVR, an empty
+registration is `none` and anything else is `unsupported` and refused. VDXR
+asks exactly what it did. SteamVR asks for the Steam manifest and a live
+`vrserver`, and nothing else -- there is no Streamer, no ADB and no proximity
+override on a Frame.
+
+The preflight reads the runtime BEFORE the Quest section rather than after it,
+which is what actually makes a Frame run possible: the transport resolution,
+the proximity broadcast and the power dump are skipped, not failed, when
+`$questExpected` is false. The summary carries
+`openxr_runtime_profile` and `quest_expected` so a run says which path it took.
+
+`validate-xr-readiness.ps1` covers both profiles and, in particular, that the
+split does not leak in either direction -- a SteamVR session must not pass with
+`vrserver` down because a Quest happens to be ready, and a VDXR session must
+not pass with no Streamer because SteamVR happens to be running.
+`test-preflight-device-inventory.ps1` gained five SteamVR cases asserting that
+none of them rejects and none of them touches the Quest.
+`tools/lua/mutate-xr-readiness.py` puts eight mutations through the gate.
+
+`AGENTS.md`'s policy is updated, including that the proximity override is a
+Quest procedure that does not apply to a Frame.
+
+*The original analysis follows.*
+
+#### The original analysis
 
 `Assert-XrReadiness` hard-requires a running `VirtualDesktop.Streamer`, an
 active runtime whose file is literally `virtualdesktop-openxr.json`, and an

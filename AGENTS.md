@@ -16,10 +16,19 @@
 - Offline editing, documentation, builds, and isolated tests do not require a
   headset. Before deployment, Darktide interaction, or unattended XR work, run
   `tools/unattended/invoke-unattended-preflight.ps1` in its default Ready mode.
-- Readiness requires Virtual Desktop Streamer, VDXR, exactly one authorized
-  Quest, and a renderable OpenXR session. Do not commit device identifiers.
+- Readiness depends on which OpenXR runtime the machine is registered against,
+  and the preflight decides that from the active manifest rather than from what
+  is installed. **VDXR** requires Virtual Desktop Streamer, exactly one
+  authorized Quest, and a renderable OpenXR session. **SteamVR**
+  (`steamxr_win64.json`, which is the Steam Frame path) requires the Steam
+  manifest and a live `vrserver`; there is no Streamer, no ADB and no proximity
+  override on that path, so the transport, the override and the power dump are
+  skipped and the bounded XR smoke is what proves a headset is really there and
+  rendering. Any other runtime is refused. Do not commit device identifiers.
 - Apply `tools/quest/set-proximity-override.ps1 -Action Disable`, then `-Action
-  Status` at the start of a live development session. The preflight also applies
+  Status` at the start of a live development session. This is a Quest
+  procedure and does not apply to a Steam Frame; whatever keeps a Frame awake
+  for unattended work has not been found yet. The preflight also applies
   the override and checks power state. Restore automation when development ends.
 - Recheck readiness after a disconnect, runtime/streamer change, headset sleep,
   or before a new unattended session. An unchanged live session need not repeat

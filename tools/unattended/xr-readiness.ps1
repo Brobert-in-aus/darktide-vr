@@ -55,14 +55,49 @@ function Invoke-BoundedXrSmoke {
     }
 }
 
+# Which runtime the machine is pointed at, decided by the manifest the OpenXR
+# loader is registered against rather than by what is installed. The readiness
+# gate asks different questions of each: a Steam Frame session has no
+# VirtualDesktop.Streamer, no VDXR manifest and no ADB, so requiring those
+# would fail every Frame run before it started.
+function Get-XrRuntimeProfile {
+    param([string] $Runtime)
+    if (-not $Runtime) { return 'none' }
+    switch ((Split-Path $Runtime -Leaf).ToLowerInvariant()) {
+        'virtualdesktop-openxr.json' { return 'VDXR' }
+        'steamxr_win64.json' { return 'SteamVR' }
+        default { return 'unsupported' }
+    }
+}
+
+# Facts in, a decision out: every query lives in the caller so this can be
+# tested against fixtures.
+#   VDXR     -- Streamer running, its manifest present, and the Quest awake
+#               with the display blocker held (the proximity override).
+#   SteamVR  -- the Steam manifest present and vrserver alive. There is no
+#               ADB and no proximity override on a Frame; the proof that a
+#               headset is really there and rendering is the bounded XR smoke
+#               that the caller runs next, not a power dump.
 function Assert-XrReadiness {
     param([int] $StreamerCount, [string] $Runtime, [string[]] $PowerLines,
-          [int] $PowerExitCode)
-    if ($StreamerCount -lt 1) { throw 'Virtual Desktop Streamer is not running.' }
-    if (-not $Runtime -or (Split-Path $Runtime -Leaf) -ine 'virtualdesktop-openxr.json' -or
-        -not (Test-Path -LiteralPath $Runtime -PathType Leaf)) {
-        throw 'Select the installed Virtual Desktop OpenXR runtime (VDXR).'
+          [int] $PowerExitCode, [int] $SteamVrServerCount)
+    # Not named $profile: that is a PowerShell automatic variable.
+    $runtimeProfile = Get-XrRuntimeProfile -Runtime $Runtime
+    if ($runtimeProfile -eq 'none' -or $runtimeProfile -eq 'unsupported') {
+        throw ("The active OpenXR runtime is '$Runtime'. Select Virtual " +
+               'Desktop (VDXR) or SteamVR; no other runtime has been brought up here.')
     }
+    if (-not (Test-Path -LiteralPath $Runtime -PathType Leaf)) {
+        throw "The active OpenXR runtime manifest does not exist: $Runtime"
+    }
+    if ($runtimeProfile -eq 'SteamVR') {
+        if ($SteamVrServerCount -lt 1) {
+            throw ('SteamVR is the active OpenXR runtime but vrserver is not ' +
+                   'running. Start SteamVR with the headset connected.')
+        }
+        return
+    }
+    if ($StreamerCount -lt 1) { throw 'Virtual Desktop Streamer is not running.' }
     if ($PowerExitCode -ne 0) { throw 'ADB could not read Quest power state.' }
     $power = $PowerLines -join "`n"
     if ($power -notmatch 'mWakefulness=Awake\b' -or

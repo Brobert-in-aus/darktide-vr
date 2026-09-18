@@ -55,7 +55,15 @@ foreach ($case in @(
     @{count=1;mode='Ready';status='selected';queries=1},
     @{count=1;mode='Ready';reject=$true;broadcast_bad=$true},
     @{count=2;mode='Ready';reject=$true;broadcast_bad=$true;same=$true},
-    @{count=2;mode='Inventory';smoke=$true;reject=$true}
+    @{count=2;mode='Inventory';smoke=$true;reject=$true},
+    # SteamVR: a Steam Frame is not on ADB. None of these may reject, and none
+    # may touch the Quest -- no transport query, no proximity broadcast, no
+    # power dump -- however little of a Quest is attached.
+    @{count=0;mode='Ready';status='missing';queries=0;steamvr=$true},
+    @{count=2;mode='Ready';status='ambiguous';queries=0;steamvr=$true},
+    @{count=1;mode='Ready';status='selected';queries=0;steamvr=$true},
+    @{count=1;mode='Ready';status='device_query_failed';queries=0;steamvr=$true;device_fail=$true},
+    @{count=1;mode='Ready';status='not_quest';queries=0;steamvr=$true;model='Phone'}
 )) {
     $script:fixtureCount=$case.count
     $script:fixtureModel=if ($case.ContainsKey('model')) { $case.model } else { 'Quest Fixture' }
@@ -67,6 +75,7 @@ foreach ($case in @(
     $script:badBroadcast=$case.ContainsKey('broadcast_bad')
     $script:broadcasts=0; $script:modelQueries=0; $script:powerQueries=0; $script:identityQueries=0
     $Mode=$case.mode; $RunXrSmoke=$case.ContainsKey('smoke'); $SkipProximityApply=$false
+    $questExpected=-not $case.ContainsKey('steamvr')
     $rejected=$false
     try { . $selection } catch { $rejected=$true }
     if ($rejected -ne $case.ContainsKey('reject')) { throw "Unexpected selection result: $($case | ConvertTo-Json -Compress)" }
@@ -76,7 +85,13 @@ foreach ($case in @(
     } else {
         if ($deviceSelection -ne $case.status -or $script:powerQueries -ne $case.queries) { throw 'Incorrect inventory status.' }
         if ($case.mode -eq 'Inventory' -and ($script:broadcasts -or $proximityApplied)) { throw 'Inventory mutated proximity.' }
-        if ($case.mode -eq 'Ready' -and $script:broadcasts -ne 1) { throw 'Ready skipped proximity application.' }
+        $expectedReadyBroadcasts=if ($questExpected) { 1 } else { 0 }
+        if ($case.mode -eq 'Ready' -and $script:broadcasts -ne $expectedReadyBroadcasts) {
+            throw "Ready broadcast count $($script:broadcasts), expected $expectedReadyBroadcasts"
+        }
+        if (-not $questExpected -and ($proximityApplied -or $script:powerQueries)) {
+            throw 'A SteamVR session reached for the Quest.'
+        }
     }
     if (($case.count -eq 0 -or $script:failDeviceQuery) -and $script:modelQueries) { throw 'Missing/failed inventory queried a device.' }
     if ($script:sameIdentity -and ($device -ne 'fixture-0' -or $physicalQuestCount -ne 1 -or -not $duplicateTransports)) {
