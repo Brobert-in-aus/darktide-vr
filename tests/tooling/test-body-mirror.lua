@@ -368,4 +368,14 @@ near(math.deg(Mirror.root_yaw_leak(math.rad(-170), math.rad(170))), 20, 1e-9, 'w
 assert(Mirror.root_yaw_leak(nil, 1) == nil and Mirror.root_yaw_leak(1, nil) == nil)
 assert(Mirror.root_yaw_leak(0 / 0, 1) == nil, 'a nan yaw corrects nothing')
 
-print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace colliders torso_yaw draws_body turn_leak')
+-- The motion probe's step: a distance, nil for anything it cannot compare,
+-- and the moving threshold sits between a standing character's breathing
+-- and a walking step at 90 Hz.
+near(Mirror.step_m({1, 2, 3}, {1, 2, 3}), 0, 1e-12, 'no move')
+near(Mirror.step_m({0, 0, 0}, {0.03, 0.04, 0}), 0.05, 1e-9, 'a step of five centimetres')
+assert(Mirror.step_m(nil, {0, 0, 0}) == nil and Mirror.step_m({0, 0, 0}, nil) == nil, 'a missing sample is no step')
+assert(Mirror.step_m({0 / 0, 0, 0}, {0, 0, 0}) == nil, 'a nan sample is no step')
+assert(Mirror.step_m({0, 0}, {0, 0, 0}) == nil, 'a short array is no step')
+assert(Mirror.MOTION_MOVING_M > 0.0005 and Mirror.MOTION_MOVING_M < 0.01, 'moving threshold between breathing and a walking step')
+
+print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace colliders torso_yaw draws_body turn_leak step_m')

@@ -457,6 +457,23 @@ function Mirror.yaw_step(now, before)
     return (now - before + 180) % 360 - 180
 end
 
+-- The distance between two positions (3-arrays), or nil when either is
+-- missing or not finite. The motion probe's step. Pure.
+function Mirror.step_m(now, before)
+    if type(now) ~= "table" or type(before) ~= "table" then return nil end
+    local sum = 0
+    for i = 1, 3 do
+        local a, b = now[i], before[i]
+        if type(a) ~= "number" or type(b) ~= "number" or a ~= a or b ~= b then return nil end
+        sum = sum + (a - b) ^ 2
+    end
+    return math.sqrt(sum)
+end
+-- The avatar's step per frame above which the player counts as moving for
+-- the motion probe: a millimetre, well under a walking step (about 4 cm at
+-- 90 Hz) and above the sub-millimetre breathing of a standing character.
+Mirror.MOTION_MOVING_M = 0.001
+
 -- Which units a drawn copy owns, so their collision can be taken off them.
 --
 -- The copy is a full character: a root and one unit per equipment slot, plus
@@ -1178,6 +1195,49 @@ function Mirror.install(mod, presentation, options)
                 (state.last_scale_ratio and math.abs(state.scale_ratio - state.last_scale_ratio) < 0.002)) then
             state.near_eye_pending = nil
             hide_near_eye(unit, state.data)
+        end
+        -- THE MOTION PROBE (19 September). "It flickers constantly when I
+        -- move", and every earlier flicker-while-moving in this mod was the
+        -- same shape: a thing drawn from a value that advanced in fixed steps
+        -- while the view advanced every frame, so it flicked between two
+        -- places at the frame rate (the forearm miniatures, animation audit,
+        -- 16 September; the mirror copy placed from the avatar's root, 17
+        -- September). Four positions go into where this copy stands -- the
+        -- avatar's root (interpolated by the game every frame), the body
+        -- frame's neck target (from the eye, which is stored against the
+        -- fixed-step body anchor), the tracked eye itself, and the copy's own
+        -- root after all of it -- and reading the source has not said which
+        -- one steps. So while the player is moving, every frame, the step
+        -- each of them took since the previous frame goes in one line. A
+        -- value that alternates (0.000, 0.032, 0.000, 0.032) against a view
+        -- that does not (0.016, 0.016, ...) is the answer. Every frame
+        -- rather than every third, because a two-state alternation sampled
+        -- every third frame aliases into a smooth line. Shares the trace's
+        -- flag and its line budget.
+        if trace_flag() and trace_lines < Mirror.TRACE_MAX_LINES then
+            local ok = pcall(function()
+                local root_now = array(Unit.world_position(unit, 1))
+                local avatar_now = array(Unit.world_position(avatar, 1))
+                local neck_now = neck_target
+                local eye_position = presentation.eye_pose and presentation.eye_pose(avatar)
+                local eye_now = eye_position and array(eye_position) or nil
+                local m = state.motion
+                if m then
+                    local d_avatar = Mirror.step_m(avatar_now, m.avatar)
+                    if d_avatar and d_avatar > Mirror.MOTION_MOVING_M then
+                        trace_lines = trace_lines + 1
+                        local function fmt(v) return v and string.format("%.4f", v) or "na" end
+                        mod:info("DARKTIDEVR_BODY_MOTION t=%.3f dt=%.4f d_avatar_m=%s d_neck_target_m=%s d_eye_m=%s d_unit_m=%s " ..
+                            "avatar=%.3f,%.3f,%.3f unit=%.3f,%.3f,%.3f",
+                            type(t) == "number" and t or 0, type(dt) == "number" and dt or 0,
+                            fmt(d_avatar), fmt(Mirror.step_m(neck_now, m.neck)), fmt(Mirror.step_m(eye_now, m.eye)),
+                            fmt(Mirror.step_m(root_now, m.root)),
+                            avatar_now[1], avatar_now[2], avatar_now[3], root_now[1], root_now[2], root_now[3])
+                    end
+                end
+                state.motion = {avatar = avatar_now, neck = neck_now, eye = eye_now, root = root_now}
+            end)
+            if not ok then log_once("motion_probe", "motion_probe=failed") end
         end
         -- The trace. Yaws and the root's own movement, at half the frame rate,
         -- so a stick turn and a stationary jitter are both readable in the

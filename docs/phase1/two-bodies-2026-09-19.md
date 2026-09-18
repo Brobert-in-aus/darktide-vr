@@ -142,8 +142,68 @@ not exist yet), and the same test passes against `c99d9aa`'s main file. This
 commit carries none of that work: the main file's index entry was built from
 `c99d9aa` plus the two hunks named above.
 
+## Worn, 09:40, and the second pass
+
+Head `fada8a4`. The report: *"Only one body. It flickers constantly when I
+move (almost certainly the same root cause as all the previous
+flicker-when-moving issues). Weapons are invisible."* The log agrees on the
+first part: one `spawn`, `visual_proxy=active mode=body_rig` after the copy
+took the rig, and no second `visual_proxy=active` -- the proxy stayed
+pose-only. Item 1 is closed on the spawn count.
+
+### The weapons
+
+The first cut of item 1 hid the stock root with its children in one call and
+then showed the wielded slot back by its own handle. The weapon unit is
+linked under the root's hand joint. `visible_3p_units=2` in the log says the
+show call was made; the headset says it did nothing. Fatshark's own code
+never shows a child back under a hidden parent: `update_item_visibility`
+shows the root *with children* and then hides slots one by one, which is the
+only order that works if a linked unit reads as hidden while anything above
+it is. The gloves mode has hidden the stock model that way since the start
+and the root's own mesh has never shown as a stray there. The copy branch
+now does the same: root shown with children, every slot hidden by name, the
+wielded slot and the companion's gear shown. The stock body is still not
+drawn; only the mechanism changed.
+
+### The flicker: measured, not guessed
+
+Every flicker-while-moving this mod has had was one shape: a thing drawn
+from a value that advanced in fixed steps while the view advanced every
+frame, so it flicked between two places at the frame rate. The forearm
+miniatures read last frame's eye in the locomotion post-update
+(animation-audit-2026-09-16.md); the mirror copy was placed from the
+avatar's root (17 September, "glitches around when I move"). The overlay
+copy stands on four positions: the avatar's root (which the game
+interpolates every frame in `post_update`, before this mod's hook runs), the
+body frame's neck target (from `eye_pose`, which is stored against the body
+anchor -- `first_person_component.position`, fixed-step -- and read back
+from it), the tracked eye itself, and the copy's own root after the neck
+follow. Reading the source has not said which of them steps, and the trace
+that would have shown it was written `disabled` by the deployment this run
+used.
+
+So the module now measures it. `DARKTIDEVR_BODY_MOTION`, under the body
+trace flag, prints every frame while the avatar moves more than a
+millimetre: the step each of those four took since the previous frame. The
+one that alternates -- `0.000, 0.032, 0.000, 0.032` against a view stepping
+`0.016, 0.016` -- is the one to re-derive from the interpolated timeline.
+Every frame rather than every third, because a two-state alternation
+sampled every third frame aliases into a smooth line. It shares the trace's
+25,000-line budget, so move early in the session.
+
+The body trace flag is written `enabled` in the installed mod for the next
+run, by hand, because the sync deployment turns it off unless asked
+(`-BodyTrace`).
+
 ## Limits
 
+- The flicker is not fixed. It is instrumented; the next worn log names the
+  stepping quantity, and the fix follows the 16 and 17 September pattern for
+  whichever it is.
+- The weapon fix rests on one worn observation and Fatshark's own usage of
+  the call; the engine's rule for a visible unit under a hidden parent is
+  not documented anywhere this mod can read.
 - Read out of a log and reproduced in a harness with stand-in units; not worn.
 - The mirror-side change (no rig on a layout mismatch) has no harness.
 - Whether the copy needs the dev flag at all is a separate question. With the

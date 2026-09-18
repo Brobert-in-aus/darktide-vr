@@ -8166,7 +8166,18 @@ function presentation.apply_body_visibility(self, frame, force)
     -- actually been applied.
     controller_observation.body_visibility_copy_drew = copy_draws_body
     if copy_draws_body then
-        Unit.set_unit_visibility(unit_3p, false, true)
+        -- The ROOT stays visible and every slot is hidden by name. The first
+        -- cut hid the root with its children in one call, and the weapon
+        -- went with it: worn, 19 September, "weapons are invisible". The
+        -- weapon unit is linked under the root's hand joint, and showing it
+        -- back by its own handle did nothing -- the engine reads a linked
+        -- unit as hidden while anything above it is, and Fatshark's own code
+        -- never shows a child back under a hidden parent (it shows the root
+        -- with children, then hides slots one by one). So this does what the
+        -- gloves mode does and has done since the start: root shown, slots
+        -- hidden. The root's own mesh has never shown as a stray in that
+        -- mode.
+        Unit.set_unit_visibility(unit_3p, true, true)
         if unit_1p and Unit.alive(unit_1p) then
             Unit.set_unit_visibility(unit_1p, false, true)
         end

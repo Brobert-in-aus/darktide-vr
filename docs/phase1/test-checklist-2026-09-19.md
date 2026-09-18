@@ -74,6 +74,41 @@ would be your gameplay avatar. Written up in
 quote if it is still wrong is `DARKTIDEVR_IK visual_proxy=... mode=...`,
 which now says `body_rig` while the copy owns the hands.
 
+### 1b. Worn at 09:40: one body, weapons invisible, flicker when moving
+
+Your report: *"Only one body. It flickers constantly when I move (almost
+certainly the same root cause as all the previous flicker-when-moving
+issues). Weapons are invisible."* The log agrees on the count: one spawn,
+and the proxy stayed pose-only (`mode=body_rig`). Closed on the spawn.
+
+**Weapons.** The first cut hid the stock root *with its children* in one
+call and showed the weapon back by its own handle; the weapon is linked
+under the root's hand joint and stayed hidden. Fatshark's code never shows
+a child back under a hidden parent, and the gloves mode has always hidden
+the body the other way round: root shown, slots hidden one by one. The copy
+branch now does exactly that.
+
+**Test**: load in with a gun wielded, then swap to melee and back.
+**Report**: whether the weapon is drawn, and whether the stock body has come
+back with it (it should not: the same slots are hidden, only the root is
+left visible, as in the gloves mode).
+
+**Flicker.** Not fixed; measured. You are right about the shape -- every
+flicker-while-moving so far was something drawn from a value that advanced
+in fixed steps while the view advanced every frame -- but the copy stands on
+four such values (the avatar's root, the neck target, the tracked eye, its
+own root) and reading the source has not said which one steps. The trace
+that would have shown it was written `disabled` by this morning's second
+deployment. It is on again, and a new line, `DARKTIDEVR_BODY_MOTION`,
+prints every frame while you move: the step each of the four took since the
+last frame. The one that alternates against a view that does not is the
+one to fix, and the fix is the 16 and 17 September pattern.
+
+**Test**: walk and strafe for ten seconds early in the session (the trace
+budget is 25,000 lines and this spends about ninety a second while you
+move), then stand still. **Report**: nothing beyond what you already said;
+the log carries the answer.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not
