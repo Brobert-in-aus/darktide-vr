@@ -138,6 +138,13 @@ return {
                         default_value = false,
                     },
                     {
+                        -- On by default: the new behaviour is turning the
+                        -- swings OFF, so that is what has to be chosen.
+                        setting_id = "vr_melee_animations",
+                        type = "checkbox",
+                        default_value = true,
+                    },
+                    {
                         -- A sibling, not a child of Full body. DMF HIDES a
                         -- checkbox's children while it is off, and the mirror
                         -- this key toggles works whether Full body is on or

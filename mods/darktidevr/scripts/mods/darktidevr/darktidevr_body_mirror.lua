@@ -332,6 +332,52 @@ end
 -- "snap turns as I turn rather than following smoothly"). A jump beyond
 -- YAW_SNAP (a stick snap turn, a respawn) is taken at once. Pure.
 Mirror.YAW_TAU, Mirror.YAW_SNAP = 0.3, math.rad(75)
+-- THE TURN LEAK. The copy's joints below the root are copied as LOCAL poses,
+-- which are relative to the AVATAR's root. `body_yaw` then replaces the copy's
+-- root yaw with the body frame's heading. The avatar's root yaw is never taken
+-- out, so it leaks into everything below -- with the wrong sign, because what
+-- the animation puts in the spine during a stick turn is the counter-rotation
+-- that holds the torso still in the world while the legs turn underneath.
+-- The copy inherits that compensation without inheriting the turn it was
+-- compensating for, so its torso swings the other way at the full rate of the
+-- turn. "The body turns and it turns faster than me."
+--
+-- The trace proves the term rather than suggesting it. Take
+--     d(copy torso) = d(copy root) + d(avatar torso) - d(avatar root)
+-- and read it off worn samples (19 September), all in degrees per sample:
+--     d_unit=-0.04 d_av_torso=-0.73 d_avatar=-10.53 -> 9.76, measured 10.11
+--     d_unit= 1.96 d_av_torso= 4.77 d_avatar=  0.00 -> 6.73, measured  6.60
+--     d_unit= 1.55 d_av_torso= 2.32 d_avatar= -7.18 -> 11.05, measured 10.25
+--     d_unit= 4.55 d_av_torso= 2.03 d_avatar=  1.16 -> 5.42, measured  4.91
+-- The head moved about a degree in each of those. The copy's own root barely
+-- moved; the avatar's root is doing all of it.
+--
+-- So the correction is not a rate limit or a damper -- the error is not a
+-- speed, it is an uncancelled term, which is also why the body drifts out of
+-- alignment instead of merely lagging. Putting the avatar's root yaw back into
+-- the chain below cancels it exactly: the copy's torso then sits where the
+-- avatar's torso sits, which is where the game already keeps it relative to
+-- the view, and the copy's root keeps the body frame's heading for the hips
+-- and legs.
+--
+-- Both arguments are yaws in radians; the result is the yaw to apply about the
+-- vertical to the root's child, wrapped to (-pi, pi]. Pure.
+function Mirror.root_yaw_leak(avatar_root_yaw, body_yaw)
+    if type(avatar_root_yaw) ~= "number" or type(body_yaw) ~= "number" then return nil end
+    if avatar_root_yaw ~= avatar_root_yaw or body_yaw ~= body_yaw then return nil end
+    return (avatar_root_yaw - body_yaw + math.pi) % (2 * math.pi) - math.pi
+end
+
+-- Where the copy's torso lands, in world yaw, with the leak (corrected false)
+-- and without it (corrected true). The arithmetic above, as a function, so a
+-- test can run the worn samples through it. Pure.
+function Mirror.copy_torso_yaw(avatar_root_yaw, avatar_torso_yaw, copy_root_yaw, corrected)
+    local function wrap(a) return (a + math.pi) % (2 * math.pi) - math.pi end
+    local local_torso = wrap(avatar_torso_yaw - avatar_root_yaw)
+    if corrected then return wrap(avatar_root_yaw + local_torso) end
+    return wrap(copy_root_yaw + local_torso)
+end
+
 function Mirror.smooth_yaw(previous, target, dt)
     if type(previous) ~= "number" or type(dt) ~= "number" or not (dt > 0) or dt > 0.5 then return target end
     local diff = (target - previous + math.pi) % (2 * math.pi) - math.pi
@@ -493,6 +539,29 @@ function Mirror.requested_mode(flag_mode, mirror_toggled, in_psykhanium, option_
     return nil
 end
 
+-- Whether a copy running this mode is DRAWING THE PLAYER'S BODY -- standing
+-- on them, in place of the stock 3P model, which the visibility code then
+-- does not draw at all. A mode that stands the copy away from the player
+-- (the mirror) or reflects it out to one (the reflection) is not the
+-- player's body however complete its solve is, and the stock model still has
+-- to be dealt with by whatever else is running. `has_unit` is false while the
+-- profile is still spawning, so the stock model is never taken away before
+-- there is something to put in its place. Pure.
+-- `drawable` is the third condition and it is not a detail. When the copy's
+-- scene graph does not match the avatar's, this module HIDES the copy rather
+-- than destroying it (see state.layout_hidden: destroying it here would spawn
+-- another next frame) and never poses it. A predicate that looked only at
+-- whether the unit was alive would answer true in that state, the stock model
+-- would be hidden on the strength of it, and the player would be left with
+-- nothing but a floating weapon -- indefinitely, because the copy is not
+-- coming back by itself. An Ogryn, or a cosmetic that changes the node count,
+-- is enough to reach it. Caught in review before it was ever deployed.
+function Mirror.draws_body(mode_name, has_unit, drawable)
+    local mode = mode_name and Mirror.MODES[mode_name]
+    if not mode or has_unit ~= true or drawable ~= true then return false end
+    return mode.distance == 0 and not mode.reflect
+end
+
 -- The flag's mode, or nil. Pure.
 function Mirror.parse_mode(value)
     local name = type(value) == "string" and value:match("^%s*(%a+)%s*$")
@@ -615,6 +684,18 @@ function Mirror.install(mod, presentation, options)
     -- The drawn copy and everything hanging off it, for the arm census. The
     -- copy lives in a closure local and had no accessor, so a census built to
     -- find a duplicate body could not see the most obvious candidate.
+    -- Whether this instance's copy is standing on the player AND drawing
+    -- their body right now -- the question the visibility code asks before it
+    -- hides the stock model. False while the copy is still spawning, so a
+    -- player is never left with no body at all, and false for the reflection
+    -- (its copy is out at the mirror; it draws a reflection, not the body).
+    function api.draws_body()
+        local has_unit = state ~= nil and state.unit ~= nil and Unit.alive(state.unit) == true
+        local drawable = has_unit and state.same_layout == true and
+            state.layout_hidden ~= true
+        return Mirror.draws_body(mode_name, has_unit, drawable)
+    end
+
     function api.drawn_units()
         local units = {}
         if not state then return units end
@@ -979,6 +1060,21 @@ function Mirror.install(mod, presentation, options)
                 math.cos(frame.yaw - Quaternion.yaw(Unit.world_rotation(unit, 1)))))
             state.yaw = Mirror.smooth_yaw(state.yaw, frame.yaw, dt)
             Unit.set_local_rotation(unit, 1, Quaternion(Vector3.up(), state.yaw))
+            -- Put the avatar's root yaw back into the chain below, which was
+            -- copied relative to it (see Mirror.root_yaw_leak). The root keeps
+            -- the body frame's heading; everything above the hips goes back to
+            -- sitting where the avatar's own torso sits. Only the yaw is taken
+            -- from the avatar's root: a standing character's root carries no
+            -- pitch or roll worth keeping, and the copy's root was replaced
+            -- with a pure yaw a line above.
+            local hips = Unit.has_node(unit, "j_hips") and Unit.node(unit, "j_hips")
+            local leak = hips and Mirror.root_yaw_leak(
+                Quaternion.yaw(Unit.world_rotation(avatar, 1)), state.yaw)
+            if leak then
+                state.root_yaw_leak = math.deg(leak)
+                Unit.set_local_rotation(unit, hips, Quaternion.multiply(
+                    Quaternion(Vector3.up(), leak), Unit.local_rotation(unit, hips)))
+            end
             World.update_unit(world, unit)
         end
         local neck_target = frame and Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale)
@@ -1197,7 +1293,9 @@ function Mirror.install(mod, presentation, options)
                 mod:info("DARKTIDEVR_BODY_MIRROR spine neck_gap_m=%.3f->%.3f", state.spine_neck[1], state.spine_neck[2])
             end
             if state.root_yaw_delta then
-                mod:info("DARKTIDEVR_BODY_MIRROR body_yaw delta_from_avatar_deg=%.1f", state.root_yaw_delta)
+                mod:info("DARKTIDEVR_BODY_MIRROR body_yaw delta_from_avatar_deg=%.1f root_yaw_leak_deg=%s",
+                    state.root_yaw_delta,
+                    state.root_yaw_leak and string.format("%.1f", state.root_yaw_leak) or "none")
             end
             if state.shoulder_gap_left and state.shoulder_gap_right then
                 mod:info("DARKTIDEVR_BODY_MIRROR clavicles gap_left_m=%.3f->%.3f gap_right_m=%.3f->%.3f",

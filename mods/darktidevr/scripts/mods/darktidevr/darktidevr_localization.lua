@@ -45,6 +45,8 @@ return {
     marker_plane_description = {en = "Draw world markers, nameplates and the interaction popup as one surface at the marker's distance, so both eyes see the same thing. Off returns to the per-eye flat markers."},
     vr_full_body_experimental = {en = "Full body (experimental)"},
     vr_full_body_experimental_description = {en = "Show your character's whole body under you: a copy of your character scaled so its neck meets your head, its arms solved to your controllers, instead of the tracked hands alone. Takes a few seconds to appear after you turn it on."},
+    vr_melee_animations = {en = "Melee animations"},
+    vr_melee_animations_description = {en = "On: melee attacks play their authored swing, and your hands follow it. Off: your hands and weapon keep tracking your controllers through the whole attack, so you swing it yourself. Hit markers, impacts and slash effects are unaffected either way, and a push and a held block still play their animations, so a shove still reads as a shove and you can see that you are blocking."},
     body_mirror_keybind = {en = "Body mirror shortcut (Psykhanium)"},
     body_mirror_keybind_description = {en = "In the Psykhanium, stands a copy of your character a few paces ahead, facing you, posed exactly as your own body is (head, shoulders and arms solved to your controllers), so you can see what others would. Press again to remove it. Default: F8."},
     vr_two_hand_support = {en = "Two-hand support"},

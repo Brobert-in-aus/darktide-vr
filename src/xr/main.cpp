@@ -2672,6 +2672,7 @@ class OpenXrProbe {
                   if (target) {
                     gameplay_reticle_pose = darktidevr::math::Pose{
                         current_head.orientation, *target};
+                    gameplay_reticle_resolved_ = true;
                   }
                   break;
                 }
@@ -2684,9 +2685,25 @@ class OpenXrProbe {
                     {right.aim_pose.position.x + direction.x * reticle_distance_metres,
                      right.aim_pose.position.y + direction.y * reticle_distance_metres,
                      right.aim_pose.position.z + direction.z * reticle_distance_metres}};
+                // The fallback draws from the CONTROLLER, not from the
+                // published point, so a reticle at the wrong depth means a
+                // different thing on this path than on the resolved one.
+                // Worth telling apart before reading any depth off it.
+                gameplay_reticle_resolved_ = false;
               }
               if (gameplay_reticle_pose) {
                 ++gameplay_reticle_frames_;
+                // Where the reticle actually ends up, as a depth from the
+                // head. Against the game's `anchor_distance_m` this is the
+                // whole question: the user reports the error grows with the
+                // distance aimed, so the two divided is the factor.
+                const auto to_reticle = darktidevr::math::Vec3{
+                    gameplay_reticle_pose->position.x - current_head.position.x,
+                    gameplay_reticle_pose->position.y - current_head.position.y,
+                    gameplay_reticle_pose->position.z - current_head.position.z};
+                gameplay_reticle_head_distance_metres_ = std::sqrt(
+                    to_reticle.x * to_reticle.x + to_reticle.y * to_reticle.y +
+                    to_reticle.z * to_reticle.z);
                 const auto frame_start_ns = static_cast<std::uint64_t>(
                     std::chrono::duration_cast<std::chrono::nanoseconds>(
                         frame_start.time_since_epoch()).count());
@@ -5345,6 +5362,8 @@ class OpenXrProbe {
                       << (ndc[1][0] - ndc[0][0]) << ','
                       << (ndc[1][1] - ndc[0][1])
                       << " distance_m=" << gameplay_reticle_distance_metres_
+                      << " head_distance_m=" << gameplay_reticle_head_distance_metres_
+                      << " resolved=" << (gameplay_reticle_resolved_ ? 1 : 0)
                       << " entered=" << (entered ? 1 : 0) << '\n';
           }
           ++reticle_clip_reports;
@@ -6541,6 +6560,10 @@ class OpenXrProbe {
   std::uint64_t gameplay_reticle_miss_frames_{};
   std::uint64_t gameplay_reticle_transport_samples_{};
   float gameplay_reticle_distance_metres_{};
+  // The depth the reticle was actually drawn at, from the head, and whether
+  // the published point or the controller fallback put it there.
+  float gameplay_reticle_head_distance_metres_{};
+  bool gameplay_reticle_resolved_{};
   std::uint64_t controller_pointer_hits_{};
   std::uint32_t controller_pointer_x_{};
   std::uint32_t controller_pointer_y_{};

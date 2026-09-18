@@ -318,6 +318,12 @@ local controller_observation = {
     body_visibility_last_check_frame = -math.huge,
     body_visibility_last_apply_frame = -math.huge,
     body_visibility_logged_slots = false,
+    -- The drawn-body answer as of the last APPLIED pass, and as of the last
+    -- report. Declared here with their neighbours so a body-state reset
+    -- clears them too: a stale copy_drew swallows the one forced pass that
+    -- the reset exists to produce.
+    body_visibility_copy_drew = nil,
+    body_visibility_logged_copy = nil,
     body_visibility_faulted = false,
     full_body_experimental_enabled = false,
     body_fade_override_logged = false,
@@ -7729,6 +7735,8 @@ function presentation.update_body_visibility_gate(frame)
     end
     controller_observation.body_visibility_enabled = enabled
     controller_observation.body_visibility_logged_slots = false
+    controller_observation.body_visibility_copy_drew = nil
+    controller_observation.body_visibility_logged_copy = nil
     controller_observation.body_fade_override_logged = false
     controller_observation.body_camera_anchor_logged = false
     controller_observation.body_eye_anchor_logged = false
@@ -7782,6 +7790,23 @@ function presentation.apply_body_visibility(self, frame, force)
     local range_mode = presentation.is_first_person_body_mode(mode)
     local active = controller_observation.body_visibility_enabled and
         range_mode
+    -- ONE BODY. While the custom-IK copy is drawing the player's body the
+    -- stock 3P model is not drawn at all (see the full-body branch below).
+    -- Asked here rather than down there because a CHANGE in the answer has to
+    -- force a pass: the copy becomes ready some frames after the gate opens,
+    -- and waiting out the sixty-frame heartbeat would leave the player
+    -- looking at both bodies for the best part of a second each time.
+    local copy_draws_body = presentation.body_mirror ~= nil and
+        presentation.body_mirror.draws_body ~= nil and
+        presentation.body_mirror.draws_body() == true
+    -- Observed here, RECORDED below the guards. Recording it here spends the
+    -- force on a pass that then returns early -- a cutscene, or a frame before
+    -- the equipment exists -- and because the recorded value now matches,
+    -- nothing re-forces and the correction waits out the heartbeat it was
+    -- written to avoid (review, 19 September).
+    if copy_draws_body ~= controller_observation.body_visibility_copy_drew then
+        force = true
+    end
     if not force and frame <
             controller_observation.body_visibility_last_apply_frame + 60 then
         return
@@ -8094,7 +8119,77 @@ function presentation.apply_body_visibility(self, frame, force)
     local visible_3p_units = 0
     local hidden_3p_units = 0
     local hidden = {}
-    for slot_name, slot in pairs(equipment) do
+
+    -- ONE BODY. While the custom-IK copy is drawing the player's body, the
+    -- stock 3P model is not drawn at all -- root hidden with its children,
+    -- then the wielded weapon and the companion's gear shown back.
+    --
+    -- This replaces a hide-LIST that had to name every body slot Fatshark
+    -- ships, and never did. Worn, 19 September: "there are two bodies
+    -- visible... with no flickering or any changes", and the report says why
+    -- -- `hidden_slots=slot_gear_head,slot_body_face visible_3p_units=7`.
+    -- Only the head and face were ever hidden here; `slot_body_legs` and
+    -- `slot_gear_lowerbody` appear in neither list, so the stock legs were
+    -- drawn inside the copy's legs every frame the mode has ever run. The
+    -- arms, torso and upperbody were hidden only once the copy took the hand
+    -- rig, which is a race the player can see.
+    --
+    -- The user set the rule: "When there were just gloves, the standard 3p
+    -- model was hidden. That should be exactly how it works now... There's no
+    -- reason to ever show that 3p model. All we ever show is the new
+    -- custom-IK model." So the default is hidden and the exceptions are
+    -- named, rather than the other way round: a slot added by a future
+    -- Fatshark patch is hidden, not drawn as a second body.
+    -- Past every early return, so the flip is recorded only once a pass has
+    -- actually been applied.
+    controller_observation.body_visibility_copy_drew = copy_draws_body
+    if copy_draws_body then
+        Unit.set_unit_visibility(unit_3p, false, true)
+        if unit_1p and Unit.alive(unit_1p) then
+            Unit.set_unit_visibility(unit_1p, false, true)
+        end
+        for slot_name, slot in pairs(equipment) do
+            if type(slot_name) == "string" and type(slot) == "table" then
+                local slot_unit_3p = slot.unit_3p
+                if slot_unit_3p and Unit.alive(slot_unit_3p) then
+                    -- The weapon is placed by the tracked hand rig and is the
+                    -- one thing on the stock model the player is meant to
+                    -- see. The companion's gear hangs off the servo-skull,
+                    -- not off the player, and hiding it with the body made
+                    -- the skull invisible once already.
+                    local show = presentation.companion_gear_slots[slot_name] == true or
+                        (slot_name == inventory.wielded_slot and not slot.hidden_3p)
+                    Unit.flow_event(
+                        slot_unit_3p, show and "lua_visible" or "lua_hidden")
+                    Unit.set_unit_visibility(slot_unit_3p, show, true)
+                    local attachments = slot.attachments_by_unit_3p and
+                        slot.attachments_by_unit_3p[slot_unit_3p]
+                    if attachments then
+                        for i = 1, #attachments do
+                            local attachment = attachments[i]
+                            if attachment and Unit.alive(attachment) then
+                                Unit.flow_event(
+                                    attachment,
+                                    show and "lua_visible" or "lua_hidden")
+                                Unit.set_unit_visibility(attachment, show, true)
+                            end
+                        end
+                    end
+                    if show then
+                        visible_3p_units = visible_3p_units + 1
+                    else
+                        hidden[#hidden + 1] = slot_name
+                        hidden_3p_units = hidden_3p_units + 1
+                    end
+                end
+            end
+        end
+    end
+
+    -- The copy is not up yet (or has gone): the older headless presentation,
+    -- which keeps the stock body and takes its head off, so the player has a
+    -- body rather than none while the profile spawns.
+    for slot_name, slot in pairs(copy_draws_body and {} or equipment) do
         if type(slot_name) == "string" and type(slot) == "table" then
             local slot_unit_3p = slot.unit_3p
             if slot_unit_3p and Unit.alive(slot_unit_3p) then
@@ -8140,6 +8235,18 @@ function presentation.apply_body_visibility(self, frame, force)
         end
     end
 
+    -- One line for the handover, not the twenty-line slot dump again: a copy
+    -- that flaps -- a spawn failing repeatedly, a mode poll toggling on the
+    -- boundary -- would otherwise turn this into a log storm (review, 19
+    -- September). The dump still happens once, the first time through.
+    if controller_observation.body_visibility_logged_copy ~= copy_draws_body then
+        controller_observation.body_visibility_logged_copy = copy_draws_body
+        mod:info(
+            "DARKTIDEVR_BODY one_body copy_draws_body=%s hidden_slots=%s visible_3p_units=%d wielded=%s",
+            tostring(copy_draws_body),
+            #hidden > 0 and table.concat(hidden, ",") or "none",
+            visible_3p_units, tostring(inventory.wielded_slot))
+    end
     if not controller_observation.body_visibility_logged_slots then
         local slot_names = {}
         for slot_name, slot in pairs(equipment) do
@@ -8168,7 +8275,8 @@ function presentation.apply_body_visibility(self, frame, force)
         end
         controller_observation.body_visibility_logged_slots = true
         mod:info(
-            "DARKTIDEVR_BODY headless_3p applied mode=%s force_engine_3p=%s player_visible=%s hidden_slots=%s visible_3p_units=%d hidden_3p_units=%d unit_1p=%s wielded=%s",
+            "DARKTIDEVR_BODY headless_3p applied copy_draws_body=%s mode=%s force_engine_3p=%s player_visible=%s hidden_slots=%s visible_3p_units=%d hidden_3p_units=%d unit_1p=%s wielded=%s",
+            tostring(copy_draws_body),
             tostring(mode),
             tostring(first_person_extension and
                 first_person_extension._force_third_person_mode),
@@ -8988,7 +9096,22 @@ function presentation.zoom_corrected_aim_point(world_point)
     -- reticle's own test caught it.
     local across_x, across_z, depth = presentation.projection_math.magnified_target(
         Vector3.x(v), Vector3.z(v), Vector3.y(v), magnification)
-    return eye + Quaternion.rotate(head, Vector3(across_x, depth, across_z))
+    -- The angular correction above puts the point where it is SEEN. It
+    -- preserves the range while doing it, which leaves the point at the depth
+    -- the unmagnified world would put it -- and the world in the sights is
+    -- not unmagnified. The range has to come in by the same factor or the
+    -- reticle verges behind the surface it marks: see Projection.zoomed_range
+    -- for why, and why this is the half of the fault that six measurements
+    -- inside this path could not have found.
+    -- The range from the three components rather than through Vector3.length:
+    -- this function is sliced into the tooling tests, whose Vector3 is a plain
+    -- table with no helpers on it, and reaching for one there is a nil call
+    -- rather than a wrong answer (online_reticle, 19 September).
+    local range = math.sqrt(across_x * across_x + depth * depth + across_z * across_z)
+    local wanted = presentation.projection_math.zoomed_range(range, magnification)
+    local shrink = (range > 1e-6 and wanted ~= range) and (wanted / range) or 1
+    return eye + Quaternion.rotate(head,
+        Vector3(across_x * shrink, depth * shrink, across_z * shrink))
 end
 
 function presentation.publish_gameplay_aim_state(active, hit, distance, world_point)
@@ -9051,9 +9174,27 @@ function presentation.publish_gameplay_aim_state(active, hit, distance, world_po
                 (presentation.reticle_scale_sequence or 0) + 120 <= (sequence or 0) then
             presentation.reticle_scale_logged = (presentation.reticle_scale_logged or 0) + 1
             presentation.reticle_scale_sequence = sequence or 0
+            -- THE RATIO. The error is proportional to the distance aimed,
+            -- not a fixed offset (user, 19 September) -- so it is a FACTOR,
+            -- and a factor has a number that can be read off rather than
+            -- guessed at. Six candidates have been ruled out by measurement
+            -- and none of them were multiplicative; this line and the
+            -- viewer's `head_distance_m` are the two ends of the one
+            -- comparison that names it.
+            --
+            -- `anchor_distance_m` is the distance from the HEAD to the target
+            -- -- which is what the reticle's depth should be -- as against
+            -- `raw_distance_m`, which is measured from the weapon along the
+            -- aim ray and is a different origin entirely. The viewer places
+            -- the reticle from the published OFFSET (resolve_gameplay_aim_target
+            -- is a rigid transform of target_point and never reads
+            -- distance_metres), so anchor_distance_m is the depth the
+            -- transport intends. Divide the viewer's by this one and the
+            -- quotient is the fault.
+            local anchor_distance = Vector3.length(world_point - anchor)
             mod:info("DARKTIDEVR_AIM reticle_scale raw_distance_m=%.4f published_distance_m=%.4f " ..
-                "scale=%.4f zoom=%.4f offset_m=%.4f",
-                distance, distance / scale, scale,
+                "anchor_distance_m=%.4f point_m=%.4f scale=%.4f zoom=%.4f offset_m=%.4f",
+                distance, distance / scale, anchor_distance, Vector3.length(point), scale,
                 tonumber(presentation.ads_zoom_applied) or 1,
                 distance / scale - distance)
         end
@@ -11071,7 +11212,15 @@ function presentation.update_stock_melee_animation_owner(self)
     local action = template and template.actions and
         template.actions[action_name]
     local kind = action and action.kind
+    -- The player's "Melee animations" setting is consulted here rather than
+    -- inside uses_stock_melee_animation, which answers the different question
+    -- of whether THIS action kind is one the stock animation owns. Keyboard
+    -- and mouse takes the same route: this flag is the gate both paths read
+    -- (see stock_melee_animation_active).
+    local melee_animations = mod.get and mod:get("vr_melee_animations")
     local active = action_name ~= "none" and
+        presentation.body_proxy.stock_melee_animation_allowed(
+            kind, melee_animations) and
         presentation.body_proxy.uses_stock_melee_animation(
             slot_name, kind, action, template and template.actions)
     if active ~= controller_observation.stock_melee_animation_active or

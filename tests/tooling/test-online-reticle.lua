@@ -166,24 +166,51 @@ if arg[2] then
     end
 
     zp.ads_zoom_applied = 1.12
-    -- Dead ahead of the head, at every orientation: untouched. This is the
-    -- assertion the wrong frame failed, by over a degree at ten degrees of
-    -- pitch and three at forty-five.
+    -- Dead ahead of the head, at every orientation: the DIRECTION is
+    -- untouched. This is the assertion the wrong frame failed, by over a
+    -- degree at ten degrees of pitch and three at forty-five, and it is
+    -- checked here as "still on the same ray from the eye" rather than "in
+    -- the same place" -- which is stronger about direction, and leaves room
+    -- for the range, which now deliberately moves.
+    --
+    -- The range comes IN by the magnification (19 September). The sights
+    -- render through a narrowed frustum and submit the field of view
+    -- unchanged, so the world in them appears at D/m while the reticle's quad
+    -- layer is composited at the submitted field of view and stays at D. A
+    -- target dead ahead is exactly the case that has no angular correction at
+    -- all and the full radial one, so it is the cleanest place to state it.
     for _, yaw in ipairs({0, 0.3, 1.2, -2.0, 3.0}) do
         for _, pitch in ipairs({0, 0.17, 0.35, 0.52, 0.79, -0.4}) do
             local q = set_head(yaw, pitch)
             local target = forward_point(q, 10)
             local moved = zp.zoom_corrected_aim_point(target)
-            assert(distance(moved, target) < 1e-4,
-                string.format('a target dead ahead moved %.4f m at yaw %.2f pitch %.2f',
-                    distance(moved, target), yaw, pitch))
+            local wanted = forward_point(q, 10 / 1.12)
+            assert(distance(moved, wanted) < 1e-4,
+                string.format('a target dead ahead is not at 10/m: off by %.4f m at yaw %.2f pitch %.2f',
+                    distance(moved, wanted), yaw, pitch))
+            -- Said again as a range, so a change that moved the point along
+            -- some OTHER ray of the right length could not pass the line
+            -- above and this one together.
+            assert(math.abs(distance(moved, eye) - 10 / 1.12) < 1e-4,
+                string.format('the range is not 10/m at yaw %.2f pitch %.2f', yaw, pitch))
+            assert(distance(moved, target) > 1.0,
+                'the correction has to actually move it, or this proves nothing')
         end
     end
-    -- Off the view's centre the RAY turns outward by the magnification, and the
-    -- range from the eye is kept. The depth along the view gives a little so
-    -- that it can: scaling across and holding depth moved the point off the
-    -- surface it was measured on, which worn put the reticle underneath the
-    -- ground and further away than the thing it marked (18 September).
+    -- Off the view's centre the RAY turns outward by the magnification, and
+    -- then the whole thing comes IN by it.
+    --
+    -- The comment here used to say "the range from the eye is kept... scaling
+    -- across and holding depth moved the point off the surface it was
+    -- measured on, which worn put the reticle underneath the ground". That
+    -- read the symptom right and the cause backwards. Preserving the range is
+    -- what LEFT the reticle too far away: the sights render through a
+    -- narrowed frustum and submit the field of view unchanged, so the world in
+    -- them appears at D/m while the reticle's quad layer is composited at the
+    -- submitted field of view and stays at D. The user settled it on 19
+    -- September -- the error is proportional to the distance aimed, and it is
+    -- not there outside the sights, neither of which a preserved range can
+    -- explain and both of which this does.
     local q = set_head(0.9, -0.3)
     local right = Q.rotate(q, v3(1, 0, 0))
     local ahead = forward_point(q, 10)
@@ -196,13 +223,21 @@ if arg[2] then
     -- The tangent is what has to be magnified, and it still is exactly.
     assert(math.abs((across / depth) - (0.7 / 10) * 1.12) < 1e-6,
         'the tangent across the view is the magnified one: ' .. (across / depth))
-    -- The range is what must not move, because that is where it sits in depth.
+    -- The range is divided by the magnification, which is the half of the
+    -- correction the angular one could never do: magnified_target renormalises
+    -- to the original length by construction.
     local range_before = math.sqrt(0.7 * 0.7 + 10 * 10)
     local range_after = math.sqrt(depth * depth + across * across)
-    assert(math.abs(range_after - range_before) < 1e-4,
-        'the range from the eye is preserved: ' .. range_after .. ' vs ' .. range_before)
-    assert(depth < 10 and depth > 9.99, 'the depth gives a little so the range can hold: ' .. depth)
-    assert(across > 0.7, 'and the point still moves outward: ' .. across)
+    assert(math.abs(range_after - range_before / 1.12) < 1e-4,
+        'the range comes in by the magnification: ' .. range_after ..
+        ' vs ' .. (range_before / 1.12))
+    -- Stated twice over, because the tangent above is invariant under any
+    -- uniform scale and would pass whatever the range did: the point is on
+    -- the magnified ray AND at the shortened range, not one or the other.
+    assert(depth < 10 / 1.12 + 1e-4 and depth > 10 / 1.12 - 0.01,
+        'the depth comes in with it: ' .. depth)
+    assert(across > 0.7 / 1.12, 'and the point still moves outward across the view: ' .. across)
+    assert(range_after < range_before - 1.0, 'the correction has to actually shorten it')
     -- No zoom, no movement; and nothing to work with is not an error.
     zp.ads_zoom_applied = 1
     assert(distance(zp.zoom_corrected_aim_point(off), off) < 1e-9, 'no zoom, no correction')

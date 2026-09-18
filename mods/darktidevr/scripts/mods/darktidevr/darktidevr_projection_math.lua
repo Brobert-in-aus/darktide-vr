@@ -135,6 +135,38 @@ function Projection.magnified_target(x, y, z, magnification)
     return mx * k, my * k, az * k
 end
 
+-- WHY THE RETICLE SITS TOO FAR AWAY IN THE SIGHTS, and only there.
+--
+-- The aim zoom renders the world through a narrowed frustum while the viewer
+-- submits the field of view UNCHANGED -- "which is what makes it a zoom"
+-- (zoomed_frustum, and the comment at its call site). Every angle from the
+-- view axis in the rendered world is therefore multiplied by the
+-- magnification, and so is the disparity between the two eyes. A point at
+-- true range D has disparity proportional to IPD/D; multiplied by m it reads
+-- as IPD/(D/m). The world in the sights appears at D/m.
+--
+-- The reticle does not. It is an OpenXR quad layer at a true world pose,
+-- which the runtime composites through the SUBMITTED field of view -- the
+-- unnarrowed one. So the world comes forward by m and the reticle stays put,
+-- and the reticle reads as m times further than the thing it marks.
+--
+-- That is why the error is proportional to the distance aimed rather than a
+-- fixed offset (user, 19 September) and why it is not there outside the
+-- sights, which is the fact that named it. And it is why six candidates
+-- inside the reticle path were each ruled out by measurement: the fault is
+-- RADIAL, and `magnified_target` above renormalises to `before` -- it
+-- preserves the range by construction and could never have corrected a depth.
+-- It is the angular half of the correction; this is the radial half.
+--
+-- Returns the range to place the reticle at so it verges where the magnified
+-- world puts the surface. Pure.
+function Projection.zoomed_range(range, magnification)
+    local r, m = tonumber(range), tonumber(magnification)
+    if not r or not m or r ~= r or m ~= m then return range end
+    if m <= 1.0001 or m > 4 or not (r > 0) then return range end
+    return r / m
+end
+
 function Projection.binocular_visibility_scale(left, right)
     -- Light admission must cover the union of the rendered eye cones. A fixed
     -- 20% tangent margin is smaller than their relative optical-axis yaw.

@@ -278,4 +278,94 @@ local tilted_l, tilted_r = shoulders_at(0.4)
 tilted_r[3] = tilted_r[3] + 0.2
 near(Mirror.torso_yaw(tilted_l, tilted_r), 0.4, 1e-9, 'a lean does not change the facing')
 
-print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace colliders torso_yaw')
+-- ONE BODY (19 September). The stock 3P model is hidden wholesale while a
+-- copy is drawing the player's body, so this predicate decides whether the
+-- player has a body at all. Every mode is checked rather than a sample: a
+-- mode added later that stands the copy on the player must answer true, and
+-- one that stands it away must answer false, or the stock model is taken
+-- away with nothing in its place.
+-- The modes that stand the copy on the player, named rather than recomputed.
+-- Recomputing `distance == 0 and not reflect` here would restate the
+-- implementation and could not fail for any defect that preserved it (review,
+-- 19 September); this list is a second opinion, and a mode added later that
+-- belongs on it has to be put here by hand.
+local on_the_player = {
+  overlay = true, overlaycopy = true, overlayarms = true, overlayfollow = true,
+  overlayspine = true, overlayreach = true, overlayarmlength = true,
+  overlayprotract = true, overlayswing = true, overlaytrue = true,
+  overlayrootyaw = true, overlaystock = true,
+}
+for name in pairs(Mirror.MODES) do
+  local drawn = Mirror.draws_body(name, true, true)
+  assert(drawn == (on_the_player[name] == true),
+    name .. ' drew ' .. tostring(drawn) .. ', expected ' .. tostring(on_the_player[name] == true))
+  -- Never before the copy exists, and never while the copy is HIDDEN for a
+  -- scene-graph mismatch -- that one would hide the stock model and leave the
+  -- player with nothing but a floating weapon, with no copy coming back.
+  assert(not Mirror.draws_body(name, false, true), name .. ' has no copy yet')
+  assert(not Mirror.draws_body(name, nil, true), name .. ' has no copy yet')
+  assert(not Mirror.draws_body(name, true, false), name .. ' copy is not drawable')
+  assert(not Mirror.draws_body(name, true, nil), name .. ' copy is not drawable')
+end
+-- Every mode this module ships is accounted for above, so a new one cannot be
+-- added without a decision about whether it draws the player's body.
+for name in pairs(on_the_player) do
+  assert(Mirror.MODES[name], 'on_the_player names a mode that no longer exists: ' .. name)
+end
+assert(not Mirror.draws_body(nil, true, true), 'no mode draws nothing')
+assert(not Mirror.draws_body('nosuchmode', true, true), 'an unknown mode draws nothing')
+assert(Mirror.draws_body('overlay', true, true), 'the overlay is the player body')
+assert(not Mirror.draws_body('mirror', true, true), 'the mirror stands away from the player')
+assert(not Mirror.draws_body('reflection', true, true), 'the reflection is reflected out to the mirror')
+
+-- THE TURN LEAK (19 September). Worn samples, degrees per sample, taken while
+-- the head moved about one degree: the copy's torso swung up to ten. The rows
+-- are (avatar root step, avatar torso step, copy root step, measured copy
+-- torso step) straight off DARKTIDEVR_BODY_TRACE.
+local turns = {
+  {-10.53, -0.73, -0.04, 10.11},
+  {  0.00,  4.77,  1.96,  6.60},
+  { -7.18,  2.32,  1.55, 10.25},
+  {  1.16,  2.03,  4.55,  4.91},
+}
+local moved = 0
+for _, row in ipairs(turns) do
+  local d_avatar, d_av_torso, d_unit, measured = row[1], row[2], row[3], row[4]
+  -- A step is a difference of two yaws, so the predictor runs on the steps
+  -- directly: every term in it is linear and the wrap does not bite at these
+  -- sizes.
+  local function step(corrected)
+    return math.deg(Mirror.copy_torso_yaw(math.rad(d_avatar), math.rad(d_av_torso),
+      math.rad(d_unit), corrected))
+  end
+  -- Uncancelled, the predictor reproduces what was actually measured. That is
+  -- what makes this the diagnosis rather than a story: the term is d_unit +
+  -- d_av_torso - d_avatar.
+  assert(math.abs(step(false) - measured) < 1.5,
+    'the leak predicts the measured torso step: ' .. step(false) .. ' vs ' .. measured)
+  -- Cancelled, the copy's torso moves with the avatar's torso -- which is
+  -- where the game already keeps it relative to the view -- and no longer
+  -- with the avatar's ROOT, which is what the stick spins.
+  assert(math.abs(step(true) - d_av_torso) < 1e-9,
+    'cancelled, the torso follows the avatar torso')
+  -- And what the cancellation removes is exactly the avatar root's share of
+  -- the step -- stated as an identity rather than as a threshold, so this
+  -- says what the fix does instead of merely that it does something.
+  assert(math.abs((step(false) - step(true)) - (d_unit - d_avatar)) < 1e-9,
+    'the cancellation removes the avatar root step')
+  moved = math.max(moved, math.abs(step(false) - step(true)))
+end
+-- On the worst of these samples it is ten degrees a frame, which is the size
+-- of the fault the user reported, not a rounding difference.
+assert(moved > 10, 'the worst sample moves by ' .. moved .. ' degrees')
+-- The leak itself: the yaw put back into the chain is the difference between
+-- the avatar's root and the heading the copy's root was given.
+near(math.deg(Mirror.root_yaw_leak(math.rad(30), math.rad(10))), 20, 1e-9, 'leak is the difference')
+near(Mirror.root_yaw_leak(1.0, 1.0), 0, 1e-12, 'no difference, no leak')
+-- Wrapped the short way round, or a body facing 179 degrees away would be
+-- corrected the long way through a full turn.
+near(math.deg(Mirror.root_yaw_leak(math.rad(-170), math.rad(170))), 20, 1e-9, 'wrapped the short way')
+assert(Mirror.root_yaw_leak(nil, 1) == nil and Mirror.root_yaw_leak(1, nil) == nil)
+assert(Mirror.root_yaw_leak(0 / 0, 1) == nil, 'a nan yaw corrects nothing')
+
+print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace colliders torso_yaw draws_body turn_leak')

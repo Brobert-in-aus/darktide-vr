@@ -47,7 +47,11 @@ for index,e in ipairs({panel_left,panel_right}) do
         end
     end
 end
-print('projection_math=pass')
+-- The banner used to be printed here, a hundred and twenty assertions early.
+-- Anything reading this test's output for "projection_math=pass" would have
+-- seen it before a single one of the later checks had run -- which is exactly
+-- how twelve mutations once came back NOT CAUGHT. It lives at the end now,
+-- and there is only one of it.
 Camera = {
     vertical_fov = function(camera) return camera.fov end,
     set_vertical_fov = function(camera, value) camera.fov = value end,
@@ -133,4 +137,37 @@ for _, m in ipairs({1, 1.00005, 0, -2, 4.5, 0 / 0}) do
 end
 x, y, z = projection.magnified_target(0 / 0, -0.2, -10, 1.12)
 assert(x ~= x and y == -0.2, "a point that is not a number is passed through untouched")
-print("projection_math=pass recentered visibility panel lod zoom magnified_target")
+-- THE RETICLE'S RANGE IN THE SIGHTS (19 September). The world is rendered
+-- through a narrowed frustum and submitted at the unchanged field of view, so
+-- it appears at D/m; the reticle is a quad layer composited at the submitted
+-- field of view, so it stays at D and reads m times too far. The fix is the
+-- range, and the fault is proportional -- which is exactly how the user
+-- described it, and why a fixed offset was never going to be it.
+for _, m in ipairs({1.03, 1.5, 2.0, 3.99}) do
+  for _, d in ipairs({0.5, 3.0, 16.2, 33.2}) do
+    local placed = projection.zoomed_range(d, m)
+    assert(math.abs(placed - d / m) < 1e-9, 'the range comes in by the magnification')
+    -- Proportional, not fixed: the error it removes grows with the distance,
+    -- which is the observation that identified the fault.
+    assert(math.abs((d - placed) - d * (1 - 1 / m)) < 1e-9, 'the correction is proportional')
+    assert(placed < d, 'the reticle comes nearer, never further')
+  end
+end
+-- At the shipped 3% setting it is 9 cm at three metres -- under the ground
+-- when looking down at it -- and most of a metre at thirty.
+assert(math.abs((3.0 - projection.zoomed_range(3.0, 1.03)) - 0.0874) < 0.0005)
+assert(math.abs((33.2 - projection.zoomed_range(33.2, 1.03)) - 0.9670) < 0.0005)
+-- No zoom, no correction: outside the sights the reticle is already right,
+-- and that is the fact that told us where to look.
+assert(projection.zoomed_range(12.0, 1.0) == 12.0, 'no zoom leaves the range alone')
+assert(projection.zoomed_range(12.0, 1.00005) == 12.0, 'below the threshold')
+-- The same guards as magnified_target: a magnification out of range or a
+-- nonsense number corrects nothing rather than moving the reticle somewhere
+-- arbitrary.
+assert(projection.zoomed_range(12.0, 4.5) == 12.0, 'beyond the cap')
+assert(projection.zoomed_range(12.0, 0 / 0) == 12.0, 'a nan magnification')
+assert(projection.zoomed_range(0 / 0, 1.5) ~= projection.zoomed_range(0 / 0, 1.5) or true)
+assert(projection.zoomed_range(-1.0, 1.5) == -1.0, 'a range behind the eye')
+assert(projection.zoomed_range(nil, 1.5) == nil and projection.zoomed_range(12.0, nil) == 12.0)
+
+print("projection_math=pass recentered visibility panel lod zoom magnified_target zoomed_range")

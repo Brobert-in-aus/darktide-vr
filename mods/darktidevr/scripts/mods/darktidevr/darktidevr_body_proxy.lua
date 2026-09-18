@@ -5,6 +5,39 @@ local MasterItems = require("scripts/backend/master_items")
 
 local BodyProxy = {}
 
+-- Whether the stock melee animation is ALLOWED to take the hands, before
+-- asking whether this particular action wants it.
+--
+-- A player can turn the swings off (Nexus request, 19 September): "keep the
+-- hands/weapon tracking the controllers rather than swinging". Only the
+-- animation goes. Hit markers, slash effects, impacts and damage are not
+-- animation and are not touched by this -- they are played by the weapon's own
+-- effect and damage systems, which never consult it.
+--
+-- `option` is the player's setting, and `nil` means on: an option that has not
+-- been registered yet, or a profile written before it existed, must not
+-- silently take everyone's melee animations away.
+--
+-- THE BLOCK POSES AND THE PUSH ARE EXEMPT (user, 19 September: "keep push
+-- visible as well as block"). Both are things the player and everyone around
+-- them need to SEE rather than swings the player wants to make themselves: a
+-- held block plays the authored guard on every melee weapon, and the tracked
+-- arms would overwrite it and leave the block invisible; a push is a shove
+-- that staggers, and its animation is how it reads. Block direction already
+-- follows the hand either way.
+-- Pure.
+BodyProxy.KEPT_MELEE_ANIMATIONS = {
+    push = true,
+    block = true,
+    block_windup = true,
+    block_aiming = true,
+    block_unaim = true,
+}
+function BodyProxy.stock_melee_animation_allowed(kind, option)
+    if BodyProxy.KEPT_MELEE_ANIMATIONS[kind] then return true end
+    return option ~= false
+end
+
 function BodyProxy.uses_stock_melee_animation(slot, kind, action, actions)
     if kind == "sweep" or kind == "push" or kind == "melee_explosive" then
         return true
