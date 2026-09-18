@@ -113,7 +113,7 @@ function Input.install(mod, local_player_unit)
 
     -- `pressed` leads so the stock arguments can be a tail: naming them
     -- drops whatever the engine adds beyond them (17 September).
-    local function run_tag(pressed,func,self,t,renderer,settings,source,...)
+    local function run_tag(func,pressed,self,t,renderer,settings,source,...)
         -- Unowned/nested HUD handlers must not inherit an outer injection.
         -- Keep the ordinary no-request path free of proxy/scope allocation.
         if not pressed and not tag_owner then return func(self,t,renderer,settings,source,...) end
@@ -147,10 +147,10 @@ function Input.install(mod, local_player_unit)
                 state.owner = nil -- Cancel the sample across every HUD, even if an old owner returns.
                 state.tag = false
                 tag_frames[self] = nil
-                return run_tag(false,func,self,t,renderer,settings,source,...)
+                return run_tag(func,false,self,t,renderer,settings,source,...)
             end
             local local_hud = owner and self._parent and self._parent:player_unit() == owner
-            if not local_hud then return run_tag(false,func,self,t,renderer,settings,source,...) end
+            if not local_hud then return run_tag(func,false,self,t,renderer,settings,source,...) end
             local blocked = not usable(source)
             local previous = tag_frames[self]
             local sample
@@ -162,7 +162,7 @@ function Input.install(mod, local_player_unit)
                 tag_frames[self] = {t=t,sample=state.sample,pressed=sample}
             end
             if blocked then tag_frames[self].pressed = false end
-            return run_tag(sample and not blocked,func,self,t,renderer,settings,source,...)
+            return run_tag(func,sample and not blocked,self,t,renderer,settings,source,...)
         end)
     -- In stock play the middle mouse button carries both smart_tag and
     -- com_wheel, so a tap with nothing under the reticle becomes a location

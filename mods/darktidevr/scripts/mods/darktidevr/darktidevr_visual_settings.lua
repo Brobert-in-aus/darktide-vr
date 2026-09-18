@@ -66,6 +66,9 @@ function VisualSettings.install(mod)
                 for name in pairs(policy) do copy[name] = forced end
                 return func(location, copy, ...)
             elseif policy[key] then
+                -- arity: deliberate. The tail begins at the value being
+                -- replaced, so forwarding it would pass the very setting this
+                -- is overriding back to the engine.
                 return func(location, key, forced)
             end
         end

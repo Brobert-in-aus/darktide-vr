@@ -5510,7 +5510,7 @@ mod:hook(World, "update_lod_levels", function(func, world, camera, ...)
                 presentation.render_visibility_scale)
         end
         return presentation.projection_math.update_lod_levels(
-            func, world, camera, rendered_fov)
+            func, world, camera, rendered_fov, ...)
     end
     return func(world, camera, ...)
 end)
@@ -13918,7 +13918,7 @@ mod:hook(
             result = presentation.marker_metrics.draw(ui_renderer, "markers", self,
                 t, world_marker_reprojecting and 2 or 1,
                 capture and presentation.marker_gui.draw or nil, draw_scaled,
-                self, dt, t, input_service, ui_renderer, render_settings)
+                self, dt, t, input_service, ui_renderer, render_settings, ...)
         else
             result = func(self, dt, t, input_service, ui_renderer, render_settings, ...)
         end
@@ -13999,13 +13999,13 @@ mod:hook(
             return presentation.marker_metrics.draw(ui_renderer, "interaction", self,
                 t, 2, nil,
                 function(...) return presentation.marker_world.draw(replay_scope, "right", func, ...) end,
-                self, dt, t, input_service, ui_renderer, render_settings)
+                self, dt, t, input_service, ui_renderer, render_settings, ...)
         end
         if plane_scope then
             result = presentation.marker_metrics.draw(ui_renderer, "interaction", self,
                 t, 1, presentation.marker_gui.draw,
                 function(...) return presentation.marker_world.draw(plane_scope, "left", func, ...) end,
-                self, dt, t, input_service, ui_renderer, render_settings)
+                self, dt, t, input_service, ui_renderer, render_settings, ...)
         elseif capture or world_marker_reprojecting then
             -- The popup's boxes take this eye's horizontal scale about the
             -- marker pivot, so their far edge converges in stereo.
@@ -14027,7 +14027,7 @@ mod:hook(
             result = presentation.marker_metrics.draw(ui_renderer, "interaction", self,
                 t, world_marker_reprojecting and 2 or 1,
                 capture and presentation.marker_gui.draw or nil, draw_scaled,
-                self, dt, t, input_service, ui_renderer, render_settings)
+                self, dt, t, input_service, ui_renderer, render_settings, ...)
         else
             result = func(self, dt, t, input_service, ui_renderer, render_settings, ...)
         end
@@ -16084,10 +16084,10 @@ mod:hook(require("scripts/managers/ui/ui_widget"), "draw", function(func, widget
         -- draws the right eye's projection in the replay.
         if scope.surface ~= "screen" then return end
         return presentation.frame_profile.section("render.marker_widget",
-            presentation.marker_world.draw, scope, "right", func, widget, ui_renderer)
+            presentation.marker_world.draw, scope, "right", func, widget, ui_renderer, ...)
     end
     return presentation.frame_profile.section("render.marker_widget",
-        presentation.marker_world.draw, scope, "left", func, widget, ui_renderer)
+        presentation.marker_world.draw, scope, "left", func, widget, ui_renderer, ...)
 end)
 mod:command("dtvr_marker_plane",
     "World-surface markers: on, off, flip, surface <atlas|screen|world>, text <slug|rect|2d>, origin <top|bottom>, layer <n>, drop <fraction>, dump, probe, status",

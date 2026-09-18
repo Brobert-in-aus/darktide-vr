@@ -1080,14 +1080,33 @@ if (-not $source.Contains(
 # lost the ninth argument of their sample that way and the item radial's stick
 # claim went with it for a day (17 September).
 #
-# The first version of this check passed six mutations that each broke a
-# handler, because it matched one spelling of the call and one shape of the
-# signature (review, 18 September). So: spacing is normalised before matching,
-# because the modules disagree about the space after a comma; a handler is any
-# function whose FIRST parameter is `func`, named or anonymous, whatever the
-# second is called; a handler's body is joined into one string, because a
-# forward may span two lines and skipping those silently is how a dropped tail
-# hides; and `func(self)` with no tail is the worst case, not an exempt one.
+# Two earlier versions of this check passed the defects it exists for, each
+# time because it matched one spelling or one shape (reviews, 18 September).
+# What it does now, and why each part is there:
+#
+#  * spacing is normalised, including before a bracket, because the modules
+#    disagree about both;
+#  * a handler is any function whose FIRST parameter is `func`, named or
+#    anonymous, whatever the second is called, and its parameter list may
+#    begin on the line after the bracket;
+#  * a handler's body runs to where its Lua block depth returns to zero, not
+#    to the first `end` at some indent -- a body indented level with its own
+#    signature ended the scan after two lines;
+#  * a forward is `func(...)`, `pcall(func, ...)`, or `func` handed to
+#    ANYTHING as a bare argument, because the marker routing passes it to a
+#    profiler section which passes it on again;
+#  * and a forward is flagged whenever it carries no literal and does not end
+#    in `...`, whatever its length or order. Requiring the argument count to
+#    match the parameter list exempted dropping an argument AND the tail,
+#    which is precisely the bug this exists for.
+#
+# The exemption is literals only: `func(location, false)` in the visual
+# settings deliberately overrides the value it was handed, and forwarding a
+# tail after it would pass the value being overridden. A guard that blocks a
+# legitimate change is worse than none.
+#
+# tools/lua/mutate-hook-arity.py puts the real failures through this and every
+# one must be caught.
 $hookedSources = @($resolvedSource)
 $hookedSources += @(Get-ChildItem -LiteralPath (Split-Path -Parent $resolvedSource) `
     -Filter 'darktidevr_*.lua' | ForEach-Object { $_.FullName })
@@ -1112,24 +1131,85 @@ function Get-CallArguments {
     return $null
 }
 
+function Split-Arguments {
+    # Top-level commas only: an argument may itself be a call.
+    param([string] $Text)
+    $parts = @()
+    $depth = 0
+    $current = ''
+    foreach ($ch in $Text.ToCharArray()) {
+        if ($ch -eq '(' -or $ch -eq '{' -or $ch -eq '[') { $depth++ }
+        elseif ($ch -eq ')' -or $ch -eq '}' -or $ch -eq ']') { $depth-- }
+        if ($ch -eq ',' -and $depth -eq 0) {
+            $parts += $current.Trim()
+            $current = ''
+        }
+        else { $current += $ch }
+    }
+    if ($current.Trim() -ne '') { $parts += $current.Trim() }
+    return ,$parts
+}
+
+function Test-IsLiteral {
+    # A value the author wrote in place of what they were handed, rather than
+    # a name they are passing along.
+    param([string] $Argument)
+    if ($Argument -in @('true', 'false', 'nil')) { return $true }
+    if ($Argument -match '^-?[0-9]') { return $true }
+    if ($Argument.StartsWith('"') -or $Argument.StartsWith("'")) { return $true }
+    if ($Argument.StartsWith('{') -or $Argument.StartsWith('[')) { return $true }
+    return $false
+}
+
+function Measure-BlockDelta {
+    # Lua block openers minus closers on one line. `do` covers `for`/`while`,
+    # `if` covers itself (elseif continues a block rather than opening one).
+    param([string] $Line)
+    $text = $Line -replace '\belseif\b', ' '
+    $open = ([regex]::Matches($text, '\bfunction\b')).Count +
+            ([regex]::Matches($text, '\bdo\b')).Count +
+            ([regex]::Matches($text, '\bif\b')).Count +
+            ([regex]::Matches($text, '\brepeat\b')).Count
+    $close = ([regex]::Matches($text, '\bend\b')).Count +
+             ([regex]::Matches($text, '\buntil\b')).Count
+    return $open - $close
+}
+
 foreach ($hookedSource in $hookedSources) {
     $where = Split-Path -Leaf $hookedSource
     $raw = @(Get-Content -LiteralPath $hookedSource)
-    # Strip line comments so a `func(self, a)` in prose is not a finding, and
-    # collapse the space after a comma so both house styles match.
+    # Strip line comments so prose is not a finding, collapse the space after a
+    # comma and before a bracket so both house styles match.
     $flat = @($raw | ForEach-Object {
         $withoutComment = $_ -replace '--.*$', ''
-        $withoutComment -replace ',\s+', ','
+        # Empty every string literal. `if type(callback) == "function" then`
+        # counted as two block openers, so one handler's body ran on for 3886
+        # lines and swallowed every handler inside it -- three real mutations
+        # passed because of it (review, 18 September). It also keeps a bracket
+        # inside a string out of the balancer.
+        $withoutComment = $withoutComment -replace '"[^"]*"', '""'
+        $withoutComment = $withoutComment -replace "'[^']*'", "''"
+        $withoutComment = $withoutComment -replace ',\s+', ','
+        $withoutComment -replace '([A-Za-z_][A-Za-z0-9_]*)\s+\(', '$1('
     })
     for ($i = 0; $i -lt $flat.Count; $i++) {
-        if ($flat[$i] -notmatch 'function\s*[A-Za-z0-9_.]*\s*\(func,') { continue }
-        # A signature may span lines too -- one in the main chunk names ten
-        # parameters across three -- so join forward until the brackets close
-        # rather than skipping what does not fit on one (review, 18 September).
-        $signatureText = $flat[$i]
+        # The parameter list may start on the next line.
+        $opener = $flat[$i]
+        $joined = 0
+        while ($opener -match 'function\s*[A-Za-z0-9_.:]*\s*\($' -and
+                $joined -lt 2 -and ($i + $joined + 1) -lt $flat.Count) {
+            $joined++
+            $opener = $opener + $flat[$i + $joined]
+        }
+        # `func` leads. A helper that takes it later is not matched, so any
+        # helper forwarding to the stock function puts `func` first -- see
+        # `run` and `run_tag` in the input modules, which were reordered for
+        # exactly this (18 September).
+        if ($opener -notmatch 'function\s*[A-Za-z0-9_.:]*\s*\(func,') { continue }
+        $signatureText = $opener
         $signature = Get-CallArguments -Text $signatureText -At $signatureText.IndexOf('(func,')
-        $span = 0
-        while ($null -eq $signature -and $span -lt 4 -and ($i + $span + 1) -lt $flat.Count) {
+        $span = $joined
+        while ($null -eq $signature -and $span -lt 5 -and ($i + $span + 1) -lt $flat.Count) {
             $span++
             $signatureText = $signatureText + ' ' + $flat[$i + $span]
             $signature = Get-CallArguments -Text $signatureText -At $signatureText.IndexOf('(func,')
@@ -1137,89 +1217,88 @@ foreach ($hookedSource in $hookedSources) {
         if ($null -eq $signature) {
             throw ("A hook handler's signature never closes its brackets, so this check cannot read it: {0}:{1}" -f $where, ($i + 1))
         }
-        $parameters = $signature.Substring('func,'.Length)
-        if ($parameters -notmatch '\.\.\.\s*$') {
-            $fixedArity += ('{0}:{1}: function(func,{2})' -f $where, ($i + 1), $parameters)
+        # Everything after `func` itself: what the stock function is handed.
+        $signatureParts = Split-Arguments -Text $signature
+        $funcAt = [array]::IndexOf($signatureParts, 'func')
+        if ($funcAt -lt 0) { continue }
+        $parameters = if ($funcAt -eq ($signatureParts.Count - 1)) { '' }
+            else { ($signatureParts[($funcAt + 1)..($signatureParts.Count - 1)]) -join ',' }
+        if ($parameters -ne '' -and $parameters -notmatch '\.\.\.\s*$') {
+            $fixedArity += ('{0}:{1}: function(...func,{2})' -f $where, ($i + 1), $parameters)
         }
 
-        # The body, to the line that closes the handler: an `end)` or an `end`
-        # whose `)` is on the next line, at or inside the signature's own
-        # indent. Joined, so a forward split across lines is still seen.
-        $indent = $raw[$i].Length - $raw[$i].TrimStart().Length
-        $end = $flat.Count - 1
-        for ($j = $i + 1; $j -lt $flat.Count; $j++) {
-            $trimmed = $raw[$j].TrimStart()
-            $here = $raw[$j].Length - $trimmed.Length
-            if ($here -gt $indent) { continue }
-            if ($trimmed.StartsWith('end)') -or $trimmed -eq 'end' -or
-                    $trimmed.StartsWith('end,')) {
-                $end = $j
+        # The body, by Lua block depth: a handler whose body is indented level
+        # with its own signature ended an indentation scan after two lines.
+        $depth = 0
+        $end = $i
+        for ($j = $i; $j -lt $flat.Count; $j++) {
+            # Never run into the next handler, whatever the depth count does:
+            # a miscount there silently stops every later handler being seen.
+            if ($j -gt $i -and $flat[$j] -match 'function\s*[A-Za-z0-9_.:]*\s*\(func,') {
+                $end = $j - 1
                 break
             }
+            $depth += Measure-BlockDelta -Line $flat[$j]
+            if ($j -gt $i -and $depth -le 0) { $end = $j; break }
+            $end = $j
         }
         $body = ($flat[$i..$end] -join ' ')
+        # A handler may say that a truncation is deliberate, for the case the
+        # literal test cannot see: a value substituted by a NAME, where the
+        # tail begins at the value being replaced and forwarding it would pass
+        # the very thing being overridden. It has to be written down, because
+        # it is indistinguishable from the bug otherwise (review,
+        # 18 September).
+        $annotated = (($raw[$i..$end] -join ' ') -match 'arity: deliberate')
 
-        # `pcall(func,self,...)` passes func as a VALUE: there is no `func(`
-        # in it at all, so a scan for that spelling alone misses every
-        # protected forward in the mod (review, 18 September).
+        # Forwards: func(...), pcall(func,...), and func handed to anything as
+        # a bare argument, which is how the marker routing reaches it.
+        $forwards = @()
         $from = 0
         while ($true) {
-            $direct = $body.IndexOf('func(', $from)
-            $protected = $body.IndexOf('pcall(func,', $from)
-            if ($direct -lt 0 -and $protected -lt 0) { break }
-            $at = if ($direct -lt 0) { $protected }
-                  elseif ($protected -lt 0) { $direct }
-                  else { [Math]::Min($direct, $protected) }
-            $viaPcall = ($at -eq $protected -and ($direct -lt 0 -or $protected -le $direct))
-            # `func(` must be the whole name, not the tail of another one.
-            if (-not $viaPcall -and $at -gt 0 -and $body[$at - 1] -match '[A-Za-z0-9_.]') {
-                $from = $at + 5
-                continue
-            }
+            $at = $body.IndexOf('func(', $from)
+            if ($at -lt 0) { break }
             $from = $at + 5
+            if ($at -gt 0 -and $body[$at - 1] -match '[A-Za-z0-9_.]') { continue }
             $arguments = Get-CallArguments -Text $body -At $at
-            if ($viaPcall -and $null -ne $arguments) {
-                # Drop the `func,` that pcall takes first.
-                $arguments = $arguments.Substring($arguments.IndexOf(',') + 1)
-            }
-            if ($null -eq $arguments) {
-                $droppedTail += ('{0}:{1}: a forward whose brackets never close' -f $where, ($i + 1))
-                continue
-            }
-            if ($arguments -notmatch '\.\.\.\s*$') {
-                # Only when the forward COPIES the handler's own parameters,
-                # allowing one substituted name (a proxy input service stands
-                # in for the real one). A forward that passes different values
-                # -- `func(location, false)` in the visual settings, which
-                # deliberately overrides what it was given -- is a considered
-                # act, and flagging it would block a legitimate change
-                # (review, 18 September).
-                $wanted = @($parameters -split ',' | ForEach-Object { $_.Trim() } |
-                    Where-Object { $_ -ne '...' -and $_ -ne '' })
-                $got = @($arguments -split ',' | ForEach-Object { $_.Trim() } |
-                    Where-Object { $_ -ne '' })
-                if ($got.Count -eq $wanted.Count) {
-                    $differences = 0
-                    for ($p = 0; $p -lt $got.Count; $p++) {
-                        if ($got[$p] -ne $wanted[$p]) { $differences++ }
-                    }
-                    # And the differing argument has to be a NAME. A literal
-                    # in its place -- `func(location, false)` in the visual
-                    # settings -- is an override the author wrote on purpose,
-                    # and forwarding a tail after it would pass the value it
-                    # was overriding (review, 18 September).
-                    $substitutedNames = $true
-                    for ($p = 0; $p -lt $got.Count; $p++) {
-                        if ($got[$p] -ne $wanted[$p] -and
-                                ($got[$p] -notmatch '^[A-Za-z_][A-Za-z0-9_]*$' -or
-                                 $got[$p] -in @('true', 'false', 'nil'))) {
-                            $substitutedNames = $false
-                        }
-                    }
-                    if ($differences -le 1 -and $substitutedNames) {
-                        $droppedTail += ('{0}:{1}: func({2})' -f $where, ($i + 1), $arguments)
-                    }
+            if ($null -ne $arguments) { $forwards += $arguments }
+        }
+        $from = 0
+        while ($true) {
+            $at = [regex]::Match($body.Substring($from), '[,(]func[,)]')
+            if (-not $at.Success) { break }
+            $absolute = $from + $at.Index
+            $from = $absolute + 1
+            # The call this `func` is an argument of: walk back to its bracket.
+            $depthBack = 0
+            $callAt = -1
+            for ($k = $absolute; $k -ge 0; $k--) {
+                if ($body[$k] -eq ')') { $depthBack++ }
+                elseif ($body[$k] -eq '(') {
+                    if ($depthBack -eq 0) { $callAt = $k; break }
+                    $depthBack--
                 }
+            }
+            if ($callAt -lt 0) { continue }
+            $callArguments = Get-CallArguments -Text $body -At $callAt
+            if ($null -eq $callArguments) { continue }
+            $parts = Split-Arguments -Text $callArguments
+            $index = [array]::IndexOf($parts, 'func')
+            if ($index -lt 0 -or $index -eq ($parts.Count - 1)) { continue }
+            $forwards += (($parts[($index + 1)..($parts.Count - 1)]) -join ',')
+        }
+
+        foreach ($arguments in $forwards) {
+            if ($annotated) { continue }
+            if ($arguments -match '\.\.\.\s*$') { continue }
+            $parts = Split-Arguments -Text $arguments
+            if ($parts.Count -eq 0) { continue }
+            $hasLiteral = $false
+            foreach ($part in $parts) {
+                if (Test-IsLiteral -Argument $part) { $hasLiteral = $true }
+            }
+            if (-not $hasLiteral) {
+                $droppedTail += ('{0}:{1}: func({2})' -f $where, ($i + 1), $arguments)
             }
         }
         $i = $end

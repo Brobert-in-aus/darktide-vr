@@ -53,6 +53,31 @@ MUTATIONS = [
      '            shading, callback, mood, targets, ...)',
      '            shading, callback, mood, targets)',
      'a handler signature split across three lines'),
+    # `func` handed to a helper rather than called: the marker routing reaches
+    # the stock function through a profiler section, so no scan for `func(`
+    # could ever see it (review, 18 September).
+    ('darktidevr.lua',
+     'presentation.marker_world.draw, scope, "left", func, widget, ui_renderer, ...)',
+     'presentation.marker_world.draw, scope, "left", func, widget, ui_renderer)',
+     'func routed through a helper, not called'),
+    # The shape the check exists for: an argument dropped AND the tail. An
+    # earlier rule only looked when the counts matched, which exempted it.
+    ('darktidevr_communication_wheel.lua',
+     'func(self,t,renderer,settings,proxy,...)',
+     'func(self,t,renderer,settings)',
+     'an argument dropped as well as the tail'),
+    # Transposed arguments with the tail gone: two differences, which an
+    # earlier rule exempted as a substitution.
+    ('darktidevr_gameplay_ui_input.lua',
+     'pcall(func,self,t,renderer,settings,input,...)',
+     'pcall(func,self,t,settings,renderer,input)',
+     'arguments transposed and the tail dropped, inside a helper'),
+    # A body indented level with its own signature, which an indentation scan
+    # abandoned after two lines.
+    ('darktidevr.lua',
+     'local result = func(self, dt, t, ...)',
+     'local result = func(self, dt, t)',
+     'a forward in a body level with its signature'),
 ]
 
 
@@ -63,8 +88,12 @@ def run_check(root):
         capture_output=True, text=True)
 
 
+# A control first: if the check throws in the temp tree for an environmental
+# reason, every mutation reads CAUGHT and the harness lies (review,
+# 18 September).
+CONTROL = 'the unmutated tree, which must PASS'
 failures = []
-for name, old, new, why in MUTATIONS:
+for name, old, new, why in [(None, None, None, CONTROL)] + MUTATIONS:
     root = tempfile.mkdtemp(prefix='darktidevr-hook-arity-')
     try:
         for entry in os.listdir(MOD):
@@ -74,16 +103,34 @@ for name, old, new, why in MUTATIONS:
         descriptor = os.path.join(REPO, 'mods', 'darktidevr', 'darktidevr.mod')
         if os.path.exists(descriptor):
             shutil.copy2(descriptor, os.path.join(root, 'darktidevr.mod'))
-        target = os.path.join(root, name)
-        text = open(target, encoding='utf-8', newline='').read()
-        if text.count(old) != 1:
-            print('SKIPPED %-58s (anchor matched %d)' % (why, text.count(old)))
-            failures.append(why + ' [anchor]')
-            continue
-        open(target, 'w', encoding='utf-8', newline='').write(text.replace(old, new))
+        if name is not None:
+            target = os.path.join(root, name)
+            text = open(target, encoding='utf-8', newline='').read()
+            if text.count(old) != 1:
+                print('SKIPPED %-58s (anchor matched %d)' % (why, text.count(old)))
+                failures.append(why + ' [anchor]')
+                continue
+            open(target, 'w', encoding='utf-8', newline='').write(text.replace(old, new))
         result = run_check(root)
-        if result.returncode != 0:
+        if name is None:
+            if result.returncode == 0:
+                print('PASSED  %s' % why)
+            else:
+                print('BROKEN  %s' % why)
+                print('        ' + (result.stderr.strip().splitlines() or ['?'])[0])
+                failures.append(why)
+            continue
+        # And it has to fail for the RIGHT reason: a returncode alone cannot
+        # tell this check's throw from any other assertion in the script.
+        reason = result.stderr
+        ours = ('names the stock signature' in reason or
+                'passes a fixed list' in reason or
+                'never closes its brackets' in reason)
+        if result.returncode != 0 and ours:
             print('CAUGHT  %s' % why)
+        elif result.returncode != 0:
+            print('WRONG   %-58s (failed, but not on the arity check)' % why)
+            failures.append(why + ' [wrong reason]')
         else:
             print('MISSED  %s' % why)
             failures.append(why)

@@ -25,7 +25,7 @@ function Spectator.install(mod, Bindings, Context, sample, allowed)
     -- `scope` leads so the stock arguments can be a tail: a handler that
     -- names them drops whatever the engine adds beyond them, which is the
     -- shape that lost the bindings' ninth argument for a day (17 September).
-    local function run(scope,func,self,...)
+    local function run(func,scope,self,...)
         if not input_scope and not scope then return func(self,...) end
         local previous=input_scope
         input_scope=scope
@@ -49,7 +49,7 @@ function Spectator.install(mod, Bindings, Context, sample, allowed)
     end
     mod:hook(require('scripts/managers/player/player_game_states/camera_handler'),'update',
         function(func,self,dt,t,orientation,input,...)
-            if not owns(self) then return run(nil,func,self,dt,t,orientation,input,...) end
+            if not owns(self) then return run(func,nil,self,dt,t,orientation,input,...) end
             local enabled=admitted(self,input)
             sample_serial=sample_serial+1
             local changed=owner[1]~=self or owner[2]~=input or owner[3]~=self._player or mode~=self._mode
@@ -57,7 +57,7 @@ function Spectator.install(mod, Bindings, Context, sample, allowed)
             local status,physical,generation,x,y,usable=sample(enabled and not changed)
             available=enabled and status==0
             local pressed=bindings.sample(available and not changed,physical,x,y,usable,generation,'combat')
-            if bit.band(pressed,32)==0 then return run(nil,func,self,dt,t,orientation,input,...) end
+            if bit.band(pressed,32)==0 then return run(func,nil,self,dt,t,orientation,input,...) end
             -- Limit the extra edge to this exact stock consumer and service.
             -- Other input calls, including combat, keep their original owner.
             local scope={mode=self._mode,sample=sample_serial}
@@ -72,7 +72,7 @@ function Spectator.install(mod, Bindings, Context, sample, allowed)
                 if type(value)=='function' then return function(_,...)return value(input,...)end end
                 return value
             end})
-            return run(scope,func,self,dt,t,orientation,proxy,...)
+            return run(func,scope,self,dt,t,orientation,proxy,...)
         end)
     local function hint_enabled()
         return available and owner[1] and owner[2] and admitted(owner[1],owner[2])
