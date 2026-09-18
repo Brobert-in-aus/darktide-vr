@@ -500,3 +500,29 @@ checks what its author happened to think of is worth much less than one
 checked against the consumer's own rules, and worth nothing at all until its
 failures have been made to fail. Both of today's new checks passed their own
 subject matter until they were mutated.
+
+### And the harness proving the check was lying
+
+A second review of the rewritten arity check found it still missed the shape
+it exists for, and chasing that turned up three faults in the checking
+apparatus rather than in the mod:
+
+- **`if type(callback) == "function" then` counted as two block openers**, so
+  one handler's body never closed: it ran 3886 lines to the end of the file
+  and swallowed every handler inside it. Three real mutations passed because
+  of it. String literals are emptied before anything is counted now, and a
+  body may never run past the next handler whatever the depth count says.
+- **`return ,$parts` with `@()` around the call nests the array inside
+  itself**, so every argument list had a `Count` of 1 and an `IndexOf` of -1.
+  Before that it threw outright.
+- **The harness reported those throws as CAUGHT**, because it read only the
+  exit code. It now asserts the failure names the arity check, and runs an
+  unmutated control first -- without one, a check that throws for an
+  environmental reason reads as ten out of ten.
+
+The real finding underneath: three handlers forwarded their tail on one path
+and dropped it on another, because `func` was handed to a helper rather than
+called. The marker routing reaches the stock function through a profiler
+section, so no scan for `func(` could ever have seen it.
+
+**Ten mutations and a control, all caught by name.**
