@@ -526,3 +526,44 @@ called. The marker routing reaches the stock function through a profiler
 section, so no scan for `func(` could ever have seen it.
 
 **Ten mutations and a control, all caught by name.**
+
+## The hook smoke run, and what this morning's one-shot log caught
+
+`artifacts/unattended/hook-arity-smoke-20260918`. Every `mod:hook` handler in
+the mod changed shape today, so this run asks only whether the game still
+runs with it: Psykhanium, 90 s, no feature flags.
+
+Scene reached in 115 s, no crash, clean quit, and **zero mod errors and zero
+Lua errors** -- the single line matching a search for "error|warning|failed"
+is `DARKTIDEVR_HUD retained_transfer moved=24 failed=0`. The changed hook
+families are all evidenced running rather than silently no-opping:
+`DARKTIDEVR_STEREO` 598 lines, `DARKTIDEVR_AIM` 50, `DARKTIDEVR_MARKER` 6,
+`DARKTIDEVR_MENU` 5, and the HUD's retained transfer moving 24 widgets.
+
+### The marker atlas is full, in an empty room
+
+```
+DARKTIDEVR_MARKER_ATLAS atlas_full cells=8 anchor=?
+```
+
+That line was added this morning because "a full atlas reads as a display
+quietly going missing with nothing in the log to say why". It has now said
+why, on the first run where it mattered.
+
+The marker atlas is **2 by 4: eight cells**
+(`darktidevr_marker_atlas.lua:23`, the defaults). Every world marker on
+screen -- nameplates, interaction prompts, tags -- claims one, and the ninth
+onward are hidden. This happened in the **Psykhanium**, which is a nearly
+empty training room; a mission with a squad, pickups and objectives would be
+far past eight.
+
+Two things follow, neither yet done:
+
+- **How many does it need?** Eight is the module's default, not a measured
+  choice. The cell size follows the eye target, so more cells means either a
+  bigger atlas texture or smaller cells, and the cell-fit test
+  (`test-overlay-cell-fit.lua`) already says what each display needs of its
+  cell. That test is the tool for answering it.
+- **`anchor=?`** is unhelpful. The log names the anchor's `key`, and marker
+  anchors have none, so the one-shot line cannot say *which* display went
+  missing. It should fall back to something identifying.

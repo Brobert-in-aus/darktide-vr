@@ -426,6 +426,20 @@ any reticle change. `summarize-hub-arms.py` reads the arms.
   middle: spine and leg scaled to the height, arms scaled to the span, torso
   width to the shoulders.
 
+- **The marker atlas runs out of cells, and did so in an empty room.**
+  Measured 18 September (`hook-arity-smoke-20260918`):
+  `DARKTIDEVR_MARKER_ATLAS atlas_full cells=8 anchor=?` in the Psykhanium.
+  The atlas is 2 by 4 by default (`darktidevr_marker_atlas.lua:23`) and every
+  world marker on screen claims a cell, so the ninth onward are silently
+  hidden. A mission with a squad and objectives will be well past eight.
+
+  *What to do*: size it from what is actually needed rather than from the
+  module default. `test-overlay-cell-fit.lua` already measures what each
+  display needs of its cell at three FOV tangents, so it can answer whether
+  smaller cells are affordable or whether the atlas texture has to grow.
+  Also fix the log line: it names `anchor.key`, which marker anchors do not
+  have, so it cannot say which display went missing.
+
 ## D. Needs the user
 
 Checklist items 47 to 54 worn; the two body constants in centimetres; a
