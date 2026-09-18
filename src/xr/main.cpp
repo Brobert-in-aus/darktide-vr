@@ -20,6 +20,7 @@
 #include "bridge/shared_eye_surfaces.h"
 #include "core/head_tracking.h"
 #include "core/menu_pointer_input.h"
+#include "core/output_layout.h"
 #include "core/aim_stabilization.h"
 #include "core/panel_pointer.h"
 #include "core/presentation_policy.h"
@@ -180,8 +181,11 @@ inline constexpr const char* kFrameControllerProfilePath =
 
 class OpenXrProbe {
  public:
-  explicit OpenXrProbe(bool enabled = true, bool suggest_simple_profile = true)
-      : suggest_simple_profile_(suggest_simple_profile) {
+  explicit OpenXrProbe(
+      bool enabled = true, bool suggest_simple_profile = true,
+      std::optional<darktidevr::core::PixelExtent> eye_extent_override = {})
+      : suggest_simple_profile_(suggest_simple_profile),
+        eye_extent_override_(eye_extent_override) {
     if (!enabled) {
       std::cout << "openxr.discovery=disabled\n";
       return;
@@ -343,6 +347,41 @@ class OpenXrProbe {
       std::cout << "openxr.recommended_size="
                 << views_.front().recommendedImageRectWidth << 'x'
                 << views_.front().recommendedImageRectHeight << '\n';
+    }
+
+    // The working extent, which is the recommendation unless one was pinned.
+    //
+    // Every downstream size comes from `views_` -- the swapchains, the extent
+    // republished to the game, the render target the game sizes from it -- so
+    // this is the single place an override belongs. It goes through
+    // `choose_output_layout`, which existed and was tested but had no
+    // production caller at all.
+    //
+    // It is for MEASUREMENT before it is for performance. The evidence tooling
+    // compares like for like, so a comparison whose extent moved between runs
+    // means nothing, and the extent here has moved: Virtual Desktop's FOV
+    // tangent makes the real recommendation 1908x2076 rather than 2112x2304,
+    // and it changes with a VD setting. Pinning it is how a foveation or a
+    // frame-rate comparison becomes repeatable instead of drifting.
+    if (!views_.empty()) {
+      darktidevr::core::OutputLayoutRequest request;
+      request.runtime_recommended_eye = {views_.front().recommendedImageRectWidth,
+                                         views_.front().recommendedImageRectHeight};
+      request.eye_override = eye_extent_override_;
+      const auto layout = darktidevr::core::choose_output_layout(request);
+      if (layout.eye_extent.width != views_.front().recommendedImageRectWidth ||
+          layout.eye_extent.height != views_.front().recommendedImageRectHeight) {
+        std::cout << "openxr.eye_extent_pinned=" << layout.eye_extent.width << 'x'
+                  << layout.eye_extent.height << " recommended="
+                  << views_.front().recommendedImageRectWidth << 'x'
+                  << views_.front().recommendedImageRectHeight << '\n';
+        for (auto& view : views_) {
+          view.recommendedImageRectWidth = layout.eye_extent.width;
+          view.recommendedImageRectHeight = layout.eye_extent.height;
+        }
+      }
+      std::cout << "openxr.eye_extent=" << views_.front().recommendedImageRectWidth
+                << 'x' << views_.front().recommendedImageRectHeight << '\n';
     }
 
     if (!d3d12_extension_) {
@@ -6399,6 +6438,7 @@ class OpenXrProbe {
   bool layer_clamp_reported_{};
   bool canted_views_reported_{};
   bool suggest_simple_profile_{true};
+  std::optional<darktidevr::core::PixelExtent> eye_extent_override_;
   std::optional<XrGraphicsRequirementsD3D12KHR> requirements_;
   std::vector<XrViewConfigurationView> views_;
   std::vector<XrSwapchain> swapchains_;
@@ -6789,6 +6829,9 @@ void usage() {
             << "Creates an independent D3D12 swapchain and reports OpenXR "
                "discovery.\n"
             << "--no-openxr runs desktop graphics only without runtime discovery.\n"
+            << "--eye-extent WIDTHxHEIGHT pins the per-eye render and "
+               "swapchain extent instead of following the runtime's "
+               "recommendation, so a performance comparison is repeatable.\n"
             << "--no-simple-profile withholds the khr/simple controller "
                "binding, which SteamVR prefers over an Oculus Touch one and "
                "which carries select and menu only.\n"
@@ -6807,6 +6850,7 @@ int wmain(int argc, wchar_t** argv) {
     bool probe_shared_import_adapters = false;
     bool no_openxr = false;
     bool suggest_simple_profile = true;
+    std::optional<darktidevr::core::PixelExtent> eye_extent_override;
     bool require_openxr = false;
     bool require_rendering = false;
     bool theatre = false;
@@ -6864,6 +6908,23 @@ int wmain(int argc, wchar_t** argv) {
       } else if (argument == L"--probe-shared-import-adapters") {
         probe_shared_import_adapters = true;
         runtime_d3d11_diagnostics = true;
+      } else if (argument == L"--eye-extent" && index + 1 < argc) {
+        // WxH. The evidence tooling compares like for like, so any
+        // performance comparison whose extent moved between runs means
+        // nothing; this is how a comparison is made repeatable.
+        const std::wstring value = argv[++index];
+        const auto cross = value.find_first_of(L"xX");
+        unsigned long width{}, height{};
+        if (cross != std::wstring::npos) {
+          width = std::wcstoul(value.substr(0, cross).c_str(), nullptr, 10);
+          height = std::wcstoul(value.substr(cross + 1).c_str(), nullptr, 10);
+        }
+        if (width == 0 || height == 0) {
+          throw std::invalid_argument("--eye-extent expects WIDTHxHEIGHT");
+        }
+        eye_extent_override = darktidevr::core::PixelExtent{
+            static_cast<std::uint32_t>(width),
+            static_cast<std::uint32_t>(height)};
       } else if (argument == L"--no-simple-profile") {
         // SteamVR looks for a generic-controller binding BEFORE a Touch one,
         // so the khr/simple profile this viewer offers is the likeliest cause
@@ -7089,7 +7150,7 @@ int wmain(int argc, wchar_t** argv) {
 
     darktidevr::xr::RuntimeD3D11Diagnostics runtime_diagnostics(
         runtime_d3d11_diagnostics,probe_shared_import_adapters);
-    OpenXrProbe openxr(!no_openxr, suggest_simple_profile);
+    OpenXrProbe openxr(!no_openxr, suggest_simple_profile, eye_extent_override);
     Harness harness(show, debug_layer, openxr.adapter_luid(),
                     openxr.minimum_feature_level());
     openxr.create_session(harness.device(), harness.queue(), !theatre);

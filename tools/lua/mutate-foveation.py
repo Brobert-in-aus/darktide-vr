@@ -18,6 +18,15 @@ Run it after changing either the pattern or the test:
 Every mutation must be CAUGHT and every legitimate edit ALLOWED. The control
 runs unmutated and must PASS. Not in ctest: the mutations anchor on exact
 source text.
+
+A result of `compiler` rather than `caught` means the mutation failed the BUILD
+instead of the test. It is still a catch -- the mutation cannot ship -- but it
+is a weaker one, because the message names no defect: everything here is inline
+and every input is a literal, so MSVC can fold a test into a constant, prove
+the assertion throws and report the rest of main() as unreachable under /WX.
+`opaque()` in the test launders values past that where it matters. One case
+(`fixed mode follows the aim point anyway`) resists it and is left as
+`compiler`, which is why the distinction is printed rather than hidden.
 """
 import io
 import os
@@ -27,12 +36,79 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HEADER = os.path.join(ROOT, 'src', 'core', 'foveation.h')
+CONTROL = os.path.join(ROOT, 'src', 'core', 'foveation_control.h')
 CMAKE = os.path.join(
     r'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE'
     r'\CommonExtensions\Microsoft\CMake\CMake\bin', 'cmake.exe')
 BUILD = os.path.join(ROOT, 'build', 'windows-vs2022')
 EXE = os.path.join(BUILD, 'tests', 'core_math', 'Release',
                    'darktidevr-foveation-tests.exe')
+
+CONTROL_MUTATIONS = [
+    ('a stale aim point is used anyway, dragging the sharp region behind a turn',
+     '      } else if (!(request.reticle_age_seconds <= kStaleSeconds) ||\n'
+     '                 request.reticle_age_seconds < 0.0F) {',
+     '      } else if (false) {'),
+
+    ('a NaN age reads as fresh',
+     '      } else if (!(request.reticle_age_seconds <= kStaleSeconds) ||\n'
+     '                 request.reticle_age_seconds < 0.0F) {',
+     '      } else if (request.reticle_age_seconds > kStaleSeconds) {'),
+
+    ('an untrustworthy aim point turns foveation off instead of falling back',
+     '        decision.reason = FoveationDecision::Reason::reticle_invalid;\n'
+     '      } else if (!(request.reticle_age_seconds',
+     '        decision.enabled = false;\n'
+     '        decision.reason = FoveationDecision::Reason::reticle_invalid;\n'
+     '      } else if (!(request.reticle_age_seconds'),
+
+    ('an off-screen aim point is used, making most of the eye coarse',
+     '      } else if (std::abs(request.reticle_ndc_x) > kOffscreenNdc ||\n'
+     '                 std::abs(request.reticle_ndc_y) > kOffscreenNdc) {',
+     '      } else if (false) {'),
+
+    ('the image is repainted every frame',
+     '    decision.repaint =\n'
+     '        !painted_ || painted_width_ != request.width ||',
+     '    decision.repaint = true ||\n'
+     '        !painted_ || painted_width_ != request.width ||'),
+
+    ('a changed extent reuses the image painted for the old one',
+     '        !painted_ || painted_width_ != request.width ||\n'
+     '        painted_height_ != request.height ||\n'
+     '        painted_tile_ != request.tile_size ||\n',
+     '        !painted_ ||\n'),
+
+    ('turning foveation off leaves the state believing an image is painted',
+     '    if (request.mode == FoveationMode::off) {\n'
+     '      painted_ = false;\n',
+     '    if (request.mode == FoveationMode::off) {\n'),
+
+    ('an unusable extent divides by zero instead of disabling',
+     '    if (request.width == 0U || request.height == 0U || request.tile_size == 0U) {\n'
+     '      painted_ = false;\n'
+     '      decision.reason = FoveationDecision::Reason::unusable_extent;\n'
+     '      return decision;\n'
+     '    }\n',
+     ''),
+
+    ('fixed mode follows the aim point anyway',
+     '    if (request.mode == FoveationMode::reticle) {\n'
+     '      const auto finite',
+     '    if (request.mode != FoveationMode::off) {\n'
+     '      const auto finite'),
+]
+
+CONTROL_LEGITIMATE = [
+    ('the staleness window is widened to three frames', [
+        ('  static constexpr float kStaleSeconds = 0.022F;',
+         '  static constexpr float kStaleSeconds = 0.034F;'),
+     ]),
+    ('the repaint threshold is tightened to a quarter tile', [
+        ('  static constexpr float kRepaintTilesNdc = 0.5F;',
+         '  static constexpr float kRepaintTilesNdc = 0.25F;'),
+     ]),
+]
 
 MUTATIONS = [
     ('the pattern is centred on the render target, ignoring the optics',
@@ -128,14 +204,22 @@ if not ok:
     sys.exit('CONTROL FAILED -- the harness proves nothing:\n' + out)
 print('control (unmutated): PASS\n')
 
-source = io.open(HEADER, encoding='utf-8', newline='').read()
-CRLF = '\r\n' in source
-fit = (lambda t: t.replace('\n', '\r\n')) if CRLF else (lambda t: t)
-backup = HEADER + '.foveationbak'
-shutil.copy2(HEADER, backup)
 failures = 0
+backups = []
+for path in (HEADER, CONTROL):
+    backup = path + '.foveationbak'
+    shutil.copy2(path, backup)
+    backups.append((path, backup))
+sources = {path: io.open(path, encoding='utf-8', newline='').read()
+           for path, _ in backups}
 try:
-    for group, cases in (('caught', MUTATIONS), ('allowed', LEGITIMATE)):
+    for target, group, cases in (
+            (HEADER, 'caught', MUTATIONS), (HEADER, 'allowed', LEGITIMATE),
+            (CONTROL, 'caught', CONTROL_MUTATIONS),
+            (CONTROL, 'allowed', CONTROL_LEGITIMATE)):
+        source = sources[target]
+        CRLF = '\r\n' in source
+        fit = (lambda t: t.replace('\n', '\r\n')) if CRLF else (lambda t: t)
         for case in cases:
             why = case[0]
             edits = case[1] if len(case) == 2 else [(case[1], case[2])]
@@ -146,8 +230,8 @@ try:
                     sys.exit('%r does not apply (%d occurrences of %r)'
                              % (why, mutated.count(o), old[:60]))
                 mutated = mutated.replace(o, n)
-            io.open(HEADER, 'w', encoding='utf-8', newline='').write(mutated)
-            os.utime(HEADER, None)
+            io.open(target, 'w', encoding='utf-8', newline='').write(mutated)
+            os.utime(target, None)
             passed, out = run()
             detail = next((l.strip() for l in out.splitlines()
                            if l.startswith('foveation: ')), out.strip()[:150])
@@ -165,15 +249,17 @@ try:
                                    why, '' if passed else '\n            ' + detail[:150]))
         print()
 finally:
-    shutil.move(backup, HEADER)
-    # copy2 preserved the original's timestamp, so the restored header looks
-    # OLDER than the object built from the mutated one and MSBuild skips the
-    # rebuild -- leaving a mutated binary behind a clean source tree. Touch it.
-    os.utime(HEADER, None)
+    for path, backup in backups:
+        shutil.move(backup, path)
+        # copy2 preserved the original's timestamp, so the restored header
+        # looks OLDER than the object built from the mutated one and MSBuild
+        # skips the rebuild -- leaving a mutated binary behind a clean source
+        # tree. Touch it.
+        os.utime(path, None)
 
 ok, out = run()
 if not ok:
-    sys.exit('THE RESTORE DID NOT WORK -- the header is mutated:\n' + out)
+    sys.exit('THE RESTORE DID NOT WORK -- a header is mutated:\n' + out)
 print('restored: PASS')
 if failures:
     sys.exit('%d case(s) went the wrong way' % failures)

@@ -10,6 +10,7 @@
 // headset reads as "foveation looks bad" when what is wrong is where it points.
 
 #include "core/foveation.h"
+#include "core/foveation_control.h"
 
 #include <cmath>
 #include <cstdint>
@@ -27,6 +28,16 @@ using darktidevr::core::paint_foveation_image;
 using darktidevr::core::shading_rate_1x1;
 using darktidevr::core::shading_rate_2x2;
 using darktidevr::core::shading_rate_4x4;
+
+// Launders a value past the optimiser. Everything here is inline and every
+// input is a literal, so MSVC can fold a whole test into a constant, prove the
+// assertion throws and report the rest of main() as unreachable -- turning a
+// caught defect into a BUILD failure that names no defect at all.
+template <typename T>
+T opaque(T value) {
+  volatile T sink = value;
+  return sink;
+}
 
 void require(bool condition, const std::string& message) {
   if (!condition) {
@@ -330,6 +341,153 @@ void the_reticle_can_move_the_centre() {
           "an out-of-range centre made the entire eye coarse");
 }
 
+using darktidevr::core::FoveationDecision;
+using darktidevr::core::FoveationMode;
+using darktidevr::core::FoveationRequest;
+using darktidevr::core::FoveationState;
+
+FoveationRequest reticle_request(float x, float y, float age = 0.0F) {
+  FoveationRequest request;
+  request.mode = FoveationMode::reticle;
+  request.width = 1920;
+  request.height = 2160;
+  request.tile_size = 16;
+  request.optical_centre_ndc_x = -0.06F;
+  request.reticle_valid = true;
+  request.reticle_ndc_x = x;
+  request.reticle_ndc_y = y;
+  request.reticle_age_seconds = age;
+  return request;
+}
+
+void an_untrustworthy_aim_point_falls_back_to_the_optics() {
+  // Never to "no foveation", and never to the last known point. Falling back
+  // to the optical centre keeps the feature on and the sharp region somewhere
+  // sensible; falling back to a stale point drags it behind a head turn, and
+  // switching foveation off mid-mission is a visible pop.
+  struct Case {
+    const char* what;
+    FoveationRequest request;
+    FoveationDecision::Reason reason;
+  };
+  auto invalid = reticle_request(0.3F, 0.1F);
+  invalid.reticle_valid = false;
+  const Case cases[] = {
+      {"an aim point marked invalid", invalid,
+       FoveationDecision::Reason::reticle_invalid},
+      {"an aim point half a second old", reticle_request(0.3F, 0.1F, 0.5F),
+       FoveationDecision::Reason::reticle_stale},
+      {"an age that is not a number",
+       reticle_request(0.3F, 0.1F, std::nanf("")),
+       FoveationDecision::Reason::reticle_stale},
+      {"a clock that ran backwards", reticle_request(0.3F, 0.1F, -1.0F),
+       FoveationDecision::Reason::reticle_stale},
+      {"an aim point off the left of the image", reticle_request(-4.0F, 0.0F),
+       FoveationDecision::Reason::reticle_offscreen},
+      {"an aim point far below the image", reticle_request(0.0F, 9.0F),
+       FoveationDecision::Reason::reticle_offscreen},
+      {"an aim point that is not a number",
+       reticle_request(std::nanf(""), 0.0F),
+       FoveationDecision::Reason::reticle_invalid},
+  };
+  for (const auto& test : cases) {
+    FoveationState state;
+    const auto decision = state.decide(test.request);
+    require(decision.enabled,
+            std::string(test.what) + " turned foveation off entirely");
+    require(decision.reason == test.reason,
+            std::string(test.what) + " gave the reason " +
+                darktidevr::core::foveation_reason_name(decision.reason));
+    require(std::abs(decision.centre_ndc_x - (-0.06F)) < 1.0e-6F &&
+                std::abs(decision.centre_ndc_y) < 1.0e-6F,
+            std::string(test.what) + " did not fall back to the optical centre");
+  }
+
+  FoveationState state;
+  const auto good = state.decide(reticle_request(0.3F, 0.1F, 0.01F));
+  require(good.reason == FoveationDecision::Reason::reticle &&
+              std::abs(good.centre_ndc_x - 0.3F) < 1.0e-6F,
+          "a fresh, valid, on-screen aim point must be used");
+}
+
+void the_image_is_repainted_only_when_it_would_differ() {
+  // Repainting is an upload per eye per frame. Below half a tile the painted
+  // image is bit-identical, so the upload buys nothing -- and "foveation costs
+  // more than it saves" is exactly how a measurement would read that.
+  FoveationState state;
+  require(state.decide(reticle_request(0.0F, 0.0F)).repaint,
+          "the first frame must paint something");
+  require(!state.decide(reticle_request(0.0F, 0.0F)).repaint,
+          "an unchanged centre must not be repainted");
+  // A tile is 2/120 = 0.0167 of NDC width here, and a thousandth of that
+  // cannot change a single texel under ANY threshold worth having. A value
+  // near the threshold would pin it, and where exactly the threshold sits is
+  // a tuning choice -- tightening it to a quarter tile must not read as a
+  // defect.
+  require(!state.decide(reticle_request(0.00002F, 0.0F)).repaint,
+          "a movement far below one tile must not be repainted");
+  require(state.decide(reticle_request(0.06F, 0.0F)).repaint,
+          "a movement of several tiles must be repainted");
+
+  // A changed extent must repaint at the same centre: Virtual Desktop's FOV
+  // tangent moves the eye extent, and an image sized for the old one is the
+  // wrong shape for the new.
+  auto resized = reticle_request(0.06F, 0.0F);
+  resized.width = 1908;
+  resized.height = 2076;
+  require(state.decide(resized).repaint, "a changed extent must be repainted");
+  require(!state.decide(resized).repaint, "and then left alone");
+
+  state.forget();
+  require(state.decide(resized).repaint, "a forgotten image must be repainted");
+}
+
+void off_means_off() {
+  FoveationState state;
+  FoveationRequest request = reticle_request(0.3F, 0.1F);
+  require(state.decide(request).enabled, "the fixture should be enabled");
+  request.mode = FoveationMode::off;
+  const auto decision = state.decide(request);
+  require(!decision.enabled && !decision.repaint,
+          "off must neither enable nor paint");
+  require(decision.reason == FoveationDecision::Reason::disabled,
+          "off must say so");
+  // Turning it back on must repaint: whatever image existed is not trusted to
+  // still be there.
+  request.mode = FoveationMode::reticle;
+  require(state.decide(request).repaint,
+          "turning foveation back on must repaint rather than trust a stale image");
+}
+
+void an_unusable_extent_disables_rather_than_divides_by_zero() {
+  FoveationState state;
+  for (const auto which : {0, 1, 2}) {
+    auto request = reticle_request(0.0F, 0.0F);
+    if (which == 0) request.width = 0;
+    if (which == 1) request.height = 0;
+    if (which == 2) request.tile_size = 0;
+    const auto decision = state.decide(request);
+    require(!decision.enabled && !decision.repaint,
+            "an unusable extent must disable foveation, not divide by zero");
+    require(decision.reason == FoveationDecision::Reason::unusable_extent,
+            "an unusable extent must say so");
+  }
+}
+
+void fixed_mode_ignores_the_aim_point_entirely() {
+  FoveationState state;
+  auto request = reticle_request(opaque(0.8F), opaque(-0.8F));
+  // The mode too: it is what the mutation turns on, and a compile-time
+  // mode lets the compiler fold the whole decision.
+  request.mode = opaque(FoveationMode::fixed);
+  request.optical_centre_ndc_x = opaque(-0.06F);
+  const auto decision = state.decide(request);
+  require(decision.reason == FoveationDecision::Reason::optical_centre,
+          "fixed mode must not report a reticle reason");
+  require(std::abs(decision.centre_ndc_x - (-0.06F)) < 1.0e-6F,
+          "fixed mode must sit on the optical centre even with a good aim point");
+}
+
 }  // namespace
 
 int main() {
@@ -341,6 +499,11 @@ int main() {
     degenerate_input_does_not_black_out_the_world();
     the_cost_is_what_the_pattern_costs();
     the_reticle_can_move_the_centre();
+    an_untrustworthy_aim_point_falls_back_to_the_optics();
+    the_image_is_repainted_only_when_it_would_differ();
+    off_means_off();
+    an_unusable_extent_disables_rather_than_divides_by_zero();
+    fixed_mode_ignores_the_aim_point_entirely();
     std::cout << "foveation.result=pass\n";
     return 0;
   } catch (const std::exception& error) {
