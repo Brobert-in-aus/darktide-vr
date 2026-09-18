@@ -48,6 +48,21 @@ Skull.FREE_FRACTION = 0.4
 -- go somewhere absurd. Short throws are unaffected: below about 0.6 s of
 -- flight the fraction is already the smaller of the two.
 Skull.FREE_MAX_SECONDS = 0.25
+-- The free flight arcs and tumbles (user, worn: "can we have the skull tumble
+-- and follow a ballistic arc rather than moving in a straight line?").
+--
+-- Only the DRAWN skull does either. The real one still flies straight to its
+-- target at SPEED, because that is the game's order and this module has never
+-- touched it; the arc is what the throw looks like for the quarter second
+-- before the blend takes over, and the blend still lands on the real position.
+-- Over FREE_MAX_SECONDS the drop is about 30 cm, which reads as a throw
+-- without the skull appearing to be falling out of the air.
+Skull.GRAVITY = 9.81
+-- Radians per second per metre per second: a hard throw spins faster than a
+-- gentle one, which is most of what makes a tumble read as thrown rather than
+-- as animated. Capped so a fast throw does not turn into a blur.
+Skull.TUMBLE_PER_SPEED = 1.1
+Skull.TUMBLE_MAX_RATE = 14
 -- A release counts as the throw that started a flight this soon after it.
 Skull.RELEASE_WINDOW = 0.75
 Skull.MAX_THROW_SECONDS = 4
@@ -113,11 +128,57 @@ function Skull.blend_weight(elapsed, total, free_fraction)
     return (elapsed - free) / (total - free)
 end
 
+-- Where the free flight has got to: the release velocity plus gravity. The
+-- vertical is Stingray's +z, so gravity subtracts from it. 3-array. Pure.
+function Skull.ballistic(release, velocity, elapsed)
+    if type(release) ~= "table" or type(velocity) ~= "table" then return release end
+    local e = finite(elapsed) and elapsed or 0
+    if e < 0 then e = 0 end
+    return {release[1] + velocity[1] * e,
+        release[2] + velocity[2] * e,
+        release[3] + velocity[3] * e - 0.5 * Skull.GRAVITY * e * e}
+end
+
+-- A uniformly random unit axis from two uniform numbers in [0, 1). Uniform on
+-- the sphere rather than uniform in the angles, which would crowd the poles.
+-- Taking the randomness as arguments keeps it pure and lets the test pin it.
+function Skull.random_axis(r1, r2)
+    local a = (finite(r1) and r1 or 0) % 1
+    local b = (finite(r2) and r2 or 0) % 1
+    local z = 2 * a - 1
+    local theta = 2 * math.pi * b
+    local ring = math.sqrt(math.max(0, 1 - z * z))
+    return {ring * math.cos(theta), ring * math.sin(theta), z}
+end
+
+-- How fast this throw tumbles, in radians a second: harder throws spin faster,
+-- capped so a hard one does not blur. nil when there is nothing to spin --
+-- a dead stop. The AXIS is chosen once per throw (Skull.random_axis) rather
+-- than derived from the velocity: a skull is not aerodynamic and has no reason
+-- to prefer an axis, and a derived one made every throw the same animation.
+-- Pure.
+function Skull.tumble_rate(velocity)
+    if type(velocity) ~= "table" then return nil end
+    local vx, vy, vz = velocity[1], velocity[2], velocity[3]
+    if not (finite(vx) and finite(vy) and finite(vz)) then return nil end
+    local speed = math.sqrt(vx * vx + vy * vy + vz * vz)
+    if not (speed > 1e-4) then return nil end
+    return math.min(Skull.TUMBLE_PER_SPEED * speed, Skull.TUMBLE_MAX_RATE)
+end
+
+-- The angle after another `dt` at `rate`, eased out by the blend so the spin
+-- stops as the drawn skull settles onto the real one. Only ever grows. Pure.
+function Skull.tumbled_angle(angle, rate, weight, dt)
+    local a = finite(angle) and angle or 0
+    if not finite(rate) or not finite(dt) or dt <= 0 then return a end
+    local w = finite(weight) and math.max(0, math.min(1, weight)) or 0
+    return a + rate * (1 - w) * dt
+end
+
 -- The drawn position: the free flight from the release blended into the real
 -- position by weight. 3-arrays. Pure.
 function Skull.drawn_position(release, velocity, elapsed, real, weight)
-    local free = {release[1] + velocity[1] * elapsed, release[2] + velocity[2] * elapsed,
-        release[3] + velocity[3] * elapsed}
+    local free = Skull.ballistic(release, velocity, elapsed)
     return {free[1] + (real[1] - free[1]) * weight, free[2] + (real[2] - free[2]) * weight,
         free[3] + (real[3] - free[3]) * weight}
 end
@@ -494,18 +555,65 @@ function Skull.install(mod, presentation)
     -- (where the root is the network's or the locomotion's, not ours to
     -- feed): base is each node's own local position (re-read whenever
     -- something else wrote it), written the last this module wrote.
-    local function place(extension, skull, record, drawn)
+    -- `axis` and `angle` tumble the drawn skull about its own centre. The
+    -- rotation is applied to the same child nodes the translation moves, and
+    -- about the mean of their placed positions, so the skull spins in place
+    -- rather than orbiting the root -- the root is the game's and is never
+    -- touched, which is the rule this whole module is built on.
+    local function place(extension, skull, record, drawn, axis, angle)
         record.nodes = record.nodes or child_nodes(skull)
         record.base, record.written = record.base or {}, record.written or {}
         local root_pose = Unit.world_pose(skull, 1)
-        local local_offset = Matrix4x4.transform(Matrix4x4.inverse(root_pose), Vector3(drawn[1], drawn[2], drawn[3]))
+        local root_inverse = Matrix4x4.inverse(root_pose)
+        local local_offset = Matrix4x4.transform(root_inverse, Vector3(drawn[1], drawn[2], drawn[3]))
+        -- The tumble arrives as a world axis; the nodes are posed in the
+        -- skull's frame, so it has to be taken there first.
+        local rotation
+        if axis and angle and angle ~= 0 then
+            local ok, local_axis = pcall(Matrix4x4.transform_without_translation,
+                root_inverse, Vector3(axis[1], axis[2], axis[3]))
+            if ok and local_axis and Vector3.length(local_axis) > 1e-6 then
+                local spun = pcall(function()
+                    rotation = Quaternion.axis_angle(Vector3.normalize(local_axis), angle)
+                end)
+                if not spun then rotation = nil end
+            end
+        end
+        -- The centre to spin about: the mean of where the parts are going.
+        local pivot, counted = Vector3(0, 0, 0), 0
+        if rotation then
+            for _, node in ipairs(record.nodes) do
+                local base = record.base[node]
+                if base then pivot = pivot + base:unbox() + local_offset; counted = counted + 1 end
+            end
+            if counted > 0 then pivot = pivot / counted else rotation = nil end
+        end
         for _, node in ipairs(record.nodes) do
             local current = Unit.local_position(skull, node)
             local written = record.written[node]
             if not record.base[node] or not written or Vector3.distance(current, written:unbox()) >= 1e-5 then
                 record.base[node] = Vector3Box(current)
             end
+            -- The rest ROTATION is captured once and never re-read, which is
+            -- NOT the same terms as the position. Position is re-read because
+            -- by then it is someone else's value; nothing but this code writes
+            -- these nodes' local rotation, so a re-read returns our own
+            -- previous frame's product. Re-capturing it compounded the spin
+            -- into a blur and left `unplace` restoring a rotated "rest"
+            -- (review, 18 September).
+            record.base_rotation = record.base_rotation or {}
+            if not record.base_rotation[node] then
+                record.base_rotation[node] = QuaternionBox(Unit.local_rotation(skull, node))
+            end
             local desired = record.base[node]:unbox() + local_offset
+            if rotation then
+                desired = pivot + Quaternion.rotate(rotation, desired - pivot)
+                local rest = record.base_rotation and record.base_rotation[node]
+                if rest then
+                    Unit.set_local_rotation(skull, node,
+                        Quaternion.multiply(rotation, rest:unbox()))
+                end
+            end
             Unit.set_local_position(skull, node, desired)
             record.written[node] = Vector3Box(desired)
         end
@@ -515,11 +623,19 @@ function Skull.install(mod, presentation)
         if not record or not record.nodes or not record.base or not skull or not Unit.alive(skull) then return end
         for _, node in ipairs(record.nodes) do
             local written, base = record.written and record.written[node], record.base[node]
+            -- The rotation goes back FIRST and outside the position test.
+            -- A skipped position restore self-heals, because whatever moved it
+            -- keeps driving it; a skipped rotation restore does not, because
+            -- nothing else writes it -- the skull would stay visibly cocked
+            -- for the rest of the mission. The first cut had this inside the
+            -- guard with a comment claiming it was outside (review, 18 Sept).
+            local rest = record.base_rotation and record.base_rotation[node]
+            if rest then Unit.set_local_rotation(skull, node, rest:unbox()) end
             if written and base and Vector3.distance(Unit.local_position(skull, node), written:unbox()) < 1e-5 then
                 Unit.set_local_position(skull, node, base:unbox())
             end
         end
-        record.base, record.written = nil, nil
+        record.base, record.written, record.base_rotation = nil, nil, nil
     end
 
     -- One record per skull of the local player.
@@ -536,6 +652,12 @@ function Skull.install(mod, presentation)
         local owner = local_player_unit()
         local thrower = owner and companion(owner)
         if throw and thrower then unplace(throw, thrower) end
+        if throw and not thrower then
+            -- The skull is gone and the record goes with it, but say so: with
+            -- a tumble in play this is the one path that could strand a
+            -- rotation on a unit nobody can reach any more.
+            mod:info("DARKTIDEVR_SKULL_THROW dropped=record reason=no_companion")
+        end
         throw = nil
         records = setmetatable({}, {__mode = "k"})
     end
@@ -647,6 +769,9 @@ function Skull.install(mod, presentation)
             local total = pending.target and Skull.flight_time(from, pending.target)
             if total and total > 0.05 then
                 throw = {start = t, total = total, release = pending.position, velocity = pending.velocity,
+                -- One axis per throw, drawn here so it is steady for its whole
+                -- flight rather than re-rolled every frame.
+                tumble_axis = Skull.random_axis(math.random(), math.random()),
                     target = pending.target}
                 mod:info("DARKTIDEVR_SKULL_THROW flight predicted_s=%.2f distance_m=%.2f nodes=%d", total,
                     total * Skull.SPEED, #child_nodes(skull))
@@ -689,7 +814,19 @@ function Skull.install(mod, presentation)
             unplace(throw, skull); throw = nil
             return
         end
-        place(extension, skull, throw, Skull.drawn_position(throw.release, throw.velocity, elapsed, real, weight))
+        -- The tumble eases out with the blend: a skull still spinning as it
+        -- settles onto its real position reads as broken rather than thrown.
+        -- Integrated rather than scaled, so the angle only ever grows, and on
+        -- the axis drawn when this throw started so it is steady for it.
+        local rate = Skull.tumble_rate(throw.velocity)
+        if rate and throw.tumble_axis then
+            local dt = throw.tumble_t and (t - throw.tumble_t) or 0
+            throw.tumble_t = t
+            throw.tumble_angle = Skull.tumbled_angle(throw.tumble_angle, rate, weight, dt)
+        end
+        place(extension, skull, throw,
+            Skull.drawn_position(throw.release, throw.velocity, elapsed, real, weight),
+            throw.tumble_axis, throw.tumble_angle)
     end
 
     local failed = false

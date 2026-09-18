@@ -585,6 +585,23 @@ function Mirror.install(mod, presentation, options)
         end
         state = nil
     end
+    -- The drawn copy and everything hanging off it, for the arm census. The
+    -- copy lives in a closure local and had no accessor, so a census built to
+    -- find a duplicate body could not see the most obvious candidate.
+    function api.drawn_units()
+        local units = {}
+        if not state then return units end
+        if state.unit and Unit.alive(state.unit) then
+            units[#units + 1] = {label = "mirror_copy", unit = state.unit}
+        end
+        for slot_name, slot in pairs(state.data and state.data.slots or {}) do
+            if slot.unit_3p and Unit.alive(slot.unit_3p) then
+                units[#units + 1] = {label = "mirror_slot/" .. tostring(slot_name), unit = slot.unit_3p}
+            end
+        end
+        return units
+    end
+
     function api.destroy()
         destroy_own()
         if reflection then reflection.destroy() end

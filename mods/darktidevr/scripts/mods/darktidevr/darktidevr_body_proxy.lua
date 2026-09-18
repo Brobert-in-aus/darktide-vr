@@ -906,6 +906,20 @@ function BodyProxy.follow_gameplay_hands(world, aim_rotation, offset, pivot_posi
     return true, rigid_hands.left.unit, rigid_hands.right.unit
 end
 
+-- Every unit this module has drawn, labelled, for a census that has to name
+-- what is on screen. `hand_pose` returns a position and a rotation, not a
+-- record, so there was no way to reach these from outside until now.
+function BodyProxy.drawn_units()
+    local units = {}
+    if state.unit and Unit.alive(state.unit) then units[#units + 1] = {label = "proxy_body", unit = state.unit} end
+    for side, hand in pairs(rigid_hands) do
+        if hand.unit and Unit.alive(hand.unit) then
+            units[#units + 1] = {label = "proxy_glove/" .. tostring(side), unit = hand.unit}
+        end
+    end
+    return units
+end
+
 function BodyProxy.visual_owner(unit)
     if not unit then return nil end
     if unit==state.unit then return 'body_proxy' end

@@ -6963,8 +6963,48 @@ void usage() {
 
 }  // namespace
 
+// Everything this viewer knows, it says on stdout -- and in a Steam launch
+// nobody is listening. The game starts the viewer itself, with no console and
+// no redirection, so `openxr.ads_reticle_eyes`, `openxr.ads_vignette_frames`
+// and every other diagnostic line written for a WORN session has never once
+// been readable from one. They were added on 18 September precisely to answer
+// worn questions and could only be read from an unattended run.
+//
+// So: when `darktidevr_xr_log.flag` sits beside the executable, stdout goes to
+// a file next to it instead. Presence is the switch and the contents are not
+// read, like the viewer's other flags. Unbuffered, because the interesting
+// case is a session that ends in a crash or a bugcheck.
+//
+// Returns the path it opened, or an empty string.
+std::wstring redirect_viewer_log() {
+  std::wstring directory(32768, L'\0');
+  const auto length = GetModuleFileNameW(nullptr, directory.data(), 32768);
+  if (length == 0 || length >= 32768) return {};
+  directory.resize(length);
+  const auto separator = directory.find_last_of(L"\\/");
+  if (separator == std::wstring::npos) return {};
+  directory.resize(separator + 1);
+  const auto flag = directory + L"..\\darktidevr_xr_log.flag";
+  std::error_code flag_error;
+  if (!std::filesystem::exists(std::filesystem::path{flag}, flag_error)) return {};
+  const auto path = directory + L"darktidevr-xr-viewer.log";
+  FILE* stream{};
+  if (_wfreopen_s(&stream, path.c_str(), L"w", stdout) != 0 || stream == nullptr) {
+    return {};
+  }
+  std::cout << std::unitbuf;
+  return path;
+}
+
 int wmain(int argc, wchar_t** argv) {
   try {
+    const auto viewer_log = redirect_viewer_log();
+    if (!viewer_log.empty()) {
+      // The name rather than the path: the path is wide, this stream is
+      // narrow, and converting it is a lossy cast for no benefit -- it is
+      // always beside the executable.
+      std::cout << "openxr.log_file=darktidevr-xr-viewer.log\n";
+    }
     UINT frames = 120;
     bool show = false;
     bool debug_layer = false;

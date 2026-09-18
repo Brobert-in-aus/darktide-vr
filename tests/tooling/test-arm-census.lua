@@ -37,4 +37,12 @@ assert(#Census.duplicates({
   'no wrist, no pairing')
 assert(#Census.duplicates({}) == 0 and #Census.duplicates({{label = 'only', wrist = {0, 0, 0}}}) == 0)
 
-print('arm_census=pass same_wrist radius duplicates unpaired')
+-- The re-arm exists because the first report for a slot can be taken before
+-- the bodies have spawned, and the throttle only ever set its key -- so that
+-- one empty report was all that slot ever got.
+assert(Census.REARM_SECONDS and Census.REARM_SECONDS > 0 and Census.REARM_SECONDS <= 120,
+  'the census re-arms within a session, got ' .. tostring(Census.REARM_SECONDS))
+-- One wrist per unit. Comparing both would report every unit against itself.
+assert(Census.WRIST_NODE == 'j_righthand', 'one named wrist')
+
+print('arm_census=pass same_wrist radius duplicates unpaired rearm')

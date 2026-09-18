@@ -19,7 +19,15 @@ local Census = {}
 Census.FLAG = "./../mods/darktidevr/darktidevr_arm_census.flag"
 -- The nodes that say "this is an arm". A unit with a right wrist is drawing a
 -- hand somewhere, whatever it calls itself.
-Census.WRIST_NODES = {"j_righthand", "j_lefthand"}
+-- The right wrist is what positions are compared on: one wrist per unit is
+-- enough to pair them, and using both would report every unit twice.
+Census.WRIST_NODE = "j_righthand"
+-- Re-report the same wielded slot after this long. The first report for the
+-- slot the player spawns holding is taken the moment the input path first runs
+-- with the flag on, which can be before the proxy or the mirror have spawned
+-- anything -- and the slot key was only ever set, so that one empty report was
+-- the only one that slot ever got (review, 18 September).
+Census.REARM_SECONDS = 30
 Census.ARM_NODES = {"j_rightarm", "j_leftarm", "j_rightforearm", "j_leftforearm"}
 
 -- Two wrists close enough to be the pair the player sees as one. Pure.
@@ -54,7 +62,7 @@ end
 
 function Census.install(mod, presentation)
     local api = {}
-    local poll, enabled, last_key = 0, false, nil
+    local poll, enabled, last_key, last_t = 0, false, nil, nil
     local function flag()
         poll = poll - 1
         if poll > 0 then return enabled end
@@ -72,12 +80,8 @@ function Census.install(mod, presentation)
 
     local function node_names(unit)
         local wrist, arms = nil, 0
-        for _, name in ipairs(Census.WRIST_NODES) do
-            if Unit.has_node(unit, name) then
-                if name == "j_righthand" then
-                    wrist = array(Unit.world_position(unit, Unit.node(unit, name)))
-                end
-            end
+        if Unit.has_node(unit, Census.WRIST_NODE) then
+            wrist = array(Unit.world_position(unit, Unit.node(unit, Census.WRIST_NODE)))
         end
         for _, name in ipairs(Census.ARM_NODES) do
             if Unit.has_node(unit, name) then arms = arms + 1 end
@@ -97,10 +101,13 @@ function Census.install(mod, presentation)
             if not ok then return end
             local meshes = 0
             pcall(function() meshes = Unit.num_meshes(unit) end)
-            local visible = "unknown"
-            pcall(function() visible = tostring(Unit.is_visible(unit)) end)
+            -- No visibility column. `Unit.is_visible` appears nowhere in the
+            -- stock source -- only the setters do -- so it would have been
+            -- "unknown" on every row: a constant that looks like data, which
+            -- is the trap this whole module exists to avoid. Mesh count and a
+            -- wrist position are things that can actually be read.
             list[#list + 1] = {label = label, unit = unit, wrist = wrist,
-                arms = arms or 0, meshes = meshes, visible = visible}
+                arms = arms or 0, meshes = meshes}
         end
 
         add("player_3p", player_unit)
@@ -113,16 +120,19 @@ function Census.install(mod, presentation)
             add("slot_3p/" .. tostring(slot_name), slot.unit_3p)
             add("slot_1p/" .. tostring(slot_name), slot.unit_1p)
         end
-        -- The mod's own drawn bodies.
-        local proxy = presentation.body_proxy
-        if proxy then
-            for _, side in ipairs({"left", "right"}) do
-                local pose = proxy.hand_pose and proxy.hand_pose(side)
-                if pose and pose.unit then add("proxy_glove/" .. side, pose.unit) end
+        -- The mod's own drawn bodies, which each module now names for itself.
+        -- Reached through `drawn_units` rather than guessed at: the first cut
+        -- asked `hand_pose(side).unit` (that returns a position and a
+        -- rotation, so it read nil or raised and took the whole report with
+        -- it) and `body_mirror.drawn_unit` (which did not exist, so the prime
+        -- suspect was silently absent). Both are review findings.
+        for _, module in ipairs({presentation.body_proxy, presentation.body_mirror}) do
+            if module and module.drawn_units then
+                local ok, drawn = pcall(module.drawn_units)
+                if ok then
+                    for _, entry in ipairs(drawn or {}) do add(entry.label, entry.unit) end
+                end
             end
-        end
-        if presentation.body_mirror and presentation.body_mirror.drawn_unit then
-            add("mirror_copy", presentation.body_mirror.drawn_unit())
         end
         return list
     end
@@ -134,8 +144,11 @@ function Census.install(mod, presentation)
         local unit_data = ScriptUnit.has_extension(player_unit, "unit_data_system")
         local inventory = unit_data and unit_data:read_component("inventory")
         local key = tostring(inventory and inventory.wielded_slot or "none")
-        if key == last_key then return end
-        last_key = key
+        local now = Managers and Managers.time and Managers.time.has_timer and
+            Managers.time:has_timer("main") and Managers.time:time("main") or nil
+        local stale = last_t == nil or now == nil or now >= last_t + Census.REARM_SECONDS
+        if key == last_key and not stale then return end
+        last_key, last_t = key, now
         local ok, list = pcall(candidates, player_unit)
         if not ok then
             mod:info("DARKTIDEVR_ARM_CENSUS unavailable=%s", tostring(list):sub(1, 120))
@@ -145,8 +158,8 @@ function Census.install(mod, presentation)
         for _, entry in ipairs(list) do
             if entry.arms > 0 or entry.wrist then
                 with_arms[#with_arms + 1] = entry
-                mod:info("DARKTIDEVR_ARM_CENSUS wielded=%s source=%s arms=%d meshes=%d visible=%s wrist=%s",
-                    key, entry.label, entry.arms, entry.meshes, entry.visible,
+                mod:info("DARKTIDEVR_ARM_CENSUS wielded=%s source=%s arms=%d meshes=%d wrist=%s",
+                    key, entry.label, entry.arms, entry.meshes,
                     entry.wrist and string.format("%.3f,%.3f,%.3f",
                         entry.wrist[1], entry.wrist[2], entry.wrist[3]) or "none")
             end

@@ -37,6 +37,12 @@ param(
     # that does not ask for it, like the trace above.
     [switch] $ArmCensus,
 
+    # Send the XR viewer's diagnostics to a file beside it. The game starts the
+    # viewer with no console, so everything it prints is lost in an ordinary
+    # session -- including the lines written specifically to answer worn
+    # questions. Off by default like the other diagnostics.
+    [switch] $ViewerLog,
+
     [bool] $EnableGameplayInput = $true,
 
     [bool] $EnableControllerAim = $true
@@ -273,6 +279,16 @@ $deploymentEntries += @{ Destination = $bodyTraceFlag; Content = $bodyTraceValue
 $armCensusFlag = Join-Path $modRoot 'darktidevr_arm_census.flag'
 $armCensusValue = if ($ArmCensus) { 'enabled' } else { 'disabled' }
 $deploymentEntries += @{ Destination = $armCensusFlag; Content = $armCensusValue + [Environment]::NewLine }
+
+# Presence is the switch for this one -- the viewer reads no contents -- so it
+# is placed or removed rather than written "disabled".
+$viewerLogFlag = Join-Path $modRoot 'darktidevr_xr_log.flag'
+if ($ViewerLog) {
+    $deploymentEntries += @{ Destination = $viewerLogFlag; Content = 'enabled' + [Environment]::NewLine }
+} elseif (Test-Path -LiteralPath $viewerLogFlag -PathType Leaf) {
+    Write-Output 'Removing a leftover darktidevr_xr_log.flag.'
+    Remove-Item -LiteralPath $viewerLogFlag -Force
+}
 
 # Controller locomotion and right-hand aiming are production behavior, not
 # diagnostics.  Every normal deployment reasserts them so a helper that
