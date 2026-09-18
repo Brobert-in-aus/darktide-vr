@@ -1341,4 +1341,40 @@ if ($eyeTargetLiterals.Count -gt $allowedEyeTargetLiterals) {
         $allowedEyeTargetLiterals, $eyeTargetLiterals.Count, ($eyeTargetLiterals -join "`n  "))
 }
 
+# tests/tooling/test-marker-atlas.lua sizes the atlas cell by DERIVING how far
+# the interaction popup reaches, and that derivation depends on a constant
+# that lives in a different file: the mod lowers the popup by
+# `presentation.interaction_popup_drop` of its own height. Change the drop and
+# the cell is being judged against a popup that is no longer where it sits --
+# silently, with the test still green. The first cut of that test asserted a
+# drop of 5/6 that was never in the source at all, and it endorsed a cell that
+# would have clipped. So the two must be checked against each other.
+$dropSource = $resolvedSource
+$dropTest = Join-Path $repoRoot 'tests/tooling/test-marker-atlas.lua'
+if ((Test-Path -LiteralPath $dropSource) -and (Test-Path -LiteralPath $dropTest)) {
+    $dropDeclared = $null
+    foreach ($line in (Get-Content -LiteralPath $dropSource)) {
+        if (($line -replace '--.*$', '') -match
+                'presentation\.interaction_popup_drop\s*=\s*([0-9]+)\s*/\s*([0-9]+)') {
+            $dropDeclared = '{0}/{1}' -f $Matches[1], $Matches[2]
+        }
+    }
+    if (-not $dropDeclared) {
+        throw "presentation.interaction_popup_drop is no longer declared as a fraction in darktidevr.lua; tests/tooling/test-marker-atlas.lua derives the atlas cell size from it."
+    }
+    $dropAsserted = $null
+    foreach ($line in (Get-Content -LiteralPath $dropTest)) {
+        if ($line -match 'local\s+POPUP_DROP\s*=\s*([0-9]+)\s*/\s*([0-9]+)') {
+            $dropAsserted = '{0}/{1}' -f $Matches[1], $Matches[2]
+        }
+    }
+    if (-not $dropAsserted) {
+        throw "tests/tooling/test-marker-atlas.lua no longer names POPUP_DROP, so nothing ties its cell-size derivation to the mod's own drop."
+    }
+    if ($dropDeclared -ne $dropAsserted) {
+        throw ("The atlas cell is sized against a popup drop of {0}, but darktidevr.lua drops it by {1}. One of the two has moved: tests/tooling/test-marker-atlas.lua POPUP_DROP, or presentation.interaction_popup_drop." -f
+            $dropAsserted, $dropDeclared)
+    }
+}
+
 Write-Output "lua_source_assertions=pass"

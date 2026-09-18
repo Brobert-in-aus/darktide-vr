@@ -696,3 +696,69 @@ user's to change, so this is written down rather than done:
 Nothing in the mod or the viewer can cause a kernel in-page fault directly,
 so this is recorded as a workstation hazard that costs runs, not as a finding
 against the day's work.
+
+## The re-run, and why the atlas cannot simply be regridded
+
+The re-launched measurement reached the hub cleanly (101 s, no crash, no mod
+errors) and **routed no markers at all** -- `MARKER_ATLAS released
+reason=state_StateLoading` and nothing else. Neither did the Psykhanium run.
+The hub run before it, on the same code, created the atlas and reported both
+numbers.
+
+So marker presence in an unattended session is incidental: it depends on
+whether a world marker happens to be visible from where the character is left
+standing. Three runs, one useful. **Re-launching is rolling dice**, and the
+established answer to that in this project is a test flag -- the vignette
+spent five days unprovable for the same reason.
+
+But the sizing question turns out not to need one, because the arithmetic
+closes it:
+
+So I stopped waiting for a run and derived the popup instead, from
+`hud_element_interaction*.lua` in Darktide's own source. It is not a thing
+that has to be sampled:
+
+- `interaction_height = line(hud_body 20) + edge_spacing[2]*2 = 44`
+- `description_height = line(26) * lines + edge_spacing[2]*4`
+- `H = interaction_height + description_height` -> two lines gives **146.4**,
+  which is the 147 the run reported. The derivation and the measurement agree,
+  which is the only reason to trust either.
+- `background_size[1]` is **400 and never changes**: the popup wraps its text
+  rather than widening. 400 x 1.07 = 428, the 425.3 the run reported.
+
+Two things the earlier figure had wrong, both found by reading the source
+rather than the log:
+
+- **The drop is 1/3, not 5/6.** The mod lowers the popup by
+  `presentation.interaction_popup_drop` = `1/3` of its own height, so it
+  reaches `H*2/3` ABOVE the cell centre and `H/3` below -- and above is the
+  binding side from three lines on. The `5/6` the test asserted is not
+  derivable from anything; I had written the number I wanted to be true.
+- **`extra_info_background` was never counted.** It hangs 5 px below the
+  popup's background and is 44 px tall, which at two lines is what makes the
+  downward reach (97.8) match the upward one (97.6) almost exactly.
+
+| cell, in the existing 2048x2048 | cells | half-cell | three-line popup (127 px) |
+|---|---|---|---|
+| **1024 x 512 (today)** | **8** | 504 x 248 | fits, 121 px spare |
+| **1024 x 341** | **12** | 504 x 162 | **fits, 35 px spare** |
+| 1024 x 256 | 16 | 504 x 120 | clips onto the next marker's quad |
+| 512 x 512 | 16 | 248 x 248 | too narrow for 428, at any height |
+
+**So the capacity is there after all: twelve cells, in the texture already
+allocated, for nothing.** Half again as many markers. Sixteen would need
+2048x4096 -- 32 MB against 16 MB -- and is not worth it. The width is what
+holds it to two columns, and that bound is exact rather than sampled.
+
+**The resize is not taken in this commit, and that is deliberate.** The last
+one came off a derivation too. What has changed is that the derivation is now
+in `test-marker-atlas.lua` with its premises named, it rejects `1024x256` by
+name for the right reason (three lines at scale, 127 against 120), and the
+extents instrument now measures per claimant -- so the next run carrying a
+marker will say whether the popup really is the widest claimant before the
+grid is bet on it. If it is, the resize is four characters.
+
+**The further direction**: the popup is routed with no `admits` check, unlike
+the world-marker widgets (`darktidevr.lua:13980` against `:13881`). One
+claimant sets the cell size for all of them. Handled on its own terms, the
+rest fit a far smaller cell again.

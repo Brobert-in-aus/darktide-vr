@@ -201,6 +201,27 @@ Anything odd here is worth reporting even if it seems unrelated to VR -- the
 change was mechanical and wide, and mechanical-and-wide is how a quiet
 regression gets in.
 
+### 65. The markers still reach the plane (an instrument change, so: nothing)
+
+Nothing was meant to change on screen. The marker extents log now keeps its
+measurement per claimant -- world markers, the interaction popup and the tag
+prompt separately -- instead of one maximum over all three, because one
+maximum described a cell that none of them actually needs.
+
+The risk is not in the log. Every atlas scope is built by one function that
+gained a parameter, and that function is what puts a marker on its own plane
+in VR at all. If the threading is wrong the markers do not look wrong, they
+fall back to the flat 2D route, which reads as markers sitting at the wrong
+depth or swimming with the head rather than staying on the world.
+
+- World markers on objectives and teammates: do they sit in the world at the
+  right distance, or flat against your view?
+- An interaction prompt (any door, ammo crate, plasteel): same question.
+- Tag something with the tag key and look at the tag prompt: same question.
+
+If all three look as they did yesterday, this item is done. Nothing here
+needs a report unless something looks different.
+
 ## Suggested order
 
 1. In the Psykhanium with a ranged weapon: 55 and 56 together (aim, hold,

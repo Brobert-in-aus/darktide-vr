@@ -217,21 +217,58 @@ assert(Atlas.claimant_name({x = 12.34, y = 56.78}) == "at 12.3,56.8", "a plain p
 -- would have clipped the interaction popup (review, 18 September): a test
 -- that repeats the decision cannot check it.
 --
--- The binding constraint is the interaction popup, whose box runs from -H/6
--- to +5H/6 about the cell centre with H computed at runtime from its text
--- (hud_element_interaction: interaction_height + description_height). A
--- two-line description puts H near 147, so the visible half-cell must clear
--- 5H/6 ~ 123 px, and there is no scissor in this path -- overflow lands on
--- the NEXT marker's quad.
-local POPUP_TWO_LINE_HEIGHT = 147
-local POPUP_BELOW_PIVOT = POPUP_TWO_LINE_HEIGHT * 5 / 6
-assert(Atlas.CELL_HEIGHT * 0.5 - Atlas.GUTTER >= POPUP_BELOW_PIVOT,
-    string.format("the visible half-cell is %.0f px and a two-line interaction popup reaches %.0f",
-        Atlas.CELL_HEIGHT * 0.5 - Atlas.GUTTER, POPUP_BELOW_PIVOT))
--- The widest thing measured is that popup's description box, 428 logical px
--- at a UI scale of about 1.
-assert(Atlas.CELL_WIDTH * 0.5 - Atlas.GUTTER >= 428,
-    "a marker needs 428 px of half-width inside the gutter")
+-- The binding constraint is the interaction popup, and its reach is DERIVED
+-- from Darktide's own constants rather than read off a run. The first cut of
+-- this test asserted the popup ran from -H/6 to +5H/6 about the cell centre,
+-- which is not derivable from anything: the mod drops the popup by
+-- `presentation.interaction_popup_drop` = 1/3 of its own height, not 5/6.
+-- It also left out `extra_info_background`, which hangs BELOW the popup.
+--
+-- hud_element_interaction._update_target_interaction_size:
+--   interaction_height  = line(hud_body 20) + edge_spacing[2]*2   = 44
+--   description_height  = line(desc 26) * lines + edge_spacing[2]*4
+--   H = interaction_height + description_height
+-- hud_element_interaction_definitions, with UI y growing downward:
+--   `background` is bottom-aligned on a zero-size pivot, so it rises H above
+--   the marker; `extra_info_background` hangs 5 px below it, extra_h tall.
+-- The mod then lowers the whole thing by H*DROP, so about the cell centre
+--   above = H * (1 - DROP)          below = H * DROP + 5 + extra_h
+-- Two lines gives H = 146.4, which is the 147 a run reported -- the
+-- derivation and the measurement agree, which is why this is trusted.
+-- There is no scissor in this path: overflow lands on the NEXT marker's quad.
+local LINE_SPACING = 1.2          -- UIFontSettings.hud_body
+local EDGE_Y = 10                 -- HudElementInteractionSettings.edge_spacing[2]
+local POPUP_DROP = 1 / 3          -- darktidevr.lua presentation.interaction_popup_drop
+local EXTRA_INFO_GAP = 5          -- extra_info_pivot position[2]
+local EXTRA_INFO_HEIGHT = 20 * LINE_SPACING + EDGE_Y * 2
+-- The HUD is drawn at RESOLUTION_LOOKUP.scale, and the run that measured this
+-- popup reported 425.3 px for a box that is 400 logical: scale was 1.07, not
+-- 1. Every logical figure here is charged at that scale.
+local UI_SCALE = 1.07
+local function popup_reach(lines)
+    local H = (20 * LINE_SPACING + EDGE_Y * 2) +
+        (26 * LINE_SPACING * lines + EDGE_Y * 4)
+    local above = H * (1 - POPUP_DROP)
+    local below = H * POPUP_DROP + EXTRA_INFO_GAP + EXTRA_INFO_HEIGHT
+    return math.max(above, below) * UI_SCALE, H
+end
+local two_line, H2 = popup_reach(2)
+assert(math.abs(H2 - 147) < 1,
+    string.format("the derivation must reproduce the measured 147, not %.1f", H2))
+-- Three lines, not two: a description long enough to wrap three times is an
+-- ordinary mission prompt, and it is the case a smaller cell fails first.
+local THREE_LINE_REACH = popup_reach(3)
+assert(Atlas.CELL_HEIGHT * 0.5 - Atlas.GUTTER >= THREE_LINE_REACH,
+    string.format("the visible half-cell is %.0f px and a three-line interaction popup reaches %.0f",
+        Atlas.CELL_HEIGHT * 0.5 - Atlas.GUTTER, THREE_LINE_REACH))
+assert(two_line < THREE_LINE_REACH, "a longer description reaches further")
+-- The width is a CONSTANT, not a sample: `background_size` is 400 logical and
+-- the popup never widens with its text, only grows taller. 400 * 1.07 = 428,
+-- which is the 425.3 the run reported. So this bound is exact, and it is what
+-- holds the atlas to two columns -- a 512-wide cell leaves 248.
+local POPUP_WIDTH = 400 * UI_SCALE
+assert(Atlas.CELL_WIDTH * 0.5 - Atlas.GUTTER >= POPUP_WIDTH,
+    string.format("a marker needs %.0f px of half-width inside the gutter", POPUP_WIDTH))
 assert(Atlas.WIDTH <= 2048 and Atlas.HEIGHT <= 2048,
     "the atlas texture must not grow to buy cells")
 -- Eight is known to be too few -- `atlas_full` fired in a nearly empty room --

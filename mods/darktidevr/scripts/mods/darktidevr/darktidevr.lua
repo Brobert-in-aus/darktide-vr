@@ -13978,7 +13978,7 @@ mod:hook(
             local markers_element = Managers.ui and Managers.ui._hud and
                 Managers.ui._hud.element and Managers.ui._hud:element("HudElementWorldMarkers")
             plane_scope = anchor and presentation.marker_plane_scope(ui_renderer, anchor,
-                markers_element and markers_element._player_camera, t) or nil
+                markers_element and markers_element._player_camera, t, "interaction") or nil
             if plane_scope and plane_scope.surface == "atlas" then
                 -- Worn: on the plane the popup sits high against its marker
                 -- (still on the per-eye route); lower it by a fraction of
@@ -14144,7 +14144,7 @@ mod:hook("HudElementSmartTagging", "_draw_active_interaction_line",
                 Managers.ui._hud.element and Managers.ui._hud:element("HudElementWorldMarkers")
             plane_scope = presentation.marker_plane_scope(ui_renderer,
                 Vector3Box.unbox(marker.position),
-                markers_element and markers_element._player_camera, t)
+                markers_element and markers_element._player_camera, t, "tag")
         end
         presentation.tag_plane_t = plane_scope and t or nil
         presentation.tag_plane_scope = plane_scope
@@ -15971,7 +15971,8 @@ function presentation.marker_head_frame(phase, left, right, t)
 end
 -- The scope body, a named function so no closure is built per marker per
 -- frame; called under pcall by marker_plane_scope_untimed.
-function presentation.marker_plane_scope_body(ui_renderer, anchor, camera, t, left, right)
+function presentation.marker_plane_scope_body(ui_renderer, anchor, camera, t, left, right,
+        claimant)
     local head = presentation.marker_head_frame("hud", left, right, t)
     local geometry, reason = presentation.marker_world.geometry(
         presentation.marker_plane_module, presentation.marker_plain(anchor), head.center,
@@ -15989,6 +15990,9 @@ function presentation.marker_plane_scope_body(ui_renderer, anchor, camera, t, le
         if not x then return nil, y end
         return {renderer = ui_renderer, surface = "atlas", atlas = atlas,
             atlas_x = x, atlas_y = y,
+            -- Which of the three cell claimants this is, so the extents
+            -- instrument can size a cell against each of them separately.
+            claimant = claimant or "marker",
             origin_x = Vector3.x(screen), origin_y = Vector3.y(screen),
             pixel_size = ps, distance = geometry.distance}
     end
@@ -16029,7 +16033,7 @@ function presentation.marker_plane_scope_body(ui_renderer, anchor, camera, t, le
         origin_x = Vector3.x(screen), origin_y = Vector3.y(screen),
         pixel_size = ps, distance = geometry.distance}
 end
-function presentation.marker_plane_scope_untimed(ui_renderer, anchor, camera, t)
+function presentation.marker_plane_scope_untimed(ui_renderer, anchor, camera, t, claimant)
     if not presentation.marker_plane_enabled() then return nil, "disabled" end
     local left, right = presentation.lod_primary_camera, presentation.lod_right_camera
     camera = camera or left
@@ -16038,7 +16042,7 @@ function presentation.marker_plane_scope_untimed(ui_renderer, anchor, camera, t)
         return nil, "cameras"
     end
     local ok, scope_or_reason, detail = pcall(presentation.marker_plane_scope_body,
-        ui_renderer, anchor, camera, t, left, right)
+        ui_renderer, anchor, camera, t, left, right, claimant)
     if not ok then
         presentation.marker_plane_note("error")
         if not marker_plane_log.error_logged then
@@ -16051,9 +16055,9 @@ function presentation.marker_plane_scope_untimed(ui_renderer, anchor, camera, t)
 end
 -- The scope is built per widget per frame outside the widget's own section,
 -- so it is timed on its own (profile doc).
-function presentation.marker_plane_scope(ui_renderer, anchor, camera, t)
+function presentation.marker_plane_scope(ui_renderer, anchor, camera, t, claimant)
     return presentation.frame_profile.section("render.marker_scope",
-        presentation.marker_plane_scope_untimed, ui_renderer, anchor, camera, t)
+        presentation.marker_plane_scope_untimed, ui_renderer, anchor, camera, t, claimant)
 end
 -- The atlas quad for one recorded anchor: the plane through it as seen from
 -- the head centre, faced toward the viewer as the HUD panel faces its quad.

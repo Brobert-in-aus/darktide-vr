@@ -328,4 +328,81 @@ assert(seen[4][2][1] == 20 and seen[4][2][2] == 40 and seen[4][3][1] == 60 and r
 assert(seen[6].self == mirror_target and seen[6].scale == 2 and seen[6][1][1] == 5,
     "logical calls scale through the target renderer")
 assert(mirror_target.scale == nil and source.scale == 1)
+-- Extents, kept per claimant. Three call sites claim atlas cells and one
+-- maximum over all of them describes no cell that anything actually needs:
+-- on 18 September a width from the interaction popup and a height that could
+-- not have come from it were read as one marker's worst case, and the atlas
+-- was resized from the pair. Here the two claimants cross deliberately --
+-- one wide and short, one narrow and tall -- so a conflated maximum
+-- (470 x 200) is a box NEITHER of them asks for.
+local extent_log = {}
+api.log = function(line) extent_log[#extent_log + 1] = line end
+local clock_now = 100
+Application = {time_since_launch = function() return clock_now end}
+atlas.CELL_WIDTH, atlas.CELL_HEIGHT = 1024, 512
+local extent = MarkerWorld.state.extent
+extent.dx, extent.dy, extent.at, extent.per = 0, 0, nil, {}
+local function text_in(claimant, width, height)
+    MarkerWorld.draw({renderer = renderer, surface = "atlas", atlas = atlas,
+        atlas_x = 512, atlas_y = 256, origin_x = 0, origin_y = 0,
+        claimant = claimant}, "left", function()
+        MarkerWorld.route("script_draw_text", stock("text"), renderer, "x", 20,
+            "proxima", V3(0, 0, 0), V3(width, height, 0), {255, 255, 255, 255}, {})
+    end)
+end
+text_in("interaction", 470, 30)
+text_in("marker", 60, 200)
+assert(#extent_log == 0, "the first second is the clock being started, not a report")
+assert(extent.per.interaction and extent.per.marker,
+    "each claimant is measured under its own name, not pooled under one")
+assert(near(extent.per.interaction.dx, 470) and near(extent.per.interaction.dy, 30),
+    "the popup's box is measured against the popup")
+assert(near(extent.per.marker.dx, 60) and near(extent.per.marker.dy, 200))
+assert(near(extent.dx, 470) and near(extent.dy, 200),
+    "the conflated maximum is 470 x 200 -- and neither claimant needs that cell")
+assert(extent.per.interaction.dy < extent.per.marker.dy and
+    extent.per.marker.dx < extent.per.interaction.dx,
+    "sizing a cell from the conflated pair spends height on the wide claimant")
+
+-- The tick is driven by whichever claimant happens to draw on it, so every
+-- claimant that grew is said -- including one that has since left the screen.
+clock_now = 102
+text_in("marker", 10, 10)
+local said = {}
+for i = 1, #extent_log do
+    local who = string.match(extent_log[i], "claimant=(%a+) ")
+    assert(who, "every extents line names the claimant it measured: " .. extent_log[i])
+    local dx, dy = string.match(extent_log[i], "max_dx=([%d%.]+) max_dy=([%d%.]+)")
+    said[who] = {tonumber(dx), tonumber(dy)}
+    assert(string.find(extent_log[i], "half_cell=512.0,256.0", 1, true),
+        "the line carries the cell it is being judged against")
+end
+assert(said.interaction and near(said.interaction[1], 470) and near(said.interaction[2], 30),
+    "a claimant that grew on an earlier tick is still reported by name")
+assert(said.marker and near(said.marker[1], 60) and near(said.marker[2], 200),
+    "a claimant reports its own worst case over the run, not its latest draw")
+assert(#extent_log == 2, "one line per claimant, not one conflated line")
+
+-- Nothing grew, so the next tick says nothing: the report is throttled per
+-- claimant, not silenced globally by another claimant's growth.
+clock_now = 104
+text_in("marker", 10, 10)
+assert(#extent_log == 2, "a claimant that has not grown is not repeated")
+clock_now = 106
+text_in("interaction", 471, 30)
+assert(#extent_log == 3 and string.find(extent_log[3], "claimant=interaction", 1, true),
+    "growth after another claimant reported is still said")
+
+-- The throttle is the claimant's own. A smaller claimant growing INSIDE the
+-- largest one's box moves nothing global -- 471 x 200 stays 471 x 200 -- and
+-- a report gated on the overall maximum would say nothing, which is how a
+-- short-lived claimant is silenced by a big one for a whole session.
+clock_now = 108
+text_in("marker", 100, 50)
+assert(near(extent.dx, 471) and near(extent.dy, 200), "the overall maximum has not moved")
+assert(#extent_log == 4, "a claimant growing inside another's box is still reported")
+assert(string.find(extent_log[4], "claimant=marker max_dx=100.0 max_dy=200.0", 1, true),
+    "and it is reported with its own worst case, width from now and height from before")
+Application = nil
+
 print("marker_world.result=pass")

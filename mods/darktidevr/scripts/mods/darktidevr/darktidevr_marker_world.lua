@@ -563,14 +563,28 @@ end
 -- edge, and the pickup markers' sliver (worn, 17 September) is the same
 -- question with nothing measuring it. Reported when a new maximum stands for
 -- a second, so a log carries the worst case without a line per draw.
-state.extent = {dx = 0, dy = 0, reported_dx = 0, reported_dy = 0, at = nil}
+-- Kept PER CLAIMANT, not as one maximum over everything that claims a cell.
+-- Three call sites claim atlas cells -- the world markers (gated by
+-- `admits`), the interaction popup and the tag prompt (each routed whole) --
+-- and one conflated maximum cannot say which of them sets the cell size. On
+-- 18 September that conflation produced a width and a height that could not
+-- have come from the same marker, and the atlas was resized from them.
+-- `per[claimant]` is what a grid can actually be designed against: if the
+-- popup is the only thing needing 428 px, the other cells do not.
+state.extent = {dx = 0, dy = 0, at = nil, per = {}}
 -- The report runs on every call, not only when a new maximum arrives: a
 -- maximum that lands less than a second after the last report and is never
 -- beaten again was simply never said, and a marker on screen for half a
 -- second -- an interaction prompt, a tag -- is exactly that (review,
 -- 18 September). That is how a run reported a smaller worst case than it saw.
-local function observe_extent(x, y, scope_atlas, width, height)
+local function observe_extent(x, y, scope_atlas, width, height, claimant)
     local extent = state.extent
+    local who = claimant or "?"
+    local slot = extent.per[who]
+    if not slot then
+        slot = {dx = 0, dy = 0, reported_dx = 0, reported_dy = 0}
+        extent.per[who] = slot
+    end
     -- A draw's box, not its anchor. `position` is one corner and the size
     -- runs from it, so both corners are watched: an anchor at +10 with a
     -- 40 px size reaches 50, and measuring only the anchor said 10 (18
@@ -581,19 +595,28 @@ local function observe_extent(x, y, scope_atlas, width, height)
     local ay = math.max(y < 0 and -y or y, y2 < 0 and -y2 or y2)
     if ax > extent.dx then extent.dx = ax end
     if ay > extent.dy then extent.dy = ay end
+    if ax > slot.dx then slot.dx = ax end
+    if ay > slot.dy then slot.dy = ay end
     local now = Application and Application.time_since_launch and Application.time_since_launch()
     if not now then return end
     if not extent.at then extent.at = now; return end
     if now - extent.at < 1 then return end
     extent.at = now
-    if extent.dx <= extent.reported_dx + 0.5 and extent.dy <= extent.reported_dy + 0.5 then return end
-    extent.reported_dx, extent.reported_dy = extent.dx, extent.dy
     local atlas = scope_atlas
     if not (state.api and state.api.log) then return end
-    state.api.log(string.format(
-        "DARKTIDEVR_MARKER extents max_dx=%.1f max_dy=%.1f half_cell=%.1f,%.1f boxed=1",
-        extent.dx, extent.dy, (atlas and atlas.CELL_WIDTH or 0) * 0.5,
-        (atlas and atlas.CELL_HEIGHT or 0) * 0.5))
+    -- Every claimant that has grown since it was last said, not only the one
+    -- drawing now: a claimant that reached its worst case and then left the
+    -- screen still has to be reported, and the tick it grew on may be a
+    -- different claimant's.
+    for name, each in pairs(extent.per) do
+        if each.dx > each.reported_dx + 0.5 or each.dy > each.reported_dy + 0.5 then
+            each.reported_dx, each.reported_dy = each.dx, each.dy
+            state.api.log(string.format(
+                "DARKTIDEVR_MARKER extents claimant=%s max_dx=%.1f max_dy=%.1f half_cell=%.1f,%.1f boxed=1",
+                name, each.dx, each.dy, (atlas and atlas.CELL_WIDTH or 0) * 0.5,
+                (atlas and atlas.CELL_HEIGHT or 0) * 0.5))
+        end
+    end
 end
 
 local function shifted(scope, position, logical_scale, size)
@@ -606,7 +629,7 @@ local function shifted(scope, position, logical_scale, size)
         observe_extent((position[1] or 0) * unit * factor - scope.origin_x,
             (position[2] or 0) * unit * factor - scope.origin_y, scope.atlas,
             size and (size[1] or 0) * unit * factor,
-            size and (size[2] or 0) * unit * factor)
+            size and (size[2] or 0) * unit * factor, scope.claimant)
     end
     local dx = scope.atlas_x - scope.origin_x
     local dy = scope.atlas_y - scope.origin_y

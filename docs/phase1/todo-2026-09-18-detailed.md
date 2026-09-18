@@ -242,7 +242,8 @@ long round trip), so instrument first and prove many things per launch.
 
 Before launching, add the log lines that make one run answer many
 questions: the marker extents against the cell
-(`DARKTIDEVR_MARKER_ATLAS extents max_dx= max_dy= half_cell=`), the overlay
+(`DARKTIDEVR_MARKER extents claimant= max_dx= max_dy= half_cell=`, one
+line per claimant since 18 September), the overlay
 text fit (`fitted key= asked= used= room=`), `Application.back_buffer_size()`
 beside `RESOLUTION_LOOKUP` and `RESOLUTION_LOOKUP.scale` at level start, and
 a counter on the input cancel path. Then one Psykhanium launch as Robobert
@@ -444,12 +445,43 @@ any reticle change. `summarize-hub-arms.py` reads the arms.
   world marker on screen claims a cell, so the ninth onward are silently
   hidden. A mission with a squad and objectives will be well past eight.
 
-  *What to do*: size it from what is actually needed rather than from the
-  module default. `test-overlay-cell-fit.lua` already measures what each
-  display needs of its cell at three FOV tangents, so it can answer whether
-  smaller cells are affordable or whether the atlas texture has to grow.
-  Also fix the log line: it names `anchor.key`, which marker anchors do not
-  have, so it cannot say which display went missing.
+  *Derived 18 September from Darktide's own constants, not from a run, and
+  the answer is twelve.* The binding claimant is the interaction popup, and
+  its geometry is fixed in source rather than sampled:
+
+  - **Width is a constant.** `background_size` is 400 logical px and the
+    popup never widens with its text -- a long description wraps and grows
+    taller. 400 x 1.07 = 428, which is the 425.3 the run reported. So the
+    width bound is exact, and it is what holds the atlas to **two columns**:
+    a 512-wide cell leaves 248 px for a box that always wants 428.
+  - **Height grows with the description.**
+    `H = (line(20)+20) + (line(26)*lines + 40)`; two lines gives 146.4,
+    which is the 147 a run reported. The mod drops the popup by
+    `interaction_popup_drop` = 1/3 of H, so it reaches `H*2/3` above the
+    cell centre and `H/3 + 5 + extra_h` below it, where the `+5+extra_h` is
+    `extra_info_background` hanging beneath the popup -- a box nothing had
+    counted. At 1.07 that is 105 px for two lines and **127 for three**.
+
+  | cell, in the existing 2048x2048 | cells | half-cell | three-line popup (127) |
+  |---|---|---|---|
+  | 1024 x 512 (today) | 8 | 504 x 248 | fits, with 121 px spare |
+  | **1024 x 341** | **12** | 504 x 162 | **fits, 35 px spare** |
+  | 1024 x 256 | 16 | 504 x 120 | clips onto the next marker's quad |
+
+  So **half again as many cells are available for nothing** -- no larger
+  texture, no 32 MB. Sixteen would need 2048x4096 and is not worth it.
+
+  *Not taken yet, deliberately.* The last resize came off a derivation too,
+  and it was wrong. `test-marker-atlas.lua` now asserts this one and rejects
+  1024x256 by name, and the extents instrument now measures per claimant, so
+  the next run that carries a marker will say whether the popup really is the
+  widest claimant before the grid is bet on it. If it is, the resize is four
+  characters.
+
+  *The further direction*: the popup is routed with no `admits` check unlike
+  the world-marker widgets (`darktidevr.lua:13980` against `:13881`). One
+  claimant sets the cell for all of them. Handle it on its own terms and the
+  other markers fit a far smaller cell again.
 
 ## D. Needs the user
 
