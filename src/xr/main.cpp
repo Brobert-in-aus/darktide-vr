@@ -6236,9 +6236,12 @@ class OpenXrProbe {
       // requested extent, so a rounding nobody noticed would place the eye
       // image in a corner of a larger surface and stretch or crop it. Read
       // what was actually allocated and say so before the first frame.
-      if (!swapchain_images_.back().empty() &&
-          swapchain_images_.back().front().texture) {
-        const auto actual = swapchain_images_.back().front().texture->GetDesc();
+      // `images`, not `swapchain_images_.back()`: this runs BEFORE the images
+      // are moved into the member, so on the first eye that container is still
+      // empty and `back()` is undefined behaviour. It was, and it took the
+      // viewer out of every session until the preflight smoke caught it.
+      if (!images.empty() && images.front().texture) {
+        const auto actual = images.front().texture->GetDesc();
         if (actual.Width != create_info.width ||
             actual.Height != create_info.height) {
           std::cout << "openxr.swapchain_extent_rounded eye="
@@ -6249,6 +6252,7 @@ class OpenXrProbe {
                     << " note=copies_and_imageRect_use_the_requested_extent\n";
         }
       }
+      swapchain_images_.push_back(std::move(images));
     }
 
     std::cout << "openxr.swapchains=" << swapchains_.size() << '\n'
