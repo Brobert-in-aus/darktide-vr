@@ -6806,6 +6806,12 @@ function presentation.inject_gameplay_input(self, main_t, input)
         tonumber(controller_observation.gameplay_sequence[0])
     presentation.track_wielded_weapon()
     presentation.track_aim_down_sights()
+    -- Which units are drawing arms, when what is wielded changes. Off unless
+    -- its flag says otherwise; it exists because four separate explanations for
+    -- "I have two arms" were reasoned out of the code and all four were wrong.
+    if presentation.arm_census then
+        pcall(presentation.arm_census.report, player_unit)
+    end
     -- Still sample/cancel both mappers and UI requests while blocked or after
     -- a failed native read. Do not inject synthetic cancellation release edges;
     -- stock false-held action behavior still applies.
@@ -15839,6 +15845,10 @@ presentation.body_frame = mod:io_dofile(
 ).install(mod, presentation, controller_observation)
 presentation.body_mirror = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_body_mirror"
+).install(mod, presentation)
+-- After the bodies, so it can see all of them.
+presentation.arm_census = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_arm_census"
 ).install(mod, presentation)
 presentation.rig_scan = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_rig_scan"

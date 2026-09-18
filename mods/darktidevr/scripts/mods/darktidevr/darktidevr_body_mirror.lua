@@ -334,6 +334,28 @@ function Mirror.yaw_sample(head, target, frame, mirror, avatar, unit)
         mirror = degrees(mirror), avatar = degrees(avatar), unit = degrees(unit)}
 end
 
+-- The yaw a TORSO is facing, from its shoulder line. 3-arrays for the two
+-- shoulder positions; returns a Stingray yaw, or nil if the two are on top of
+-- each other. Pure.
+--
+-- This exists because the first two passes at "the body turns faster than my
+-- view" measured ROOT yaws -- the copy's root, the avatar's root -- and read a
+-- root that barely moved as a body that barely moved. The copy's torso is a
+-- JOINT, posed from the avatar every frame, so the root says nothing about
+-- what the player is looking at. The user was right and the instrument was
+-- pointed at the wrong bone.
+--
+-- Right = (cos yaw, sin yaw) against forward = (-sin yaw, cos yaw), so the
+-- shoulder line's yaw is directly comparable with the head's.
+function Mirror.torso_yaw(left_shoulder, right_shoulder)
+    if type(left_shoulder) ~= "table" or type(right_shoulder) ~= "table" then return nil end
+    local rx = right_shoulder[1] - left_shoulder[1]
+    local ry = right_shoulder[2] - left_shoulder[2]
+    if rx ~= rx or ry ~= ry then return nil end
+    if rx * rx + ry * ry < 1e-8 then return nil end
+    return math.atan2(ry, rx)
+end
+
 -- Whether this sample is worth a line: anything moved, or the heartbeat is
 -- due. `steps` is a list of yaw steps in degrees (nil entries ignored) and
 -- `root_step` the root's travel in metres (nil on the first sample, which is
@@ -1022,6 +1044,18 @@ function Mirror.install(mod, presentation, options)
                 -- body FRAME's, which drives the virtual stock and the neck
                 -- follow but not the avatar's heading.
                 local heading = presentation.body_heading_trace
+                -- The torso the player actually looks at, on the drawn copy
+                -- and on the avatar it is posed from. Roots are already in the
+                -- line above and they were not the answer.
+                local function shoulders(of)
+                    if not of or not Unit.alive(of) or
+                            not Unit.has_node(of, "j_leftarm") or
+                            not Unit.has_node(of, "j_rightarm") then return nil end
+                    return Mirror.torso_yaw(
+                        array(Unit.world_position(of, Unit.node(of, "j_leftarm"))),
+                        array(Unit.world_position(of, Unit.node(of, "j_rightarm"))))
+                end
+                local torso_yaw, avatar_torso_yaw = shoulders(unit), shoulders(avatar)
                 local sample = Mirror.yaw_sample(
                     frame and frame.head_yaw,
                     frame and frame.target_yaw,
@@ -1036,6 +1070,18 @@ function Mirror.install(mod, presentation, options)
                 -- silently shortened the list the rule walks.
                 local raw, moved = {}, {}
                 for _, name in ipairs({"head", "target", "frame", "mirror", "avatar", "unit"}) do
+                    local value = previous and Mirror.yaw_step(sample[name], previous[name])
+                    raw[name] = value
+                    if value then moved[#moved + 1] = value end
+                end
+                -- The torso steps, in the same shape as the rest.
+                local function degrees_of(value)
+                    if type(value) ~= "number" or value ~= value then return nil end
+                    return math.deg((value + math.pi) % (2 * math.pi) - math.pi)
+                end
+                sample.torso = degrees_of(torso_yaw)
+                sample.avatar_torso = degrees_of(avatar_torso_yaw)
+                for _, name in ipairs({"torso", "avatar_torso"}) do
                     local value = previous and Mirror.yaw_step(sample[name], previous[name])
                     raw[name] = value
                     if value then moved[#moved + 1] = value end
@@ -1062,7 +1108,8 @@ function Mirror.install(mod, presentation, options)
                 mod:info("DARKTIDEVR_BODY_TRACE t=%.3f dt=%.4f head=%s target=%s frame=%s mirror=%s avatar=%s unit=%s " ..
                     "d_head=%s d_target=%s d_frame=%s d_mirror=%s d_avatar=%s d_unit=%s " ..
                     "root=%.4f,%.4f,%.4f root_step_m=%s neck_m=%s scale=%.4f why=%s " ..
-                    "solver=%s visual=%s solver_head=%s delta=%s still_s=%s conv=%s move_stick=%s turn_deg=%s",
+                    "solver=%s visual=%s solver_head=%s delta=%s still_s=%s conv=%s move_stick=%s turn_deg=%s " ..
+                    "torso=%s avatar_torso=%s d_torso=%s d_avatar_torso=%s",
                     type(t) == "number" and t or 0, type(dt) == "number" and dt or 0,
                     degrees("head"), degrees("target"), degrees("frame"),
                     degrees("mirror"), degrees("avatar"), degrees("unit"),
@@ -1080,7 +1127,9 @@ function Mirror.install(mod, presentation, options)
                     heading and heading.convergence and string.format("%.1f", heading.convergence) or "na",
                     heading and tostring(heading.stick) or "na",
                     heading and heading.turn_accum and
-                        string.format("%.2f", math.deg(heading.turn_accum)) or "na")
+                        string.format("%.2f", math.deg(heading.turn_accum)) or "na",
+                    degrees("torso"), degrees("avatar_torso"),
+                    step("torso"), step("avatar_torso"))
                 -- Consumed, so each line reports the turn since the last one.
                 if heading then heading.turn_accum = 0 end
                 sample.root = root_world

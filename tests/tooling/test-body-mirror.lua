@@ -224,4 +224,44 @@ if #twice ~= 3 then error('a unit reachable twice was listed twice, got ' .. #tw
 if #Mirror.collider_units(nil, nil, avatar) ~= 0 then error('no copy, no units') end
 if #Mirror.collider_units(root, nil, nil) ~= 1 then error('the copy is still listed without an avatar') end
 
-print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace colliders')
+-- The torso's facing, from its shoulder line, in the same yaw convention as
+-- the head. The first two passes at "the body turns faster than my view"
+-- measured ROOT yaws and concluded the body barely moved; the torso is a joint
+-- posed from the avatar every frame, so the root was never the thing being
+-- reported on.
+local function shoulders_at(yaw, width)
+  width = width or 0.34
+  -- right = (cos yaw, sin yaw): the shoulder line points along it.
+  local rx, ry = math.cos(yaw) * width * 0.5, math.sin(yaw) * width * 0.5
+  return {-rx, -ry, 1.4}, {rx, ry, 1.4}
+end
+for _, yaw in ipairs({0, 0.6, -1.2, 2.9, -3.0}) do
+  local l, r = shoulders_at(yaw)
+  local measured = Mirror.torso_yaw(l, r)
+  local diff = (measured - yaw + math.pi) % (2 * math.pi) - math.pi
+  near(diff, 0, 1e-9, 'torso yaw at ' .. yaw .. ' read as ' .. tostring(measured))
+end
+-- It matches the head's convention, which is the whole point: the two are
+-- compared against each other, so a sign or a quarter turn between them would
+-- read as the body leading or lagging when it was doing neither.
+-- Checked against the FORWARD convention the head yaw uses -- forward =
+-- (-sin yaw, cos yaw), read back as atan2(-fx, fy) -- rather than against the
+-- number that was put in, which would only restate the loop above.
+for _, yaw in ipairs({0.75, -2.1}) do
+  local l, r = shoulders_at(yaw)
+  local fx, fy = -math.sin(yaw), math.cos(yaw)
+  local head_convention = math.atan2(-fx, fy)
+  local diff = (Mirror.torso_yaw(l, r) - head_convention + math.pi) % (2 * math.pi) - math.pi
+  near(diff, 0, 1e-9, 'the torso and the head are in the same frame at ' .. yaw)
+end
+-- Degenerate and missing inputs are nil rather than a fabricated zero, because
+-- zero here means "facing along the basis" and would read as a real number.
+assert(Mirror.torso_yaw({0, 0, 0}, {0, 0, 0}) == nil, 'shoulders on top of each other')
+assert(Mirror.torso_yaw(nil, {1, 0, 0}) == nil and Mirror.torso_yaw({0, 0, 0}, nil) == nil)
+assert(Mirror.torso_yaw({0 / 0, 0, 0}, {1, 0, 0}) == nil, 'a nan shoulder')
+-- Height is ignored: a shoulder line tilted by a lean still faces the same way.
+local tilted_l, tilted_r = shoulders_at(0.4)
+tilted_r[3] = tilted_r[3] + 0.2
+near(Mirror.torso_yaw(tilted_l, tilted_r), 0.4, 1e-9, 'a lean does not change the facing')
+
+print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace colliders torso_yaw')

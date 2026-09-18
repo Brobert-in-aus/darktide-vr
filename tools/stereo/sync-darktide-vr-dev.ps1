@@ -32,6 +32,11 @@ param(
     # disk. Off by default like every other diagnostic.
     [switch] $BodyTrace,
 
+    # The arm census (darktidevr_arm_census): names every unit drawing an arm
+    # when the wielded slot changes. Written as "disabled" by every deployment
+    # that does not ask for it, like the trace above.
+    [switch] $ArmCensus,
+
     [bool] $EnableGameplayInput = $true,
 
     [bool] $EnableControllerAim = $true
@@ -264,6 +269,10 @@ $deploymentEntries += @{ Destination = $fullBodyFlag; Content = $fullBodyFlagVal
 $bodyTraceFlag = Join-Path $modRoot 'darktidevr_body_trace.flag'
 $bodyTraceValue = if ($BodyTrace) { 'enabled' } else { 'disabled' }
 $deploymentEntries += @{ Destination = $bodyTraceFlag; Content = $bodyTraceValue + [Environment]::NewLine }
+
+$armCensusFlag = Join-Path $modRoot 'darktidevr_arm_census.flag'
+$armCensusValue = if ($ArmCensus) { 'enabled' } else { 'disabled' }
+$deploymentEntries += @{ Destination = $armCensusFlag; Content = $armCensusValue + [Environment]::NewLine }
 
 # Controller locomotion and right-hand aiming are production behavior, not
 # diagnostics.  Every normal deployment reasserts them so a helper that
