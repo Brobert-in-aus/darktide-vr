@@ -128,6 +128,51 @@ function Skull.blend_weight(elapsed, total, free_fraction)
     return (elapsed - free) / (total - free)
 end
 
+-- The free flight is stepped rather than evaluated, because it now has to be
+-- swept against the world: a thrown skull that paths through the floor and out
+-- the other side of a wall is worse than one that flew straight (user, 18
+-- September: "it should bounce off the ground and not path through solid
+-- objects"). A closed-form position cannot be collided; a step can.
+--
+-- One step of the free flight: gravity applied to the velocity, then the
+-- velocity to the position. Returns the new position and velocity. Pure.
+function Skull.step(position, velocity, dt)
+    if type(position) ~= "table" or type(velocity) ~= "table" then return position, velocity end
+    local d = finite(dt) and dt or 0
+    if d <= 0 then return position, velocity end
+    local vz = velocity[3] - Skull.GRAVITY * d
+    return {position[1] + velocity[1] * d,
+            position[2] + velocity[2] * d,
+            position[3] + vz * d},
+           {velocity[1], velocity[2], vz}
+end
+
+-- The velocity after bouncing off a surface: reflected about the normal and
+-- damped. A skull is bone rather than rubber, so most of the energy goes.
+-- Velocity into the surface only -- a glancing pass that is already leaving
+-- must not be flipped back into it, which is what makes a resting object
+-- jitter. 3-arrays. Pure.
+Skull.RESTITUTION = 0.35
+Skull.FRICTION = 0.7
+function Skull.bounce(velocity, normal, restitution)
+    if type(velocity) ~= "table" or type(normal) ~= "table" then return velocity end
+    local nx, ny, nz = normal[1], normal[2], normal[3]
+    local length = math.sqrt(nx * nx + ny * ny + nz * nz)
+    if not finite(length) or length < 1e-6 then return velocity end
+    nx, ny, nz = nx / length, ny / length, nz / length
+    local into = velocity[1] * nx + velocity[2] * ny + velocity[3] * nz
+    -- Already moving away from the surface: nothing to bounce off.
+    if into >= 0 then return velocity end
+    local e = finite(restitution) and restitution or Skull.RESTITUTION
+    -- Split into the part along the normal (bounces, damped by restitution)
+    -- and the part across it (slides, damped by friction).
+    local along = {into * nx, into * ny, into * nz}
+    local across = {velocity[1] - along[1], velocity[2] - along[2], velocity[3] - along[3]}
+    return {across[1] * Skull.FRICTION - along[1] * e,
+            across[2] * Skull.FRICTION - along[2] * e,
+            across[3] * Skull.FRICTION - along[3] * e}
+end
+
 -- Where the free flight has got to: the release velocity plus gravity. The
 -- vertical is Stingray's +z, so gravity subtracts from it. 3-array. Pure.
 function Skull.ballistic(release, velocity, elapsed)
@@ -175,10 +220,12 @@ function Skull.tumbled_angle(angle, rate, weight, dt)
     return a + rate * (1 - w) * dt
 end
 
--- The drawn position: the free flight from the release blended into the real
--- position by weight. 3-arrays. Pure.
-function Skull.drawn_position(release, velocity, elapsed, real, weight)
-    local free = Skull.ballistic(release, velocity, elapsed)
+-- The drawn position: a free-flight position blended into the real one by
+-- weight. `free` is now stepped and swept by the caller rather than evaluated
+-- here, so that it can bounce; `Skull.ballistic` remains for the closed form.
+-- 3-arrays. Pure.
+function Skull.drawn_position(release, velocity, elapsed, real, weight, free_override)
+    local free = free_override or Skull.ballistic(release, velocity, elapsed)
     return {free[1] + (real[1] - free[1]) * weight, free[2] + (real[2] - free[2]) * weight,
         free[3] + (real[3] - free[3]) * weight}
 end
@@ -560,6 +607,42 @@ function Skull.install(mod, presentation)
     -- about the mean of their placed positions, so the skull spins in place
     -- rather than orbiting the root -- the root is the game's and is never
     -- touched, which is the rule this whole module is built on.
+    -- One step of the free flight, swept against the world so the drawn skull
+    -- bounces off the ground instead of pathing through it. A ray along the
+    -- step rather than a shape sweep: the skull is small, the steps are short,
+    -- and a ray is what this module can reach. Returns the new position and
+    -- velocity, and whether it bounced.
+    --
+    -- Everything here is guarded and falls back to the unswept step: a
+    -- diagnostic-grade collision failing must not stop the throw being drawn.
+    local function sweep_free_flight(extension, from, velocity, dt)
+        local stepped, next_velocity = Skull.step(from, velocity, dt)
+        local physics_world = extension and extension._physics_world
+        if not physics_world or not dt or dt <= 0 then return stepped, next_velocity, false end
+        local dx = stepped[1] - from[1]
+        local dy = stepped[2] - from[2]
+        local dz = stepped[3] - from[3]
+        local travelled = math.sqrt(dx * dx + dy * dy + dz * dz)
+        if not finite(travelled) or travelled < 1e-4 then return stepped, next_velocity, false end
+        local ok, hits, count = pcall(PhysicsWorld.raycast, physics_world,
+            Vector3(from[1], from[2], from[3]),
+            Vector3(dx / travelled, dy / travelled, dz / travelled),
+            travelled, "closest", "types", "statics",
+            "collision_filter", "filter_player_character_shooting_raycast")
+        if not ok or not hits or (count or 0) < 1 then return stepped, next_velocity, false end
+        local hit = hits[1] or hits
+        local point = hit and (hit.position or hit[1])
+        local normal = hit and (hit.normal or hit[2])
+        if not point or not normal then return stepped, next_velocity, false end
+        local n = array(normal)
+        local bounced = Skull.bounce(next_velocity, n, Skull.RESTITUTION)
+        local p = array(point)
+        -- Off the surface by a hair, or the next sweep starts inside it and
+        -- the skull sticks.
+        return {p[1] + n[1] * 0.02, p[2] + n[2] * 0.02, p[3] + n[3] * 0.02},
+            bounced, true
+    end
+
     local function place(extension, skull, record, drawn, axis, angle)
         record.nodes = record.nodes or child_nodes(skull)
         record.base, record.written = record.base or {}, record.written or {}
@@ -818,14 +901,31 @@ function Skull.install(mod, presentation)
         -- settles onto its real position reads as broken rather than thrown.
         -- Integrated rather than scaled, so the angle only ever grows, and on
         -- the axis drawn when this throw started so it is steady for it.
+        local dt = throw.tumble_t and (t - throw.tumble_t) or 0
+        throw.tumble_t = t
         local rate = Skull.tumble_rate(throw.velocity)
         if rate and throw.tumble_axis then
-            local dt = throw.tumble_t and (t - throw.tumble_t) or 0
-            throw.tumble_t = t
             throw.tumble_angle = Skull.tumbled_angle(throw.tumble_angle, rate, weight, dt)
         end
+        -- Step the free flight and sweep it. The first frame starts it at the
+        -- release with the release velocity; after that it carries its own
+        -- state, because a bounce cannot be recovered from a closed form.
+        if not throw.free_position then
+            throw.free_position = {throw.release[1], throw.release[2], throw.release[3]}
+            throw.free_velocity = {throw.velocity[1], throw.velocity[2], throw.velocity[3]}
+        end
+        local bounced
+        throw.free_position, throw.free_velocity, bounced =
+            sweep_free_flight(extension, throw.free_position, throw.free_velocity, dt)
+        if bounced and not throw.bounce_logged then
+            throw.bounce_logged = true
+            mod:info("DARKTIDEVR_SKULL_THROW bounced elapsed_s=%.3f speed=%.2f", elapsed,
+                math.sqrt(throw.free_velocity[1] ^ 2 + throw.free_velocity[2] ^ 2 +
+                    throw.free_velocity[3] ^ 2))
+        end
         place(extension, skull, throw,
-            Skull.drawn_position(throw.release, throw.velocity, elapsed, real, weight),
+            Skull.drawn_position(throw.release, throw.velocity, elapsed, real, weight,
+                throw.free_position),
             throw.tumble_axis, throw.tumble_angle)
     end
 

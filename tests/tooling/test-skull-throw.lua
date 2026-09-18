@@ -88,6 +88,47 @@ near(Skull.tumbled_angle(3, 10, 1, 0.1), 3, 'at full blend the spin has stopped'
 near(Skull.tumbled_angle(3, 10, 0.5, 0), 3, 'no time, no turn')
 near(Skull.tumbled_angle(0/0, 10, 0, 0.1), 1, 'a nan angle restarts from zero')
 
+-- The step, which the sweep collides. A closed form cannot be collided, so the
+-- free flight is integrated now (user: "it should bounce off the ground and
+-- not path through solid objects").
+local p, v = Skull.step({0, 0, 10}, {0, 5, 0}, 0.1)
+near(p[2], 0.5, 'the horizontal advances')
+near(v[3], -Skull.GRAVITY * 0.1, 'and gravity is applied to the velocity')
+near(p[3], 10 + v[3] * 0.1, 'which is what moves the height')
+local sp, sv = Skull.step({1, 2, 3}, {4, 5, 6}, 0)
+assert(sp[1] == 1 and sv[1] == 4, 'no time, no step')
+assert(Skull.step(nil, {0,0,0}, 0.1) == nil, 'nothing to step')
+
+-- The bounce. Reflected about the normal, damped, and the sliding part kept.
+local up = {0, 0, 1}
+local b = Skull.bounce({0, 4, -10}, up, 0.35)
+assert(b[3] > 0, 'it comes back up off the floor: ' .. b[3])
+near(b[3], 10 * 0.35, 'damped by the restitution')
+assert(b[2] > 0 and b[2] < 4, 'and slides on, slowed: ' .. b[2])
+-- An unnormalised normal is normalised rather than scaling the result.
+local scaled = Skull.bounce({0, 4, -10}, {0, 0, 5}, 0.35)
+near(scaled[3], b[3], 'the normal length does not change the bounce')
+-- Already leaving the surface: not flipped back into it, which is what makes
+-- a resting object jitter.
+local leaving = Skull.bounce({0, 1, 3}, up, 0.35)
+assert(leaving[3] == 3, 'a velocity already off the surface is untouched')
+-- Degenerate normals and inputs pass through rather than producing nonsense.
+local zero_n = Skull.bounce({0, 0, -5}, {0, 0, 0}, 0.35)
+assert(zero_n[3] == -5, 'a zero normal is not a surface')
+assert(Skull.bounce(nil, up, 0.35) == nil)
+assert(Skull.RESTITUTION > 0 and Skull.RESTITUTION < 1, 'bone, not rubber')
+assert(Skull.FRICTION > 0 and Skull.FRICTION <= 1, 'sliding is damped, not reversed')
+-- A wall, not a floor: the horizontal component reverses instead.
+local wall = Skull.bounce({-8, 0, 0}, {1, 0, 0}, 0.35)
+assert(wall[1] > 0, 'it comes back off the wall: ' .. wall[1])
+
+-- The drawn position takes a stepped free flight when one is given, so a
+-- bounced path is what gets blended rather than the closed form.
+local blended = Skull.drawn_position({0,0,0}, {0,0,0}, 0.1, {0, 10, 0}, 0, {0, 3, 0})
+near(blended[2], 3, 'the stepped position is used')
+local without = Skull.drawn_position({0,0,5}, {0,0,0}, 0, {0, 10, 0}, 0)
+near(without[3], 5, 'and the closed form still works without one')
+
 -- Capped, so a tracking glitch cannot fling the drawn skull somewhere the real
 -- one never goes.
 local glitch = Skull.release_velocity({{0, 0, 0, 0}, {0.01, 0, 50, 0}}, 0.01)

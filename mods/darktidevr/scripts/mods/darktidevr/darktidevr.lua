@@ -9032,6 +9032,31 @@ function presentation.publish_gameplay_aim_state(active, hit, distance, world_po
         local player = Managers.player:local_player(1)
         local scale = presentation.calibrated_character_scale(player)
         local point = Quaternion.rotate(Quaternion.inverse(rotation),world_point-anchor)/scale
+        -- Why the reticle sits further away than the thing it marks.
+        --
+        -- The offset and the distance are both divided by the character's
+        -- visual scale, and the viewer puts them back with a RIGID transform
+        -- (resolve_gameplay_aim_target -> math::transform_point) which has no
+        -- scale in it. If that division is not matched somewhere else in the
+        -- transport, the reticle lands 1/scale further along the ray than the
+        -- hit -- at 0.9718 that is 2.9%, which aiming down at the ground a few
+        -- metres away puts under the surface.
+        --
+        -- Logged rather than changed: the zoom correction was the obvious
+        -- suspect and turned out to be far too small at percent=3 to matter,
+        -- and this is the next candidate rather than a conclusion. On entry
+        -- into the sights and sparsely after.
+        if presentation.ads_active == true and
+                (presentation.reticle_scale_logged or 0) < 20 and
+                (presentation.reticle_scale_sequence or 0) + 120 <= (sequence or 0) then
+            presentation.reticle_scale_logged = (presentation.reticle_scale_logged or 0) + 1
+            presentation.reticle_scale_sequence = sequence or 0
+            mod:info("DARKTIDEVR_AIM reticle_scale raw_distance_m=%.4f published_distance_m=%.4f " ..
+                "scale=%.4f zoom=%.4f offset_m=%.4f",
+                distance, distance / scale, scale,
+                tonumber(presentation.ads_zoom_applied) or 1,
+                distance / scale - distance)
+        end
         local result = publish(hit and 1 or 0, math.max(.05,math.min(200,distance/scale)),
             Vector3.x(point), Vector3.z(point), -Vector3.y(point), sequence,
             controller_observation.body_anchor_pose_generation,
