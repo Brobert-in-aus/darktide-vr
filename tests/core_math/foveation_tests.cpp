@@ -2,12 +2,15 @@
 // what the pattern costs. None of this needs a headset, which matters because
 // the alternative is judging a shading-rate image by looking at it through one.
 //
-// The fault this is written against is specific. Each eye is submitted with a
-// recentred symmetric projection, and the reticle readback on 18 September
-// showed the two eyes' optical centres at equal and OPPOSITE horizontal NDC.
-// A pattern centred on the render target therefore puts its sharp region off
-// to one side in the left eye and the other side in the right -- which in a
-// headset reads as "foveation looks bad" when what is wrong is where it points.
+// The fault this is written against is that the centre is a decision, not a
+// constant. For FIXED foveation on this renderer the answer happens to be the
+// middle of the image -- the game renders each eye with a symmetric frustum
+// rotated onto that eye's optical axis, so the axis is at NDC 0 by
+// construction -- but that was believed the other way round first, and a
+// pattern that IGNORES the centre passes every test a symmetric fixture can
+// write. In RETICLE mode the two eyes really do differ, by stereo disparity,
+// and a pattern pointing the same way in both is wrong in a way that reads as
+// "foveation looks bad" rather than as "the centre is ignored".
 
 #include "core/foveation.h"
 #include "core/foveation_control.h"
@@ -124,18 +127,19 @@ void tile_counts() {
 }
 
 void the_centre_is_where_it_was_asked_to_be() {
-  // This is the whole point. Two eyes, optical centres at equal and opposite
-  // horizontal NDC, exactly as the reticle readback measured.
-  constexpr float kOpticalOffset = 0.06F;
-  for (const float offset : {-kOpticalOffset, kOpticalOffset}) {
+  // Two eyes aiming at one world point land at equal and opposite horizontal
+  // NDC -- stereo disparity, which is what the reticle readback measured and
+  // what reticle mode has to honour per eye.
+  constexpr float kDisparity = 0.06F;
+  for (const float offset : {-kDisparity, kDisparity}) {
     FoveationPattern pattern;
     pattern.centre_ndc_x = offset;
     const auto image = paint(1920, 2160, 16, pattern);
     float x{}, y{};
     full_rate_centroid(image, x, y);
     require(std::abs(x - offset) < 0.02F,
-            "the sharp region must sit at the eye's optical centre, not the "
-            "image centre: asked " + std::to_string(offset) + ", got " +
+            "the sharp region must sit where it was asked to, not at the image "
+            "centre: asked " + std::to_string(offset) + ", got " +
             std::to_string(x));
     require(std::abs(y) < 0.02F, "no vertical offset was asked for");
   }
@@ -143,9 +147,9 @@ void the_centre_is_where_it_was_asked_to_be() {
   // And the two eyes must actually differ. A pattern that ignored the centre
   // would pass the test above only by accident of symmetry, so compare them.
   FoveationPattern left;
-  left.centre_ndc_x = -kOpticalOffset;
+  left.centre_ndc_x = -kDisparity;
   FoveationPattern right;
-  right.centre_ndc_x = kOpticalOffset;
+  right.centre_ndc_x = kDisparity;
   const auto left_image = paint(1920, 2160, 16, left);
   const auto right_image = paint(1920, 2160, 16, right);
   bool differs = false;
@@ -352,7 +356,11 @@ FoveationRequest reticle_request(float x, float y, float age = 0.0F) {
   request.width = 1920;
   request.height = 2160;
   request.tile_size = 16;
-  request.optical_centre_ndc_x = -0.06F;
+  // Deliberately not zero: a fallback that equals the default would make
+  // "fell back" and "did nothing" indistinguishable. On this renderer the
+  // fixed centre IS zero, so the fixture uses a value only a real fallback
+  // can produce.
+  request.fallback_centre_ndc_x = -0.06F;
   request.reticle_valid = true;
   request.reticle_ndc_x = x;
   request.reticle_ndc_y = y;
@@ -400,7 +408,7 @@ void an_untrustworthy_aim_point_falls_back_to_the_optics() {
                 darktidevr::core::foveation_reason_name(decision.reason));
     require(std::abs(decision.centre_ndc_x - (-0.06F)) < 1.0e-6F &&
                 std::abs(decision.centre_ndc_y) < 1.0e-6F,
-            std::string(test.what) + " did not fall back to the optical centre");
+            std::string(test.what) + " did not fall back to the fixed centre");
   }
 
   FoveationState state;
@@ -480,12 +488,12 @@ void fixed_mode_ignores_the_aim_point_entirely() {
   // The mode too: it is what the mutation turns on, and a compile-time
   // mode lets the compiler fold the whole decision.
   request.mode = opaque(FoveationMode::fixed);
-  request.optical_centre_ndc_x = opaque(-0.06F);
+  request.fallback_centre_ndc_x = opaque(-0.06F);
   const auto decision = state.decide(request);
-  require(decision.reason == FoveationDecision::Reason::optical_centre,
+  require(decision.reason == FoveationDecision::Reason::fixed_centre,
           "fixed mode must not report a reticle reason");
   require(std::abs(decision.centre_ndc_x - (-0.06F)) < 1.0e-6F,
-          "fixed mode must sit on the optical centre even with a good aim point");
+          "fixed mode must sit on the fixed centre even with a good aim point");
 }
 
 }  // namespace

@@ -28,11 +28,21 @@ enum ShadingRate : std::uint8_t {
 // Where the sharp region sits and how quickly it falls away.
 //
 // `centre_ndc_x/y` is the foveal centre in normalised device coordinates,
-// -1..1, with +y up. It is NOT assumed to be the middle of the image: the eyes
-// are submitted with a recentred symmetric projection and each eye's optical
-// centre sits at an equal and opposite horizontal offset, so a pattern centred
-// on the render target would put its sharp region measurably off where the eye
-// looks, in opposite directions per eye (reticle readback, 18 September).
+// -1..1, with +y up.
+//
+// For FIXED foveation on this renderer it is (0, 0), and the reason is worth
+// writing down because the opposite was believed first. The game renders each
+// eye with `Projection.recentered_eye`: a SYMMETRIC frustum whose axis is
+// rotated onto that eye's optical axis. So in Darktide's eye render target the
+// optical axis is at NDC 0 by construction, in both eyes, and the centre of
+// the image is the right place for a fixed pattern.
+//
+// It is still a parameter, and not for tidiness. In RETICLE mode the two eyes
+// genuinely differ: the aim point is a world point at a finite distance, and a
+// world point projects to different NDC in the two eyes -- stereo disparity,
+// which grows as the target gets nearer. That is what the reticle readback on
+// 18 September measured as equal and opposite horizontal NDC. It is a real
+// per-eye difference; it is just disparity rather than an optical offset.
 //
 // The radii are in NDC too, and horizontal and vertical are separate because
 // the field is wider than it is tall: a circular foveal region either wastes

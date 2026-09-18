@@ -15,6 +15,7 @@ using SetVertexShaderDumpFn = int (*)(int);
 using EnableClusterTraceFn = int (*)();
 using SetClusterLightVisibilityFixFn = int (*)(int);
 using SetQueuePriorityFn = int (*)(int);
+using SetFoveationFn = int (*)(int);
 using SetBillboardBasisFn = int (*)(float, float, float, float, float, float,
                                     int);
 using InstallForDeviceFn = int (*)(ID3D12Device*);
@@ -218,6 +219,14 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID parameter, PVOID*) {
       mod_bin_path + L"..\\darktidevr_billboard_pixel_shader_probe.flag");
   const auto queue_priority_requested = text_flag_enabled(
       mod_bin_path + L"..\\darktidevr_queue_priority.flag");
+  // Foveated rendering, step one. `census` counts draws per render-target
+  // shape and writes the answer to %TEMP%; it binds nothing and changes no
+  // render state, so a run with it on cannot make the game look wrong. The
+  // shading rate itself is not applied yet: which passes to apply it to is
+  // exactly what the census is for.
+  const auto foveation_value =
+      text_flag_value(mod_bin_path + L"..\\darktidevr_foveation.flag");
+  const auto foveation_requested = foveation_value == "census" ? 1 : 0;
   const auto gpu_priority_value =
       text_flag_value(mod_bin_path + L"..\\darktidevr_gpu_process_priority.flag");
   const auto gpu_priority_class = gpu_process_priority_class(gpu_priority_value);
@@ -262,11 +271,15 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID parameter, PVOID*) {
           native, "dtvr_set_cluster_light_visibility_fix"));
   const auto set_queue_priority = reinterpret_cast<SetQueuePriorityFn>(
       GetProcAddress(native, "dtvr_set_queue_priority"));
+  const auto set_foveation = reinterpret_cast<SetFoveationFn>(
+      GetProcAddress(native, "dtvr_set_foveation"));
   const auto install = reinterpret_cast<InstallForDeviceFn>(
       GetProcAddress(native, "dtvr_install_for_device"));
   const auto queue_priority_result =
       set_queue_priority ? set_queue_priority(queue_priority_requested ? 1 : 0)
                          : -1;
+  const auto foveation_result =
+      foveation_requested && set_foveation ? set_foveation(1) : -1;
   const auto diagnostics_result =
       select_diagnostics
           ? select_diagnostics(diagnostic_hooks_requested ? 1 : 0)
@@ -307,6 +320,7 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID parameter, PVOID*) {
             "shader_dump_requested=%d shader_dump=%d "
             "pixel_probe_requested=%d pixel_probe=%d "
             "draw_census_requested=%d "
+            "foveation_requested=%d foveation=%d "
             "cluster_trace_requested=%d cluster_trace=%d "
             "cluster_light_fix_requested=%d cluster_light_fix=%d "
             "basis=%d install=%d",
@@ -318,6 +332,7 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID parameter, PVOID*) {
             substitution_result, vertex_shader_dump_requested ? 1 : 0,
             shader_dump_result, pixel_probe_requested ? 1 : 0, pixel_probe_result,
             draw_census_requested ? 1 : 0,
+            foveation_requested, foveation_result,
             cluster_trace_requested ? 1 : 0,
             cluster_trace_result,
             cluster_light_visibility_fix_requested ? 1 : 0,

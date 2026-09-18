@@ -562,3 +562,15 @@ if(BUILD_TESTING)
   add_test(NAME synthetic_gpu_stage_summary COMMAND "${Python3_EXECUTABLE}" -B
     "${PROJECT_SOURCE_DIR}/tools/stereo/test-summarize-synthetic-gpu-stages.py")
 endif()
+
+# The render-target census that decides where the shading rate belongs. Pure:
+# it binds nothing and changes no state, so it can be judged here rather than
+# in a headset (18 September).
+add_executable(darktidevr-foveation-census-tests foveation_census_tests.cpp)
+target_compile_options(darktidevr-foveation-census-tests PRIVATE /W4 /WX /permissive-)
+target_link_libraries(darktidevr-foveation-census-tests PRIVATE darktidevr_core)
+if(BUILD_TESTING)
+  add_test(NAME foveation_census COMMAND darktidevr-foveation-census-tests)
+  set_tests_properties(foveation_census PROPERTIES
+    PASS_REGULAR_EXPRESSION "foveation_census.result=pass")
+endif()

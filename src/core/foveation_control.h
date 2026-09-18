@@ -16,8 +16,11 @@ namespace darktidevr::core {
 
 enum class FoveationMode {
   off,
-  // Centred on each eye's optical centre. The eyes are submitted with a
-  // recentred symmetric projection, so that is NOT the middle of the image.
+  // Centred where the caller says the eye's fixed centre is. On this renderer
+  // that is the middle of the image: the game renders each eye with a
+  // symmetric frustum rotated onto its optical axis, so the axis is at NDC 0
+  // in both eyes. The caller supplies it anyway, because a renderer that did
+  // otherwise would be a one-line change here rather than a rewrite.
   fixed,
   // Centred on the aim point, which in an aimed shooter is where the player is
   // usually looking -- most of the benefit of eye tracking without any. Falls
@@ -30,9 +33,10 @@ struct FoveationRequest {
   std::uint32_t width{};
   std::uint32_t height{};
   std::uint32_t tile_size{};
-  // This eye's optical centre in NDC: the fallback, and the `fixed` answer.
-  float optical_centre_ndc_x{};
-  float optical_centre_ndc_y{};
+  // Where this eye's pattern sits when the aim point is not being followed:
+  // the `fixed` answer, and the fallback for `reticle`.
+  float fallback_centre_ndc_x{};
+  float fallback_centre_ndc_y{};
   // The aim point in this eye's NDC, and whether it can be trusted. `age` is
   // seconds since it was published.
   bool reticle_valid{};
@@ -52,7 +56,7 @@ struct FoveationDecision {
   // which is a different problem from foveation not helping.
   enum class Reason {
     disabled,
-    optical_centre,
+    fixed_centre,
     reticle,
     reticle_invalid,
     reticle_stale,
@@ -64,7 +68,7 @@ struct FoveationDecision {
 inline const char* foveation_reason_name(FoveationDecision::Reason reason) {
   switch (reason) {
     case FoveationDecision::Reason::disabled: return "disabled";
-    case FoveationDecision::Reason::optical_centre: return "optical_centre";
+    case FoveationDecision::Reason::fixed_centre: return "fixed_centre";
     case FoveationDecision::Reason::reticle: return "reticle";
     case FoveationDecision::Reason::reticle_invalid: return "reticle_invalid";
     case FoveationDecision::Reason::reticle_stale: return "reticle_stale";
@@ -104,11 +108,11 @@ class FoveationState {
       return decision;
     }
     decision.enabled = true;
-    decision.centre_ndc_x = request.optical_centre_ndc_x;
-    decision.centre_ndc_y = request.optical_centre_ndc_y;
+    decision.centre_ndc_x = request.fallback_centre_ndc_x;
+    decision.centre_ndc_y = request.fallback_centre_ndc_y;
     decision.reason = request.mode == FoveationMode::reticle
                           ? FoveationDecision::Reason::reticle_invalid
-                          : FoveationDecision::Reason::optical_centre;
+                          : FoveationDecision::Reason::fixed_centre;
     if (request.mode == FoveationMode::reticle) {
       const auto finite = [](float value) {
         return value == value && std::abs(value) < 1.0e6F;

@@ -1,4 +1,5 @@
 #include "producer/buffer_registry.h"
+#include "producer/foveation_census.h"
 #include "producer/guarded_copy.h"
 #include "producer/deferred_function_lookup.h"
 #include "producer/profile_percentiles.h"
@@ -2041,6 +2042,79 @@ void end_stock_menu_draw_redirect(ID3D12GraphicsCommandList* commands,
                                   const MenuDrawRedirect& redirect);
 int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
                                ID3D12CommandQueue* queue, bool engine_source = false);
+
+// Foveation, step one: find out where the shading actually goes.
+//
+// The rate has to be set on the passes that SHADE, and two plausible guesses
+// are both wrong -- the eye final is the resolved output, and the main passes
+// run at the DLSS internal resolution rather than the eye extent. So this
+// counts draws per render-target shape for a window of presents and writes the
+// answer. It binds nothing and changes no state: a run with it on cannot make
+// the game look wrong, which is the point of doing it before touching the
+// rate.
+std::atomic<int> foveation_mode{0};  // 0 off, 1 census
+darktidevr::producer::FoveationCensus foveation_census;
+// The log handle has its own mutex. state_mutex is taken by the recording
+// threads, and writing plus flushing a file while holding it would stall
+// command-list recording once a window -- a visible hitch over Virtual
+// Desktop (review, 18 September).
+std::mutex foveation_log_mutex;
+std::atomic<HANDLE> foveation_log{INVALID_HANDLE_VALUE};
+std::atomic<std::uint64_t> foveation_window_start{0};
+
+bool foveation_census_enabled() {
+  return foveation_mode.load(std::memory_order_relaxed) == 1;
+}
+
+// A window of presents, then a line per shape and a fresh window. A whole
+// session summed into one total would mix the menu, the loading screen and the
+// mission, and the shapes differ in each.
+constexpr std::uint64_t kFoveationCensusWindow = 600;
+
+void write_foveation_census(std::uint64_t present) {
+  const auto log = foveation_log.load(std::memory_order_acquire);
+  if (!foveation_census_enabled() || log == INVALID_HANDLE_VALUE) {
+    return;
+  }
+  const auto start = foveation_window_start.load(std::memory_order_relaxed);
+  if (present < start + kFoveationCensusWindow) {
+    return;
+  }
+  foveation_window_start.store(present, std::memory_order_relaxed);
+  char header[160]{};
+  const auto header_length = std::snprintf(
+      header, sizeof(header),
+      "DARKTIDEVR_FOVEATION_CENSUS window_end_present=%llu presents=%llu\r\n",
+      static_cast<unsigned long long>(present),
+      static_cast<unsigned long long>(kFoveationCensusWindow));
+  std::array<char, 8192> body{};
+  const auto body_length =
+      foveation_census.write(body.data(), static_cast<int>(body.size()) - 1);
+  foveation_census.clear();
+  std::scoped_lock lock(foveation_log_mutex);
+  DWORD written{};
+  if (header_length > 0) {
+    WriteFile(log, header, static_cast<DWORD>(header_length), &written,
+              nullptr);
+  }
+  if (body_length > 0) {
+    WriteFile(log, body.data(), static_cast<DWORD>(body_length), &written,
+              nullptr);
+  }
+  // Deliberately NOT FlushFileBuffers: it is a synchronous disk flush in the
+  // present hook, and the run reads this file after the game has exited. The
+  // handle is closed on the way out, which flushes it.
+}
+
+// The innermost marker this list is inside, if the marker stacks are being
+// kept. Engines label their passes, so it usually names the pass.
+const char* foveation_marker_for(ID3D12GraphicsCommandList* commands) {
+  const auto found = command_marker_stacks.find(commands);
+  if (found == command_marker_stacks.end() || found->second.empty()) {
+    return nullptr;
+  }
+  return found->second.back().c_str();
+}
 
 void write_marker_log(const char* format, ...) {
   if (marker_log == INVALID_HANDLE_VALUE ||
@@ -6238,6 +6312,12 @@ HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
     // trace associated with it until a later Reset actually succeeds.
     return reset_result;
   }
+  if (foveation_census_enabled()) {
+    // A reset list has nothing bound, and the pointer may be reused for a
+    // different list. Either way, whatever it had bound is gone: attributing
+    // the next draw to it would charge a pass that is not running.
+    foveation_census.release(commands);
+  }
   if (auto* readback = billboard_readback.load(std::memory_order_acquire)) {
     readback->retired(commands);
     std::scoped_lock lock(trace_mutex);
@@ -7957,6 +8037,9 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
                                            UINT start_instance) {
   darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
       darktidevr::producer::RenderApiCpuProfile::draw);
+  if (foveation_census_enabled()) {
+    foveation_census.draw(commands, vertex_count, instance_count);
+  }
   record_cluster_submission(commands, "draw", vertex_count, instance_count,
                             start_vertex, start_instance, 0);
   if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
@@ -8181,6 +8264,9 @@ void STDMETHODCALLTYPE draw_indexed_instanced_hook(
     UINT start_index, INT base_vertex, UINT start_instance) {
   darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
       darktidevr::producer::RenderApiCpuProfile::draw);
+  if (foveation_census_enabled()) {
+    foveation_census.draw(commands, index_count, instance_count);
+  }
   queue_cluster_light_visibility_fov_patches(commands);
   record_cluster_submission(
       commands, "draw_indexed", index_count, instance_count, start_index,
@@ -8532,6 +8618,15 @@ void STDMETHODCALLTYPE dispatch_hook(ID3D12GraphicsCommandList* commands,
 void STDMETHODCALLTYPE rs_set_viewports_hook(ID3D12GraphicsCommandList* commands,
                                              UINT count,
                                              const D3D12_VIEWPORT* viewports) {
+  if (foveation_census_enabled() && count > 0 && viewports) {
+    // The census keys a shape on the target AND the viewport: an
+    // upscaled internal resolution is usually a smaller viewport into a
+    // full-size target, and without this every pass would report the
+    // same shape.
+    foveation_census.viewport(
+        commands, static_cast<std::uint32_t>(viewports[0].Width + 0.5F),
+        static_cast<std::uint32_t>(viewports[0].Height + 0.5F));
+  }
   if ((world_ui_capture_requested() || marker_log != INVALID_HANDLE_VALUE) && count > 0 && viewports) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
@@ -9093,9 +9188,24 @@ void STDMETHODCALLTYPE om_set_render_targets_hook(
     const D3D12_CPU_DESCRIPTOR_HANDLE* depth) {
   const bool inspect_bound_target =
       gpu_profile_enabled.load(std::memory_order_relaxed) ||
+      foveation_census_enabled() ||
       !named_camera_outputs_ready_hint.load(std::memory_order_acquire);
+  if (foveation_census_enabled() && (count == 0 || targets == nullptr)) {
+    // A depth-only pass binds no colour target. Say so rather than letting its
+    // draws stay charged to whatever this list had bound before.
+    foveation_census.bind(commands, 0, 0, 0, nullptr);
+  }
   if (inspect_bound_target && count > 0 && targets) {
     const auto target = descriptor_snapshot(targets[0].ptr);
+    if (foveation_census_enabled()) {
+      // The marker names the pass, which is most of what makes the census
+      // readable. It is copied out under the lock that guards the stacks; the
+      // census itself needs no lock on this path.
+      std::scoped_lock lock(boundary_capture_mutex);
+      foveation_census.bind(commands, static_cast<std::uint32_t>(target.width),
+                            target.height, target.format,
+                            foveation_marker_for(commands));
+    }
     record_gpu_stage_boundary(commands, target);
     auto* resource = reinterpret_cast<ID3D12Resource*>(target.resource);
     if (resource) {
@@ -12711,6 +12821,7 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
     candidate_frame_eye0_instance_count = 0;
   }
   const auto present = present_count.fetch_add(1, std::memory_order_relaxed) + 1;
+  write_foveation_census(present);
   const auto native_burst_until =
       streamline_native_burst_until_call.load(std::memory_order_acquire);
   const bool sample_streamline =
@@ -13622,7 +13733,8 @@ void STDMETHODCALLTYPE begin_event_hook(ID3D12GraphicsCommandList* commands,
   log_focused_marker_event("BEGIN", commands, metadata, data, size);
   if (boundary_census_log != INVALID_HANDLE_VALUE ||
       marker_log != INVALID_HANDLE_VALUE ||
-      cluster_trace_log != INVALID_HANDLE_VALUE) {
+      cluster_trace_log != INVALID_HANDLE_VALUE ||
+      foveation_census_enabled()) {
     std::scoped_lock lock(boundary_capture_mutex);
     command_marker_stacks[commands].push_back(
         boundary_marker_label(metadata, data, size));
@@ -13637,9 +13749,12 @@ void STDMETHODCALLTYPE end_event_hook(ID3D12GraphicsCommandList* commands) {
   write_focused_log("phase=%d\tframe=%llu\tCL=%p\tEND\r\n",
                     focused_trace_phase.load(std::memory_order_relaxed),
                     present_count.load(std::memory_order_relaxed), commands);
+  // The same condition as the push above: if they disagree the stacks
+  // either grow without bound or pop what was never pushed.
   if (boundary_census_log != INVALID_HANDLE_VALUE ||
       marker_log != INVALID_HANDLE_VALUE ||
-      cluster_trace_log != INVALID_HANDLE_VALUE) {
+      cluster_trace_log != INVALID_HANDLE_VALUE ||
+      foveation_census_enabled()) {
     std::scoped_lock lock(boundary_capture_mutex);
     const auto found = command_marker_stacks.find(commands);
     if (found != command_marker_stacks.end() && !found->second.empty()) {
@@ -14032,7 +14147,8 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                     reinterpret_cast<void**>(&original_draw_instanced)) !=
            MH_OK) ||
       ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks ||
-        install_cluster_light_visibility_fix_hooks) &&
+        install_cluster_light_visibility_fix_hooks ||
+        foveation_census_enabled()) &&
        MH_CreateHook(command_list_vtable[13], &draw_indexed_instanced_hook,
                     reinterpret_cast<void**>(
                          &original_draw_indexed_instanced)) != MH_OK) ||
@@ -14060,7 +14176,8 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                     &ia_set_primitive_topology_hook,
                     reinterpret_cast<void**>(
                         &original_ia_set_primitive_topology)) != MH_OK) ||
-      ((kInstallDiagnosticRenderHooks || world_ui_capture_requested()) &&
+      ((kInstallDiagnosticRenderHooks || world_ui_capture_requested() ||
+        foveation_census_enabled()) &&
        MH_CreateHook(command_list_vtable[21], &rs_set_viewports_hook,
                      reinterpret_cast<void**>(&original_rs_set_viewports)) !=
            MH_OK) ||
@@ -15950,6 +16067,39 @@ dtvr_set_menu_direct_capture(int enabled) {
     command_traces.clear();
   }
   return requested ? 1 : 0;
+}
+
+// 0 off, 1 census. Census is observation only: it binds nothing and changes no
+// render state, so a run with it on cannot make the game look wrong. Applying
+// an actual shading rate waits on what the census says, because the passes to
+// apply it to are not known yet and guessing is how a feature gets judged on a
+// mistake.
+extern "C" __declspec(dllexport) int dtvr_set_foveation(int mode) {
+  if (mode != 0 && mode != 1) {
+    return 1;
+  }
+  if (mode == 1 &&
+      foveation_log.load(std::memory_order_acquire) == INVALID_HANDLE_VALUE) {
+    wchar_t temporary_path[MAX_PATH]{};
+    if (GetTempPathW(MAX_PATH, temporary_path) == 0) {
+      return 40;
+    }
+    const std::wstring path =
+        std::wstring(temporary_path) + L"darktidevr-foveation-census.log";
+    std::scoped_lock lock(foveation_log_mutex);
+    const auto log = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+                                 nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
+                                 nullptr);
+    if (log == INVALID_HANDLE_VALUE) {
+      return 41;
+    }
+    foveation_log.store(log, std::memory_order_release);
+  }
+  foveation_census.clear();
+  foveation_window_start.store(
+      present_count.load(std::memory_order_relaxed), std::memory_order_relaxed);
+  foveation_mode.store(mode, std::memory_order_release);
+  return 0;
 }
 
 extern "C" __declspec(dllexport) int dtvr_set_queue_priority(int enabled) {

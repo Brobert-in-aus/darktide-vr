@@ -55,8 +55,23 @@ native producer already hooks:
   `ID3D12Resource*` and compares it against `named_camera_output_resources`,
   the two learned eye finals.
 
-So the gate already exists: *the eye colour target is bound on this command
-list*. What has to be added is small and specific:
+**And that gate is the wrong one, which is why the first thing built is a
+census rather than the rate.** The eye final is the RESOLVED output: by the
+time it is bound the shading is done, and setting a rate there would foveate a
+blit. The main passes also run at the DLSS internal resolution rather than the
+eye extent, so "the target whose size matches the eye" would miss them too.
+Both of those are plausible enough to have been written down here as the plan.
+
+`src/producer/foveation_census.h` counts draws and primitives per
+render-target SHAPE -- grouped by shape rather than by resource, because an
+engine rotates through several physical textures for one logical pass -- and
+writes a line per shape, busiest first, to
+`%TEMP%\darktidevr-foveation-census.log`. It binds nothing and changes no
+render state, so a run with it on cannot make the game look wrong. Enabled by
+`darktidevr_foveation.flag` containing `census`.
+
+One unattended run says which extents actually receive the shading, and that
+decides where the rate belongs. Then, and only then:
 
 1. `QueryInterface` the hooked list for `ID3D12GraphicsCommandList5`. VRS lives
    there; a list that does not support it is skipped.
@@ -78,15 +93,25 @@ nothing from the shaders.
 
 ## Three things this project already knows that change the design
 
-**The foveal centre is not the centre of the image.** The eyes are submitted
-with `recentered_symmetric_projection`, and the reticle work on 18 September
-established that each eye's optical centre sits at an equal and *opposite*
-horizontal NDC offset -- that is what the two readback blobs' ± symmetry meant.
-A foveation pattern centred on the render target would therefore put its sharp
-region a measurable distance from where the eye actually looks, and would do so
-in opposite directions in the two eyes. The image must be built per eye, about
-that eye's optical centre. This is the detail most likely to make a first
-attempt read as "foveation looks bad" when what is wrong is its centre.
+**Where the foveal centre goes, corrected.** This note first claimed the sharp
+region had to sit off-centre, at each eye's optical centre, and that claim was
+wrong. The game renders each eye with `Projection.recentered_eye`
+(`darktidevr_projection_math.lua:19`): a **symmetric** frustum whose axis is
+rotated onto that eye's optical axis. So in Darktide's eye render target the
+optical axis is at NDC 0 by construction, in both eyes, and a fixed pattern
+belongs at the middle of the image.
+
+What the reticle readback on 18 September actually measured -- the aim point at
+equal and *opposite* horizontal NDC in the two eyes -- is **stereo disparity**.
+A world point at a finite distance projects to different NDC in each eye, and
+the difference grows as the target gets nearer. That is a genuine per-eye
+difference, and it is exactly why `reticle` mode has to build the image per eye
+rather than once; it is simply not an optical offset, and fixed mode does not
+need one.
+
+The centre stays a parameter regardless. Reticle mode needs it, and a runtime
+that submitted eyes some other way would be a one-line change rather than a
+rewrite.
 
 **Virtual Desktop's FOV tangent shrinks the eye target.** The real extent has
 been 1908x2076, not the bootstrap 2112x2304, and it moves with the VD setting.
@@ -111,7 +136,8 @@ looks bad", which is indistinguishable from "foveation is not worth it".
 
 - `FoveationPattern` carries the foveal centre in NDC and separate horizontal
   and vertical radii for the inner and middle zones. The centre is a parameter
-  and never assumed to be the middle of the image, which is the whole point.
+  rather than a constant -- for fixed foveation on this renderer it is (0, 0),
+  and for reticle mode the two eyes differ by disparity.
 - `paint_foveation_image` fills an R8_UINT tile image at a caller-supplied row
   pitch. The test uses a 256-aligned pitch, as a real D3D12 upload does, and
   checks the padding past each row is untouched -- a test passing the tile
@@ -135,9 +161,9 @@ which would have blocked exactly the tuning this exists to allow.
 ## What a first cut should be
 
 Fixed foveation, off by default, behind a producer flag, with a static three-
-zone radial pattern about each eye's optical centre: `1X1` inside an inner
-ellipse, `2X2` in a ring, `4X4` outside it, with the ellipse wider than tall
-because the horizontal field is where the periphery is largest.
+zone radial pattern about the centre of each eye's render target: `1X1` inside
+an inner ellipse, `2X2` in a ring, `4X4` outside it, with the ellipse wider
+than tall because the horizontal field is where the periphery is largest.
 
 Make the zone radii and the outer rate settable from the launcher rather than
 compiled in. The whole point of a first cut is to find where the boundary
@@ -155,9 +181,10 @@ that is `openxr.gameplay_reticle_clip`, the number the reticle work measured to
 under a pixel. So a third mode:
 
 - **off** -- no shading rate image, the current behaviour.
-- **fixed** -- centred on each eye's optical centre.
-- **reticle** -- centred on the aim point, falling back to the optical centre
-  whenever the aim point is stale, absent or off-screen.
+- **fixed** -- centred on the render target, which is where the eye's optical
+  axis lands under the recentred symmetric projection.
+- **reticle** -- centred on the aim point, per eye, falling back to the fixed
+  centre whenever the aim point is stale, absent or off-screen.
 
 `paint_foveation_image` needs nothing new for it: the centre is already a
 parameter, and the test drives an off-centre aim point and an out-of-range one.

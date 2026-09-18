@@ -958,10 +958,42 @@ if (-not $nativeCaptureSource.Contains(
             'execute_call_count.fetch_add(1, std::memory_order_relaxed);')) {
     throw 'Production queue and barrier telemetry atomics must remain disabled when diagnostic render hooks were not selected.'
 }
-if (-not [regex]::IsMatch(
-        $nativeCaptureSource,
-        '\(\(kInstallDiagnosticRenderHooks\s*\|\|\s*install_cluster_trace_hooks\s*\|\|\s*install_cluster_light_visibility_fix_hooks\)\s*&&\s*MH_CreateHook\(command_list_vtable\[13\],\s*&draw_indexed_instanced_hook,')) {
-    throw 'Indexed-draw interception must remain limited to broad diagnostics, the explicit cluster trace, or the exact cluster-light correction; never stock menu capture alone.'
+# Indexed draws are the bulk of a frame, so intercepting them must stay an
+# explicit opt-in. The rule is not "these three names" but "every condition in
+# this gate is something a run has to ask for": an always-on condition here --
+# `kStockMenuDirectRenderEnabled` is `constexpr true` -- would put a hook on
+# every draw of every session. So the gate is parsed and each condition
+# checked against the opt-ins, rather than matched as a fixed string that has
+# to be rewritten whenever a legitimate one is added.
+$indexedDrawGate = [regex]::Match(
+    $nativeCaptureSource,
+    '\(\(([^()]*(?:\([^()]*\)[^()]*)*)\)\s*&&\s*MH_CreateHook\(command_list_vtable\[13\],\s*&draw_indexed_instanced_hook,')
+if (-not $indexedDrawGate.Success) {
+    throw 'The indexed-draw hook gate could not be read; it must stay an explicit opt-in and something must be able to check that.'
+}
+$allowedIndexedDrawOptIns = @(
+    'kInstallDiagnosticRenderHooks',
+    'install_cluster_trace_hooks',
+    'install_cluster_light_visibility_fix_hooks',
+    # The foveation render-target census: off unless darktidevr_foveation.flag
+    # says so, and useless without this hook -- DrawInstanced alone is
+    # fullscreen triangles, particles and UI, so a census without indexed
+    # draws reports a post-process blit as the whole of the shading.
+    'foveation_census_enabled()'
+)
+$indexedDrawConditions = @(
+    $indexedDrawGate.Groups[1].Value -split '\|\|' |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -ne '' })
+if ($indexedDrawConditions.Count -eq 0) {
+    throw 'The indexed-draw hook gate has no conditions, so it is always installed.'
+}
+foreach ($condition in $indexedDrawConditions) {
+    if ($allowedIndexedDrawOptIns -notcontains $condition) {
+        throw ("Indexed-draw interception is gated on '$condition', which is not an explicit opt-in. " +
+               'It must remain limited to broad diagnostics, the cluster trace, the cluster-light correction ' +
+               'or the foveation census; never stock menu capture or anything else always on.')
+    }
 }
 if (-not $source.Contains('last_mode_publish_t = -math.huge') -or
         -not $source.Contains('now - presentation.last_mode_publish_t >= 0.5') -or
