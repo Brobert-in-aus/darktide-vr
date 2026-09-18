@@ -130,7 +130,7 @@ finishes) over a scripted sequence — the single highest-value test here,
 since it covers the class that has now bitten twice.
 **Risk** low. **Size** a morning for the set.
 
-### A5. The last fixed-arity forwarders
+### A5. The last fixed-arity forwarders — DONE, and it was 40 of them, not 12
 
 `darktidevr_haptics.lua:519` still takes `(name, fn, a..f)`; twelve
 `mod:hook` wrappers in `darktidevr.lua` name the stock signature and call
@@ -143,15 +143,24 @@ broken today; all are the shape that dropped `exclusive_stick` for a day.
 
 ### A6. Tests that would have caught what has actually bitten
 
-- `src/core/reticle_atlas.h` has never had a test: assert the vignette's
-  alpha at the runtime's real angles (A1), and that the painted box contains
-  the submitted `imageRect` at both 2112x1188 and 1908x1073.
-- A parameterised layout test over {2112, 1908} for every overlay consumer
-  (`item_radial`, `forearm_holsters`, `holster_counts`, `ammo_readout`,
-  `hud_panel`), not just the two fixed yesterday.
+- `src/core/reticle_atlas.h` has never had a test — **DONE**
+  (`tests/core_math/reticle_atlas_tests.cpp`): it reproduces the run's
+  `peak_deg=52.1` from first principles, pins that the painted box contains
+  the submitted rectangle at both eye targets, and fails if the vignette
+  returns to its fixed size.
+- A parameterised layout test over {2112, 1908} for every overlay consumer —
+  **mostly done** (`test-overlay-cell-fit.lua` covers the wrist display, the
+  item radial, the forearm item name, the holster counts and the ammo ring at
+  three tangents). `hud_panel` is not an atlas cell consumer and is left out
+  deliberately.
 - A test that every module's `RESOLUTION_LOOKUP` consumer reads the variable
-  rather than a literal.
-- A wrapper round-trip test (`select('#', ...)`) for A5.
+  rather than a literal — **DONE**, as a source invariant: the eye target's
+  dimensions may appear exactly twice, at their bootstrap declaration, and a
+  copy anywhere else fails by name and line.
+- A wrapper round-trip test (`select('#', ...)`) for A5 — the frame
+  profiler's already exists (`test-frame-profile.lua`, ten arguments through
+  with trailing nils kept), and A5 itself is now guarded by a source
+  invariant with a mutation harness (`tools/lua/mutate-hook-arity.py`).
 **Size** an afternoon; each is small on its own.
 
 ### A7. Presentation: displays that switch themselves off for the session
@@ -181,9 +190,11 @@ afterwards. Re-arm on `destroy()` and latch on three consecutive failures.
 - `hand_overlay.draw` and `marker_atlas.draw` are the only camera-update
   draws not inside a `frame_profile.section`, so the atlas pass has been
   invisible in every profile taken.
-- Dead `gui` upvalues in `_wrist_display.lua:92` and `_holster_counts.lua:40`.
+- Dead `gui` upvalues in `_wrist_display.lua:92` and `_holster_counts.lua:40`
+  — **DONE**. Neither was ever assigned: both displays stopped owning a GUI
+  when they moved to the hand overlay's atlas.
 
-### A9. Body: two guards before anything worn
+### A9. Body: two guards before anything worn — DONE (both, earlier today)
 
 - **The reflection with a mismatched rig puts a head on the camera.**
   `darktidevr_body_mirror.lua:684` returns early after `place()` when
