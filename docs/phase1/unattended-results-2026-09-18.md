@@ -642,3 +642,57 @@ The general lesson, and the third of its kind today: **the test agreed because
 it asserted the number I had chosen.** It now asserts what the cell must hold,
 derived from the popup's own geometry, and re-applying the 256 cell fails it
 by name.
+
+## The fourth PC bugcheck, and why none of them has ever left a dump
+
+The measurement run above crashed the PC during the level load, before the
+game wrote a line of console output. That is the fourth, and the first with
+the bugcheck fields read out of the event log:
+
+```
+Kernel-Power id=41   BugcheckCode = 30 (0x1E, KMODE_EXCEPTION_NOT_HANDLED)
+                     BugcheckParameter1 = 0xC0000006 (STATUS_IN_PAGE_ERROR)
+```
+
+A kernel-mode exception caused by a **failed page-in** -- the system asked
+for data from disk and did not get it -- during the heaviest streaming I/O the
+game does. That is consistent with all four happening at a level load.
+
+**And none of the four produced a dump**, which is why no culprit has ever
+been named. `volmgr` event 161, identically, every time:
+
+| when | |
+|---|---|
+| 14 Sep 20:44 | Dump file creation failed, BugCheckProgress 0x00040049 |
+| 15 Sep 13:23 | the same |
+| 15 Sep 18:37 | the same |
+| 18 Sep 11:06 | the same |
+
+What is and is not ruled out:
+
+- **Not free space**: C: has 531 GB free, D: 732 GB, and `D:\CrashDumps`
+  exists.
+- **Not a drive reporting errors**: both NVMe drives report `Healthy`/`OK`,
+  and there is not one `disk`, `nvme`, `stornvme`, `storahci` or `Ntfs` error
+  in the last seven days. (The reliability counters come back empty, which is
+  usual for these controllers rather than a finding.)
+- **Probably the dump configuration.** `CrashDumpEnabled = 2` is a *kernel*
+  dump, and a kernel dump is staged through the page file on the boot volume
+  before being copied out. That page file is auto-managed at 3968 MB on a
+  machine with 63 GB of RAM, which is a plausible shortfall on its own -- and
+  when the bugcheck is itself an in-page error, writing the dump back through
+  the same path is exactly what would fail.
+
+**The recommendation, for the user rather than for me**: set the crash dump
+to *Small memory dump (256 KB)*. A minidump goes to `C:\Windows\Minidump`, is
+a megabyte at most, and does not need the page file staging a kernel dump
+needs -- so the next bugcheck would very likely leave something naming the
+faulting driver, which four have not. System and crash settings are the
+user's to change, so this is written down rather than done:
+
+> System Properties -> Advanced -> Startup and Recovery -> Settings ->
+> "Write debugging information" -> **Small memory dump (256 KB)**.
+
+Nothing in the mod or the viewer can cause a kernel in-page fault directly,
+so this is recorded as a workstation hazard that costs runs, not as a finding
+against the day's work.
