@@ -868,3 +868,56 @@ Smaller things from the same review, all taken:
   is the last report's time, not a measurement: clearing it would push the
   first report a second past the next draw and lose exactly the short-lived
   claimant a reset exists to watch.
+
+## The census run, and the fifth bugcheck
+
+The run never produced a census. The PC bugchecked during the load into the
+hub -- `0x154 UNEXPECTED_STORE_EXCEPTION`, 15:40 -- and the user, who was
+present for this one, reports the detail that matters most: **the crash happens
+at or extremely close to the first frame after the load.** One frame of the
+destination zone shows, then the machine goes. They say that has been true
+every time they have been present for one.
+
+That is the fifth. Four of the five are `0x154`; the 11:06 one was `0x1E` with
+`STATUS_IN_PAGE_ERROR`. Both families are the memory manager failing to get a
+page, and the first frame after a level load is where a zone's commit, the
+loading screen's release and the streamer's encode all land at once.
+
+**This one wrote a dump.** `D:\CrashDumps\MEMORY-20260918-1540.DMP`, 4.97 GB,
+and no `volmgr 161` "dump file creation failed" beside it -- the first in five.
+No kernel debugger is installed on the machine, so it has not been read here.
+A separate session is taking the crash; this note records the facts rather
+than pursuing them.
+
+Recovery, by the standing procedure: `user_settings.config` was zeroed again
+(25708 bytes, every one NUL, the same as 15 September) and was restored from
+the 06:23 backup -- 1338 lines -- with the zeroed file kept beside the
+backups.
+
+### What the crash cost, and the guard it earned
+
+Three request flags outlived the run: `darktidevr_foveation.flag`,
+`darktidevr_enter_psykhanium.flag` and `darktidevr_start_character.flag`. The
+runner restores every flag it writes in its `finally`, and a bugcheck does not
+run `finally`.
+
+The foveation one matters more than the others. It installs a hook on **every
+indexed draw**, so the next session -- worn, or a performance measurement --
+would have carried it silently, and any timing taken there would have been of
+a different renderer than the one being measured. "Check `*.flag` before a worn
+test" was already the rule, and it had already been missed once before.
+
+So the Ready preflight checks it now. `Assert-NoStaleFlags` takes the flags
+present, the one that legitimately persists
+(`darktidevr_crosshair_scale.flag`, which the mod writes as a live setting)
+and the ones this run is deliberately setting via `-AllowFlags`, and refuses
+to start while anything else is there -- naming the files so they can be
+deleted. Three mutations in `tools/lua/mutate-xr-readiness.py`: a stale flag
+waved through because one expected flag was named, a case-sensitive comparison
+that a renamed flag slips past, and every flag treated as persistent. All
+caught.
+
+The gate is checked before the ADB section rather than after it, because it is
+a cheap precondition and because the device-inventory test executes that
+section as a source slice -- anything inside it has to be self-contained,
+which the first cut of this was not.

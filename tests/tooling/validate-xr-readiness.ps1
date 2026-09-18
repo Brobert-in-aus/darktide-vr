@@ -92,4 +92,56 @@ if (-not $leaked) {
     throw 'a VDXR session passed with no Streamer because SteamVR was running'
 }
 
-Write-Output 'xr_readiness=pass cases=19'
+# Request flags that outlived the run that set them. Every flag the runner
+# writes is restored in its `finally`, which does not run when the PC
+# bugchecks mid-load -- which is how 18 September ended, with
+# `darktidevr_foveation.flag` still in the installed mod. That flag installs a
+# hook on every indexed draw, so a later worn session would have carried it
+# silently and any timing taken there would have measured a different
+# renderer.
+$persistent = @('darktidevr_crosshair_scale.flag')
+
+# Nothing but the persistent flag: fine.
+Assert-NoStaleFlags -Present @('darktidevr_crosshair_scale.flag') -Allowed $persistent -Expected @()
+Assert-NoStaleFlags -Present @() -Allowed $persistent -Expected @()
+
+# The actual state the 18 September crash left behind.
+$afterTheCrash = @('darktidevr_crosshair_scale.flag', 'darktidevr_foveation.flag',
+                   'darktidevr_enter_psykhanium.flag', 'darktidevr_start_character.flag')
+$caught = $false
+try { Assert-NoStaleFlags -Present $afterTheCrash -Allowed $persistent -Expected @() }
+catch {
+    $caught = $true
+    foreach ($name in @('darktidevr_foveation.flag', 'darktidevr_enter_psykhanium.flag',
+                        'darktidevr_start_character.flag')) {
+        if ($_.Exception.Message -notlike "*$name*") {
+            throw "The stale-flag message must name $name so it can be deleted: $($_.Exception.Message)"
+        }
+    }
+    if ($_.Exception.Message -like '*crosshair_scale*') {
+        throw 'The persistent flag must not be reported as stale.'
+    }
+}
+if (-not $caught) { throw 'The flags the crash left behind were accepted.' }
+
+# A run that deliberately sets a flag is not refused for it.
+Assert-NoStaleFlags -Present @('darktidevr_crosshair_scale.flag', 'darktidevr_foveation.flag') `
+    -Allowed $persistent -Expected @('darktidevr_foveation.flag')
+
+# But naming one does not excuse the others.
+$caught = $false
+try {
+    Assert-NoStaleFlags -Present @('darktidevr_foveation.flag', 'darktidevr_ads_test.flag') `
+        -Allowed $persistent -Expected @('darktidevr_foveation.flag')
+} catch { $caught = $true }
+if (-not $caught) { throw 'Naming one expected flag excused an unexpected one.' }
+
+# Case and whitespace are the filesystem's business, not a licence to slip a
+# flag past the gate.
+$caught = $false
+try { Assert-NoStaleFlags -Present @('DarktideVR_Foveation.FLAG') -Allowed $persistent -Expected @() }
+catch { $caught = $true }
+if (-not $caught) { throw 'A differently-cased stale flag was accepted.' }
+Assert-NoStaleFlags -Present @('DARKTIDEVR_CROSSHAIR_SCALE.FLAG') -Allowed $persistent -Expected @()
+
+Write-Output 'xr_readiness=pass cases=27'

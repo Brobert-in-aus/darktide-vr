@@ -27,6 +27,23 @@ GATE = os.path.join(ROOT, 'tools', 'unattended', 'xr-readiness.ps1')
 TEST = os.path.join(ROOT, 'tests', 'tooling', 'validate-xr-readiness.ps1')
 
 MUTATIONS = [
+    ('a stale flag is waved through because one expected flag was named',
+     '        @($Present) |\n'
+     '            Where-Object { $_ } |\n'
+     '            Where-Object { $permitted -notcontains $_.Trim().ToLowerInvariant() })',
+     '        @($Present) |\n'
+     '            Where-Object { $_ } |\n'
+     '            Where-Object { $Expected.Count -eq 0 -and'
+     ' $permitted -notcontains $_.Trim().ToLowerInvariant() })'),
+
+    ('the flag comparison becomes case sensitive, so a renamed flag slips past',
+     '$permitted -notcontains $_.Trim().ToLowerInvariant()',
+     '$permitted -cnotcontains $_.Trim()'),
+
+    ('every flag is treated as persistent',
+     '''    if ($stale.Count -gt 0) {''',
+     '''    if ($false) {'''),
+
     ('SteamVR is waved through without checking that vrserver is alive',
      "        if ($SteamVrServerCount -lt 1) {\n"
      "            throw ('SteamVR is the active OpenXR runtime but vrserver is not ' +\n"

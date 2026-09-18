@@ -6,6 +6,10 @@ param(
 
     [switch] $SkipProximityApply,
 
+    # Request flags this run is deliberately setting, so the stale-flag
+    # gate does not refuse them.
+    [string[]] $AllowFlags = @(),
+
     [switch] $RunXrSmoke,
 
     [switch] $RuntimeD3D11Diagnostics,
@@ -103,6 +107,17 @@ $runtimeProfile = Get-XrRuntimeProfile -Runtime $activeRuntime
 # transport, the proximity override and the power dump are all skipped rather
 # than failed.
 $questExpected = $runtimeProfile -ne 'SteamVR'
+
+# Flags from an earlier run change what the next one measures, and an
+# interrupted or bugchecked run leaves them behind. Checked before the
+# readiness gate so a stale flag stops the session rather than silently
+# joining it.
+$presentFlags = @(
+    Get-ChildItem -LiteralPath $modRoot -Filter '*.flag' -File -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.Name })
+if ($Mode -eq 'Ready') {
+    Assert-NoStaleFlags -Present $presentFlags -Allowed $PersistentModFlags -Expected $AllowFlags
+}
 
 $adb = Get-AdbPath
 . (Join-Path $repoRoot 'tools/quest/resolve-quest-transport.ps1')

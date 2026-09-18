@@ -105,3 +105,43 @@ function Assert-XrReadiness {
         throw 'Quest is not awake with its display held on; reapply the proximity override.'
     }
 }
+
+# Request flags that outlived the run that set them.
+#
+# Every flag the runner writes is restored in its `finally`, which does not run
+# when the run is interrupted -- or when the PC bugchecks mid-load, which has
+# now happened five times. The flags left behind on 18 September included
+# `darktidevr_foveation.flag`, which installs a hook on EVERY indexed draw: a
+# later worn session would have carried it silently, and any timing taken in
+# that session would have been of a different renderer than the one being
+# measured.
+#
+# Checking by hand was already the rule and was already missed, so the gate
+# does it. Facts in, a decision out.
+function Assert-NoStaleFlags {
+    param(
+        # Flag file names present in the installed mod root.
+        [string[]] $Present,
+        # Names that legitimately persist between runs.
+        [string[]] $Allowed,
+        # Names this run is deliberately setting.
+        [string[]] $Expected
+    )
+    $permitted = @($Allowed) + @($Expected) |
+        Where-Object { $_ } |
+        ForEach-Object { $_.Trim().ToLowerInvariant() }
+    $stale = @(
+        @($Present) |
+            Where-Object { $_ } |
+            Where-Object { $permitted -notcontains $_.Trim().ToLowerInvariant() })
+    if ($stale.Count -gt 0) {
+        throw ("Request flags left over from an earlier run are still in the installed mod: " +
+               ($stale -join ', ') +
+               ". They change what the game does and what a measurement means. Delete them, " +
+               "or name them with -AllowFlags if this run wants them.")
+    }
+}
+
+# The one flag that legitimately persists: the mod writes it as a live setting
+# rather than a run request.
+$script:PersistentModFlags = @('darktidevr_crosshair_scale.flag')
