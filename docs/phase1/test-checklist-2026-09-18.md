@@ -178,6 +178,29 @@ Two small things changed in how the hand panels are drawn.
   where you expected it: it is now dropped rather than allowed to spill into
   the neighbouring panel, so a label that is simply absent is worth naming.
 
+### 64. Nothing changed, in the places most likely to have (the hook work)
+
+Every one of the mod's `mod:hook` handlers changed shape today: each now
+passes along any argument the engine gives it beyond the ones it names. No
+behaviour was meant to change anywhere, which makes this the item where
+"looks exactly as it did" is the whole answer.
+
+An unattended run already reached the Psykhanium with no mod errors, no Lua
+errors, and every changed hook family running, so this is a look rather than
+a hunt. The hooks touch menus, the HUD, input, viewports and markers, so:
+
+- Open the options menu, the inventory and the crafting or vendor views.
+  Anything that fails to draw, draws twice, or loses its mouse or controller
+  pointer is the kind of thing to name.
+- In a mission or the Psykhanium: the HUD, world markers, teammate
+  nameplates, interaction prompts, the tag wheel, the communication wheel.
+- Spectating, if you get downed: the cycle prompt and the spectator input.
+- The display and graphics settings, which have their own hook.
+
+Anything odd here is worth reporting even if it seems unrelated to VR -- the
+change was mechanical and wide, and mechanical-and-wide is how a quiet
+regression gets in.
+
 ## Suggested order
 
 1. In the Psykhanium with a ranged weapon: 55 and 56 together (aim, hold,
@@ -187,7 +210,9 @@ Two small things changed in how the hand panels are drawn.
 3. 62 in the Psykhanium with the same weapon — it is the correction most
    likely to be felt, and it needs no setup.
 4. 63 anywhere, in half a minute.
-5. 61 at the desk, with the headset off.
-6. 60 last, because it needs the switch: launch with `-ReticleInEyes`. The
+5. 64 alongside whatever else you do -- it is a "did anything break" pass
+   rather than a test of its own.
+6. 61 at the desk, with the headset off.
+7. 60 last, because it needs the switch: launch with `-ReticleInEyes`. The
    unattended run has proved its placement to the pixel; what is left is
    whether it reads right through a head turn.
