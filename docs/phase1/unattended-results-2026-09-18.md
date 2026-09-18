@@ -762,3 +762,57 @@ grid is bet on it. If it is, the resize is four characters.
 the world-marker widgets (`darktidevr.lua:13980` against `:13881`). One
 claimant sets the cell size for all of them. Handled on its own terms, the
 rest fit a far smaller cell again.
+
+### What the review found in the instrument that replaced it
+
+Tagging each scope with a claimant was not enough, and a subagent review said
+why before it ever ran in the game.
+
+**"marker" was still a conflated bucket.** Three call sites claim atlas cells,
+so I tagged three. But one of those three is *every world marker there is* --
+nameplates, objectives, pickups, pings, beacons -- pooled together. A width
+from a wide nameplate and a height from a tall objective marker, on different
+frames, reported as one box: the 18 September failure exactly, one level down,
+in the bucket with the most varied content. It would have defeated the plan
+written two sections above, because the smaller cell for "everything that is
+not the popup" cannot be sized from a maximum over everything that is not the
+popup.
+
+The fix was one identifier. `darktidevr.lua:13871` loops
+`for _, markers in pairs(self._markers_by_type)` -- the marker type is the key
+and it was being thrown away. It is now the claimant, and Darktide has twenty
+of them, a fixed set.
+
+**Which then collided.** One of those twenty templates is named
+`interaction` -- the icon in the world, a different thing and a different size
+from `HudElementInteraction`'s popup, which I had also called "interaction".
+The single most important claimant would have shared a bucket with something
+smaller. The two HUD elements are `hud_interaction_popup` and
+`hud_tag_prompt` now, and the invariants script rejects a HUD claimant that is
+not prefixed, naming the offender.
+
+**The `"?"` fallback was unreachable.** The module defaulted an unnamed scope
+to `"?"`, and the scope builder had already defaulted it to `"marker"`, so the
+default that won was the one that *hides* an omission: a call site added later
+that forgot to name itself would silently pool into the world markers. The
+builder no longer defaults, and a test drives an unnamed scope to prove it
+lands under `"?"`.
+
+**And the knobs reset it.** `dtvr_marker_plane drop` moves the very origin
+every extent is taken from, and it is used *during* a sizing session, so a
+maximum spanning a change is a number no configuration produced. `drop`,
+`text` and `origin` now call `forget_extents`, which says `reset=` in the log
+so the quiet report afterwards is not read as nothing happening.
+
+**Five more mutations the test was passing**, all of them in the instrument's
+inputs rather than its bookkeeping: three converters dropping the size they
+hand to `shifted` (the slug icon one a straight reversion of a fix from the
+same week), the logical-scale conversion collapsing to 1 -- which understates
+by the UI scale, so a cell gets sized at half what the content needs -- and
+the mirror exclusion, which the comment calls load-bearing and nothing was
+checking. The extents test now routes every converter at `scale = 2`, and the
+harness carries all ten mutations plus three legitimate edits that must not be
+flagged.
+
+The review is the reason this is worth anything. Every one of those was in
+code that passed 278 tests and a test written specifically to guard it.

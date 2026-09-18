@@ -1377,4 +1377,25 @@ if ((Test-Path -LiteralPath $dropSource) -and (Test-Path -LiteralPath $dropTest)
     }
 }
 
+# The marker extents instrument buckets by claimant, and a claimant is one of
+# Darktide's own world-marker template names -- nameplate, objective, beacon,
+# and among them "interaction", which is the icon in the world and NOT
+# HudElementInteraction's popup. The two HUD elements that claim a cell whole
+# are prefixed `hud_` so they cannot land in a template's bucket; without the
+# prefix the popup shares its measurement with a different, smaller thing and
+# the cell is sized from the pair -- which is the 18 September failure exactly.
+$claimantOffenders = @()
+$scopeText = [string]::Join("`n", $lines)
+foreach ($match in [regex]::Matches($scopeText,
+        'marker_plane_scope\s*\((?:[^()"]|\([^()]*\))*,\s*"([^"]+)"')) {
+    $claimant = $match.Groups[1].Value
+    if (-not $claimant.StartsWith('hud_')) {
+        $claimantOffenders += $claimant
+    }
+}
+if ($claimantOffenders.Count -gt 0) {
+    throw ("A HUD element claims a marker-atlas cell under the bare name(s) '{0}'. Darktide has world-marker templates called nameplate, objective and interaction, so a bare name shares a bucket with one of them and the extents instrument conflates two different things. Prefix it `hud_`." -f
+        ($claimantOffenders -join "', '"))
+}
+
 Write-Output "lua_source_assertions=pass"

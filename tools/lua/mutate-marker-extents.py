@@ -64,14 +64,53 @@ MUTATIONS = [
     ('the per-claimant maximum keeps only the last draw, not the worst',
      '    if ax > slot.dx then slot.dx = ax end\n    if ay > slot.dy then slot.dy = ay end',
      '    slot.dx, slot.dy = ax, ay'),
+
+    # The five below are the instrument's INPUTS rather than its bookkeeping.
+    # A review put all five through the first cut of the test and it passed
+    # every one (18 September); four are straight reversions of defects fixed
+    # the same week, and an instrument that can lose its boxing without a test
+    # noticing is worth less than no instrument.
+    ('the slug icon is measured by its anchor alone again (18 September)',
+     '''    return atlas_call(scope, self, func, resource, index,
+        shifted(scope, position, self.scale or 1, size),
+        size, color, instance, material_flags)''',
+     '''    return atlas_call(scope, self, func, resource, index,
+        shifted(scope, position, self.scale or 1, nil),
+        size, color, instance, material_flags)'''),
+
+    ('a bitmap is measured by its corner, losing the boxing fix',
+     '''    return atlas_call(scope, self, func, instance, shifted(scope, position, nil, size),
+        sized(scope, size), color)''',
+     '''    return atlas_call(scope, self, func, instance, shifted(scope, position, nil, nil),
+        sized(scope, size), color)'''),
+
+    ('a rect is measured by its corner',
+     '''    return atlas_call(scope, self, func, shifted(scope, position, self.scale or 1, size),
+        size, color)''',
+     '''    return atlas_call(scope, self, func, shifted(scope, position, self.scale or 1, nil),
+        size, color)'''),
+
+    ('logical draws measured in logical units, understating by the scale',
+     '        local unit = logical_scale or 1',
+     '        local unit = 1'),
+
+    ('the HUD panel mirror is measured as though it had a cell',
+     '    if not scope.mirror and scope.atlas then',
+     '    if scope.atlas then'),
 ]
 
 
 # The negative direction: legitimate edits that must NOT be flagged. A guard
 # that blocks an ordinary change is worse than none.
 LEGITIMATE = [
-    ('the unnamed fallback is renamed',
-     'local who = claimant or "?"', 'local who = claimant or "unnamed"'),
+    # NOT in this list: renaming the "?" fallback. It looked like a harmless
+    # rename until a review established that "?" is the tell a new call site
+    # forgot to name itself, and the test now holds it by name.
+    ('the maximum is taken with math.max instead of a branch',
+     '    if ax > slot.dx then slot.dx = ax end\n    if ay > slot.dy then slot.dy = ay end',
+     '    slot.dx, slot.dy = math.max(slot.dx, ax), math.max(slot.dy, ay)'),
+    ('the per-claimant slot local is renamed',
+     'local slot = extent.per[who]', 'local bucket = extent.per[who]\n    local slot = bucket'),
     ('the growth throttle is tightened to a quarter pixel',
      'each.dx > each.reported_dx + 0.5 or each.dy > each.reported_dy + 0.5',
      'each.dx > each.reported_dx + 0.25 or each.dy > each.reported_dy + 0.25'),

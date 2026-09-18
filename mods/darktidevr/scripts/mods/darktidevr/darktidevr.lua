@@ -13868,7 +13868,7 @@ mod:hook(
                 plane_widgets = {}
                 presentation.marker_atlas.begin_frame(t)
                 local routed, fallback = 0, 0
-                for _, markers in pairs(self._markers_by_type or {}) do
+                for marker_type, markers in pairs(self._markers_by_type or {}) do
                     for i = 1, #markers do
                         local marker = markers[i]
                         if marker.draw and marker.position and marker.widget then
@@ -13879,7 +13879,8 @@ mod:hook(
                                 local admitted, why = presentation.marker_world.admits(marker.widget)
                                 if admitted then
                                     scope, reason = presentation.marker_plane_scope(ui_renderer,
-                                        Vector3Box.unbox(marker.position), self._player_camera, t)
+                                        Vector3Box.unbox(marker.position), self._player_camera, t,
+                                        marker_type)
                                 else
                                     reason = why
                                 end
@@ -13978,7 +13979,8 @@ mod:hook(
             local markers_element = Managers.ui and Managers.ui._hud and
                 Managers.ui._hud.element and Managers.ui._hud:element("HudElementWorldMarkers")
             plane_scope = anchor and presentation.marker_plane_scope(ui_renderer, anchor,
-                markers_element and markers_element._player_camera, t, "interaction") or nil
+                markers_element and markers_element._player_camera, t,
+                "hud_interaction_popup") or nil
             if plane_scope and plane_scope.surface == "atlas" then
                 -- Worn: on the plane the popup sits high against its marker
                 -- (still on the per-eye route); lower it by a fraction of
@@ -14144,7 +14146,7 @@ mod:hook("HudElementSmartTagging", "_draw_active_interaction_line",
                 Managers.ui._hud.element and Managers.ui._hud:element("HudElementWorldMarkers")
             plane_scope = presentation.marker_plane_scope(ui_renderer,
                 Vector3Box.unbox(marker.position),
-                markers_element and markers_element._player_camera, t, "tag")
+                markers_element and markers_element._player_camera, t, "hud_tag_prompt")
         end
         presentation.tag_plane_t = plane_scope and t or nil
         presentation.tag_plane_scope = plane_scope
@@ -15990,9 +15992,13 @@ function presentation.marker_plane_scope_body(ui_renderer, anchor, camera, t, le
         if not x then return nil, y end
         return {renderer = ui_renderer, surface = "atlas", atlas = atlas,
             atlas_x = x, atlas_y = y,
-            -- Which of the three cell claimants this is, so the extents
+            -- Which claimant this cell is for -- a marker type, the
+            -- interaction popup or the tag prompt -- so the extents
             -- instrument can size a cell against each of them separately.
-            claimant = claimant or "marker",
+            -- Deliberately NOT defaulted: a scope with no claimant is a call
+            -- site that forgot to name itself, and it must show up as "?"
+            -- rather than quietly joining somebody else's measurement.
+            claimant = claimant,
             origin_x = Vector3.x(screen), origin_y = Vector3.y(screen),
             pixel_size = ps, distance = geometry.distance}
     end
@@ -16106,9 +16112,11 @@ mod:command("dtvr_marker_plane",
         if mode ~= "atlas" then pcall(presentation.marker_atlas.destroy) end
     elseif action == "text" then
         local ok, why = presentation.marker_world.set_text_mode(mode)
+        if ok then presentation.marker_world.forget_extents("text") end
         if not ok then mod:echo("text mode: " .. tostring(why)) end
     elseif action == "origin" then
         local ok, why = presentation.marker_world.set_text_origin(mode)
+        if ok then presentation.marker_world.forget_extents("origin") end
         if not ok then mod:echo("origin: " .. tostring(why)) end
     elseif action == "layer" then
         local ok, why = presentation.marker_world.set_layer_base(mode)
@@ -16118,7 +16126,10 @@ mod:command("dtvr_marker_plane",
         mod:echo("marker plane: logging the routed draws of the next frame(s)")
     elseif action == "drop" then
         local value = tonumber(mode)
-        if value then presentation.interaction_popup_drop = value end
+        if value then
+            presentation.interaction_popup_drop = value
+            presentation.marker_world.forget_extents("drop")
+        end
         mod:echo("interaction popup drop (fraction of its height): " ..
             tostring(presentation.interaction_popup_drop))
     elseif action == "probe" then

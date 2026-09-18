@@ -564,14 +564,33 @@ end
 -- question with nothing measuring it. Reported when a new maximum stands for
 -- a second, so a log carries the worst case without a line per draw.
 -- Kept PER CLAIMANT, not as one maximum over everything that claims a cell.
--- Three call sites claim atlas cells -- the world markers (gated by
--- `admits`), the interaction popup and the tag prompt (each routed whole) --
--- and one conflated maximum cannot say which of them sets the cell size. On
--- 18 September that conflation produced a width and a height that could not
--- have come from the same marker, and the atlas was resized from them.
--- `per[claimant]` is what a grid can actually be designed against: if the
--- popup is the only thing needing 428 px, the other cells do not.
+-- One conflated maximum cannot say which claimant sets the cell size: on
+-- 18 September it produced a width and a height that could not have come from
+-- the same marker, and the atlas was resized from them. `per[claimant]` is
+-- what a grid can actually be designed against -- if the popup is the only
+-- thing needing 428 px, the other cells do not.
+--
+-- A claimant is one of Darktide's twenty world-marker TEMPLATE names
+-- (nameplate, objective, beacon, ...), not the word "marker": pooling every
+-- marker type together rebuilds the same conflation one level down, in the
+-- bucket with the most varied content (review, 18 September). The two HUD
+-- elements that claim cells whole are named `hud_interaction_popup` and
+-- `hud_tag_prompt`, prefixed because one of those template names is itself
+-- "interaction" -- a different thing, and a different size, from the popup.
 state.extent = {dx = 0, dy = 0, at = nil, per = {}}
+-- `dtvr_marker_plane drop|text|origin` change what is being measured while a
+-- sizing session is under way -- `drop` moves the very origin every extent is
+-- taken from -- so a maximum spanning one of those is a number no
+-- configuration ever produced. Start again, and say so in the log rather than
+-- letting the next report look like a quiet one (review, 18 September).
+function MarkerWorld.forget_extents(why)
+    local extent = state.extent
+    extent.dx, extent.dy, extent.per = 0, 0, {}
+    if state.api and state.api.log then
+        state.api.log("DARKTIDEVR_MARKER extents reset=" .. tostring(why))
+    end
+    return true
+end
 -- The report runs on every call, not only when a new maximum arrives: a
 -- maximum that lands less than a second after the last report and is never
 -- beaten again was simply never said, and a marker on screen for half a

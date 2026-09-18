@@ -360,9 +360,6 @@ assert(near(extent.per.interaction.dx, 470) and near(extent.per.interaction.dy, 
 assert(near(extent.per.marker.dx, 60) and near(extent.per.marker.dy, 200))
 assert(near(extent.dx, 470) and near(extent.dy, 200),
     "the conflated maximum is 470 x 200 -- and neither claimant needs that cell")
-assert(extent.per.interaction.dy < extent.per.marker.dy and
-    extent.per.marker.dx < extent.per.interaction.dx,
-    "sizing a cell from the conflated pair spends height on the wide claimant")
 
 -- The tick is driven by whichever claimant happens to draw on it, so every
 -- claimant that grew is said -- including one that has since left the screen.
@@ -403,6 +400,66 @@ assert(near(extent.dx, 471) and near(extent.dy, 200), "the overall maximum has n
 assert(#extent_log == 4, "a claimant growing inside another's box is still reported")
 assert(string.find(extent_log[4], "claimant=marker max_dx=100.0 max_dy=200.0", 1, true),
     "and it is reported with its own worst case, width from now and height from before")
+
+-- Every atlas converter feeds this instrument, and each one can lose its
+-- boxing on its own. `renderer.scale` is 2 here deliberately: the logical
+-- entry points (draw_rect, draw_slug_icon) must convert to atlas pixels, so
+-- measuring them in logical units understates by exactly that factor and
+-- would size a cell at half what the content needs.
+assert(renderer.scale == 2, "the logical-unit conversion is only visible at a scale other than 1")
+local function draw_in(claimant, route)
+    MarkerWorld.draw({renderer = renderer, surface = "atlas", atlas = atlas,
+        atlas_x = 512, atlas_y = 256, origin_x = 0, origin_y = 0,
+        claimant = claimant}, "left", route)
+end
+draw_in("icon", function()
+    MarkerWorld.route("draw_slug_icon", stock("icon"), renderer, "res", 1, V3(0, 0, 1),
+        V3(30, 40, 0), {255, 255, 255, 255}, nil, nil)
+end)
+assert(near(extent.per.icon.dx, 60) and near(extent.per.icon.dy, 80),
+    "a slug icon is measured by its box in atlas pixels, not by its anchor")
+draw_in("rect", function()
+    MarkerWorld.route("draw_rect", stock("rect"), renderer, V3(0, 0, 0), V3(45, 15, 0), nil)
+end)
+assert(near(extent.per.rect.dx, 90) and near(extent.per.rect.dy, 30),
+    "a rect is measured by its box in atlas pixels, not by its anchor")
+draw_in("bitmap", function()
+    MarkerWorld.route("script_draw_bitmap", stock("bitmap"), renderer, handle,
+        V3(0, 0, 0), V3(33, 44, 0), {255, 255, 255, 255})
+end)
+assert(near(extent.per.bitmap.dx, 33) and near(extent.per.bitmap.dy, 44),
+    "a bitmap is measured by its box; script_ entry points are already in pixels")
+
+-- The HUD panel's mirror draws in full screen pixels about an origin of zero.
+-- It has no cell, so measuring it would saturate the maximum -- the guard
+-- that excludes it is load-bearing and nothing was checking it.
+local before_dx = extent.dx
+MarkerWorld.mirror(mirror_atlas, source, 1, 0, 0, function()
+    MarkerWorld.route("draw_rect", stock("rect"), source, V3(0, 0, 0), V3(1900, 1000, 0), nil)
+end)
+assert(near(extent.dx, before_dx), "a mirror draw is not a cell and must not be measured")
+assert(extent.per["?"] == nil, "and it must not turn up under any claimant either")
+
+-- A scope built without naming itself reads as "?" -- the tell that a new
+-- call site forgot. The mod must not default it to a real claimant's name,
+-- which would bury the omission inside somebody else's measurement.
+draw_in(nil, function()
+    MarkerWorld.route("script_draw_text", stock("text"), renderer, "x", 20, "proxima",
+        V3(0, 0, 0), V3(12, 9, 0), {255, 255, 255, 255}, {})
+end)
+assert(extent.per["?"] and near(extent.per["?"].dx, 12),
+    "an unnamed scope is measured under ?, not folded into a named claimant")
+
+-- The knobs that change what is being measured start the measurement again.
+-- `dtvr_marker_plane drop` moves the origin every extent is taken from, and
+-- it is used DURING a sizing session.
+extent_log = {}
+api.log = function(line) extent_log[#extent_log + 1] = line end
+assert(MarkerWorld.forget_extents("drop"))
+assert(next(extent.per) == nil and near(extent.dx, 0) and near(extent.dy, 0),
+    "a reset forgets every claimant, not only the one being looked at")
+assert(#extent_log == 1 and string.find(extent_log[1], "reset=drop", 1, true),
+    "and says so, so the quiet report afterwards is not read as nothing happening")
 Application = nil
 
 print("marker_world.result=pass")
