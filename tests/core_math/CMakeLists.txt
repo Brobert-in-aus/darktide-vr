@@ -22,3 +22,16 @@ add_executable(darktidevr-pose-performance-tests pose_performance.cpp pose_math_
 target_compile_options(darktidevr-pose-performance-tests PRIVATE /W4 /WX /permissive-)
 target_link_libraries(darktidevr-pose-performance-tests PRIVATE darktidevr_core)
 add_test(NAME pose_performance COMMAND darktidevr-pose-performance-tests)
+
+# Foveated rendering's shading rate image. The pattern is where every
+# interesting decision lives -- above all that the foveal centre is each eye's
+# OPTICAL centre, not the middle of the render target -- and none of it needs a
+# headset to check (18 September).
+add_executable(darktidevr-foveation-tests foveation_tests.cpp)
+target_compile_options(darktidevr-foveation-tests PRIVATE /W4 /WX /permissive-)
+target_link_libraries(darktidevr-foveation-tests PRIVATE darktidevr_core)
+if(BUILD_TESTING)
+  add_test(NAME foveation COMMAND darktidevr-foveation-tests)
+  set_tests_properties(foveation PROPERTIES
+    PASS_REGULAR_EXPRESSION "foveation.result=pass")
+endif()

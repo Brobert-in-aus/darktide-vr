@@ -102,6 +102,36 @@ its quality here is a question for measurement, not for reasoning, and the
 first comparison should be run with frame generation off so that two
 reprojection stages are not being judged at once.
 
+## The pattern, which is written and tested (18 September)
+
+`src/core/foveation.h` builds the shading rate image, and
+`tests/core_math/foveation_tests.cpp` judges it -- both pure, because what a
+wrongly aimed foveation pattern looks like through a headset is "foveation
+looks bad", which is indistinguishable from "foveation is not worth it".
+
+- `FoveationPattern` carries the foveal centre in NDC and separate horizontal
+  and vertical radii for the inner and middle zones. The centre is a parameter
+  and never assumed to be the middle of the image, which is the whole point.
+- `paint_foveation_image` fills an R8_UINT tile image at a caller-supplied row
+  pitch. The test uses a 256-aligned pitch, as a real D3D12 upload does, and
+  checks the padding past each row is untouched -- a test passing the tile
+  count as the pitch could not see a pitch bug at all.
+- `foveation_cost` reports what the pattern costs as a fraction of an
+  unfoveated frame. That is the only honest number before a measurement: it is
+  what the PATTERN costs, not what the frame costs, and a frame that is not
+  shading-bound will not move by it.
+
+The nine mutations in `tools/lua/mutate-foveation.py` are the ways this can be
+wrong without looking wrong: the centre ignored, the vertical centre ignored,
+NDC y unflipped, the middle ring dropped, the row pitch ignored, a partial edge
+tile dropped, one radius used for both axes, the cost counting every tile as
+full rate, and a null image written through. All nine fail the test by name.
+
+Three legitimate edits must NOT be flagged, and two of them caught real faults
+in the test: widening the default radii, and changing the middle rate to the
+non-square 2x4. The first cut of the test pinned `2x2` by value in two places,
+which would have blocked exactly the tuning this exists to allow.
+
 ## What a first cut should be
 
 Fixed foveation, off by default, behind a producer flag, with a static three-
@@ -117,6 +147,29 @@ becomes visible during a head turn, and that cannot be found by rebuilding.
 Frame has eye tracking, and if its runtime exposes a gaze pose the only change
 is that the ellipse centre is updated per frame instead of fixed. Building the
 fixed version first is not a detour.
+
+**And the reticle is a gaze proxy that costs nothing to try** (user, 18
+September). In an aimed shooter the player is usually looking at or near where
+they are aiming, and the viewer ALREADY derives the aim point's NDC per eye --
+that is `openxr.gameplay_reticle_clip`, the number the reticle work measured to
+under a pixel. So a third mode:
+
+- **off** -- no shading rate image, the current behaviour.
+- **fixed** -- centred on each eye's optical centre.
+- **reticle** -- centred on the aim point, falling back to the optical centre
+  whenever the aim point is stale, absent or off-screen.
+
+`paint_foveation_image` needs nothing new for it: the centre is already a
+parameter, and the test drives an off-centre aim point and an out-of-range one.
+The out-of-range case matters more than it sounds -- an aim point behind the
+player, or a stale one from before a teleport, would otherwise make the whole
+eye coarse, which is the worst-looking failure this feature has.
+
+What it does need is the number reaching the producer, which is the only new
+plumbing: the viewer has it and the producer sets the rate. That is a shared
+state channel like the ones already carrying controller state and eye surfaces,
+and it should carry a validity flag and a timestamp so the producer can fall
+back rather than aim at a stale point.
 
 ## How it gets measured
 
