@@ -45,6 +45,8 @@ anything with a date in its name as history unless a current note links to it.
   [roomscale collider follow](ROOMSCALE-COLLIDER-FOLLOW.md),
   [Psykhanium online rules](PSYKHANIUM-ONLINE-RULES.md),
   [online mission requirements](ONLINE-MISSION-REQUIREMENTS.md)
+- Runtimes and headsets: [SteamVR and Steam Frame readiness](STEAMVR-STEAM-FRAME.md)
+  (investigation, not yet validated live)
 - Deployment and operation: [deployment transactions](DEPLOYMENT-TRANSACTIONS.md),
   [SoloPlay setup](SOLOPLAY-SETUP.md), [Quest passthrough recovery](QUEST-PASSTHROUGH-RECOVERY.md),
   [synthetic frame-generation benchmark](SYNTHETIC-FRAMEGEN-BENCHMARK.md)
