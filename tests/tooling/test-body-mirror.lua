@@ -57,6 +57,20 @@ for _,name in ipairs({'overlay','overlayarms','overlaycopy','overlayfollow'}) do
     assert(Mirror.MODES[name].hand_rig,'one pair of hands: '..name)
 end
 assert(not Mirror.MODES.mirror.hand_rig,'mirror stands apart from the player')
+-- ...but it reflects the body the player HAS, not the one the game animates.
+-- It carried none of the solve until 18 September, so looking into it showed
+-- the character going through its animation rather than the person in front of
+-- it. Everything that shapes the overlay shapes the reflection, except the
+-- three flags that are about being inside a body rather than looking at one.
+for _,flag in ipairs({'solve_arms','follow_neck','scale_to_neck','clavicles',
+        'body_yaw','protract','stretch'}) do
+    assert(Mirror.MODES.mirror[flag],'the mirror reflects the solved body: '..flag)
+    assert(Mirror.MODES.overlay[flag],'and the overlay is where that solve is defined: '..flag)
+end
+assert(not Mirror.MODES.mirror.hide_head,'a mirror without a face is useless')
+assert(not Mirror.MODES.mirror.near_eye,'nothing is near the eye three metres away')
+assert(Mirror.MODES.mirror.distance > 0 and Mirror.MODES.mirror.facing,
+    'and it still stands in front, facing back')
 assert(Mirror.MODES.overlay.follow_neck and not Mirror.MODES.overlayarms.follow_neck)
 local off,len=Mirror.neck_offset({0,0.16,1.45},{0,-0.07,1.69},true)
 assert(near(off[2],-0.23) and near(off[3],0.24) and near(len,math.sqrt(0.23^2+0.24^2)),'moves neck onto target')

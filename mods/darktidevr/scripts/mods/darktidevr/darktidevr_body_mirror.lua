@@ -60,7 +60,34 @@ Mirror.FLAG = "./../mods/darktidevr/darktidevr_body_mirror.flag"
 Mirror.MIRROR_DISTANCE = 2.5
 Mirror.KEPT_SLOT_TYPES = {body = true, gear = true, material = true}
 Mirror.MODES = {
-    mirror = {distance = Mirror.MIRROR_DISTANCE, facing = true, hide_head = false},
+    -- The mirror reflects the body the player actually has, not the one the
+    -- game is animating. It carried none of the solve until 18 September --
+    -- no tracked arms, no neck scaling, no spine -- so looking into it showed
+    -- the CHARACTER going through its animation rather than the person
+    -- standing in front of it (user: "the mirror copy should be a mirror of
+    -- the best version of my own body, right?"). It should, and now it is the
+    -- overlay solve stood in front and turned to face.
+    --
+    -- Three of the overlay's flags are deliberately NOT here. The first two
+    -- are about being INSIDE the body rather than looking at it; the third
+    -- would take the player's hands away:
+    --   hide_head  -- the overlay hides the head because the player's own is
+    --                 in the same place; a mirror without a face is useless.
+    --   near_eye   -- hides meshes that would sit inside the eye. Nothing is
+    --                 near the eye when the body is three metres away, so it
+    --                 would only hide parts of the reflection for nothing.
+    --   hand_rig   -- this is not a pose flag. It hands the copy the job of
+    --                 BEING the player's hands, and destroys the glove units
+    --                 that would otherwise draw them. A reflection three
+    --                 metres away cannot be the player's hands, so the mirror
+    --                 keeps the gloves and solves its own arms separately.
+    --
+    -- The order already works: the update solves the copy on the player and
+    -- only then turns it about them and stands it ahead.
+    mirror = {distance = Mirror.MIRROR_DISTANCE, facing = true, hide_head = false,
+        solve_arms = true, follow_neck = true,
+        scale_to_neck = true, clavicles = true, body_yaw = true,
+        protract = true, stretch = true},
     overlaycopy = {distance = 0, facing = false, hide_head = true, solve_arms = false, hand_rig = true},
     overlayarms = {distance = 0, facing = false, hide_head = true, solve_arms = true, hand_rig = true},
     overlayfollow = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hand_rig = true,
