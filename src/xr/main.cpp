@@ -170,9 +170,18 @@ std::wstring registry_string(HKEY root, const wchar_t* subkey,
   return value;
 }
 
+// Steam Frame. Both names postdate the vendored OpenXR SDK, so they are
+// spelled out: the extension name is only ever compared against the runtime's
+// enumeration, and xrStringToPath takes a string.
+inline constexpr const char* kFrameControllerExtensionName =
+    "XR_VALVE_frame_controller_interaction";
+inline constexpr const char* kFrameControllerProfilePath =
+    "/interaction_profiles/valve/frame_controller_valve";
+
 class OpenXrProbe {
  public:
-  explicit OpenXrProbe(bool enabled = true) {
+  explicit OpenXrProbe(bool enabled = true, bool suggest_simple_profile = true)
+      : suggest_simple_profile_(suggest_simple_profile) {
     if (!enabled) {
       std::cout << "openxr.discovery=disabled\n";
       return;
@@ -218,23 +227,41 @@ class OpenXrProbe {
         extension_version(XR_EXT_FRAME_SYNTHESIS_EXTENSION_NAME);
     const auto space_warp_version =
         extension_version(XR_FB_SPACE_WARP_EXTENSION_NAME);
+    // Steam Frame controllers are presented as emulated Oculus Touch unless
+    // this extension is enabled and its profile suggested, and SteamVR looks
+    // for a generic-controller binding BEFORE a Touch one. The name is a
+    // string literal rather than a header constant: the extension postdates
+    // the vendored OpenXR SDK, and xrStringToPath takes strings anyway.
+    const auto frame_controller_version =
+        extension_version(kFrameControllerExtensionName);
+    frame_controller_extension_ = frame_controller_version != 0U;
     std::cout << "openxr.extension.XR_EXT_frame_synthesis="
               << (frame_synthesis_version != 0U ? "available" : "unavailable")
               << " spec_version=" << frame_synthesis_version << '\n'
               << "openxr.extension.XR_FB_space_warp="
               << (space_warp_version != 0U ? "available" : "unavailable")
-              << " spec_version=" << space_warp_version << '\n';
+              << " spec_version=" << space_warp_version << '\n'
+              << "openxr.extension." << kFrameControllerExtensionName << '='
+              << (frame_controller_extension_ ? "available" : "unavailable")
+              << " spec_version=" << frame_controller_version << '\n';
 
-    const char* enabled_extensions[] = {XR_KHR_D3D12_ENABLE_EXTENSION_NAME};
+    std::vector<const char*> enabled_extensions;
+    if (d3d12_extension_) {
+      enabled_extensions.push_back(XR_KHR_D3D12_ENABLE_EXTENSION_NAME);
+    }
+    if (frame_controller_extension_) {
+      enabled_extensions.push_back(kFrameControllerExtensionName);
+    }
     XrInstanceCreateInfo create_info{XR_TYPE_INSTANCE_CREATE_INFO};
     strcpy_s(create_info.applicationInfo.applicationName, "DarktideVR Harness");
     create_info.applicationInfo.applicationVersion = 1;
     strcpy_s(create_info.applicationInfo.engineName, "DarktideVR Synthetic");
     create_info.applicationInfo.engineVersion = 1;
     create_info.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
-    if (d3d12_extension_) {
-      create_info.enabledExtensionCount = 1;
-      create_info.enabledExtensionNames = enabled_extensions;
+    if (!enabled_extensions.empty()) {
+      create_info.enabledExtensionCount =
+          static_cast<std::uint32_t>(enabled_extensions.size());
+      create_info.enabledExtensionNames = enabled_extensions.data();
     }
 
     auto create_result = xrCreateInstance(&create_info, &instance_);
@@ -5556,7 +5583,120 @@ class OpenXrProbe {
           static_cast<std::uint32_t>(touch_bindings.size());
       check_xr(xrSuggestInteractionProfileBindings(instance_, &touch),
                "xrSuggestInteractionProfileBindings(Touch)");
+      std::cout << "openxr.interaction_profile.touch=suggested\n";
 
+      // A profile that is not the proven Touch one must not be able to stop
+      // the session. If Valve's component paths differ from the documentation
+      // by a character, xrSuggestInteractionProfileBindings rejects the WHOLE
+      // call, and a viewer that then refuses to start is worse than one that
+      // comes up on Touch emulation and says so.
+      const auto suggest_optional =
+          [&](const char* label, const char* profile,
+              const XrActionSuggestedBinding* bindings, std::size_t count) {
+            XrPath profile_path{XR_NULL_PATH};
+            const auto to_path =
+                xrStringToPath(instance_, profile, &profile_path);
+            if (XR_FAILED(to_path)) {
+              std::cout << "openxr.interaction_profile." << label
+                        << "=unsupported-path\n";
+              return;
+            }
+            XrInteractionProfileSuggestedBinding suggestion{
+                XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+            suggestion.interactionProfile = profile_path;
+            suggestion.suggestedBindings = bindings;
+            suggestion.countSuggestedBindings =
+                static_cast<std::uint32_t>(count);
+            const auto result =
+                xrSuggestInteractionProfileBindings(instance_, &suggestion);
+            std::cout << "openxr.interaction_profile." << label << '='
+                      << (XR_SUCCEEDED(result) ? "suggested" : "rejected")
+                      << " result=" << static_cast<int>(result) << '\n';
+          };
+
+      // Steam Frame. The face buttons are a diamond of four per hand, so the
+      // mapping is chosen by POSITION to match what Touch trained: the bottom
+      // button is primary (Touch X/A) and the top is secondary (Touch Y/B).
+      // On the left hand they are spelled dpad_*; on the right, a/b/x/y --
+      // where the Frame's top-right button is "y", sitting where Touch puts
+      // "b". The menu action is read from the LEFT hand only
+      // (core/gameplay_input.cpp), and the left hand's button in the menu
+      // position is spelled view/click, so binding that keeps today's
+      // behaviour exactly. The right hand's menu/click is bound as well so
+      // the published state is complete.
+      // Not bound: bumper, and every */touch and */click variant the mod has
+      // no action for. A component this binding set does not need cannot cost
+      // it the whole profile.
+      if (frame_controller_extension_) {
+        const std::array<XrActionSuggestedBinding, 20> frame_bindings{{
+            {aim_action_, path("/user/hand/left/input/aim/pose")},
+            {aim_action_, path("/user/hand/right/input/aim/pose")},
+            {grip_action_, path("/user/hand/left/input/grip/pose")},
+            {grip_action_, path("/user/hand/right/input/grip/pose")},
+            {trigger_action_, path("/user/hand/left/input/trigger/value")},
+            {trigger_action_, path("/user/hand/right/input/trigger/value")},
+            {squeeze_action_, path("/user/hand/left/input/squeeze/value")},
+            {squeeze_action_, path("/user/hand/right/input/squeeze/value")},
+            {thumbstick_action_, path("/user/hand/left/input/thumbstick")},
+            {thumbstick_action_, path("/user/hand/right/input/thumbstick")},
+            {primary_action_, path("/user/hand/left/input/dpad_down/click")},
+            {primary_action_, path("/user/hand/right/input/a/click")},
+            {secondary_action_, path("/user/hand/left/input/dpad_up/click")},
+            {secondary_action_, path("/user/hand/right/input/y/click")},
+            {stick_click_action_,
+             path("/user/hand/left/input/thumbstick/click")},
+            {stick_click_action_,
+             path("/user/hand/right/input/thumbstick/click")},
+            {menu_action_, path("/user/hand/left/input/view/click")},
+            {menu_action_, path("/user/hand/right/input/menu/click")},
+            {haptic_action_, path("/user/hand/left/output/haptic")},
+            {haptic_action_, path("/user/hand/right/output/haptic")},
+        }};
+        suggest_optional("frame", kFrameControllerProfilePath,
+                         frame_bindings.data(), frame_bindings.size());
+      } else {
+        std::cout << "openxr.interaction_profile.frame=extension-unavailable\n";
+      }
+
+      // Valve Index: a core profile, no extension, and the rest of the
+      // SteamVR ecosystem. Both hands carry a and b, so primary and secondary
+      // are symmetric. There is no menu button and system/click is reserved by
+      // the runtime, so the menu lands on the left trackpad's force press --
+      // a control this mod uses for nothing else, and one SteamVR's own
+      // binding editor can move if it proves easy to hit by accident.
+      {
+        const std::array<XrActionSuggestedBinding, 21> index_bindings{{
+            {aim_action_, path("/user/hand/left/input/aim/pose")},
+            {aim_action_, path("/user/hand/right/input/aim/pose")},
+            {grip_action_, path("/user/hand/left/input/grip/pose")},
+            {grip_action_, path("/user/hand/right/input/grip/pose")},
+            {trigger_action_, path("/user/hand/left/input/trigger/value")},
+            {trigger_action_, path("/user/hand/right/input/trigger/value")},
+            {squeeze_action_, path("/user/hand/left/input/squeeze/value")},
+            {squeeze_action_, path("/user/hand/right/input/squeeze/value")},
+            {thumbstick_action_, path("/user/hand/left/input/thumbstick")},
+            {thumbstick_action_, path("/user/hand/right/input/thumbstick")},
+            {primary_action_, path("/user/hand/left/input/a/click")},
+            {primary_action_, path("/user/hand/right/input/a/click")},
+            {secondary_action_, path("/user/hand/left/input/b/click")},
+            {secondary_action_, path("/user/hand/right/input/b/click")},
+            {stick_click_action_,
+             path("/user/hand/left/input/thumbstick/click")},
+            {stick_click_action_,
+             path("/user/hand/right/input/thumbstick/click")},
+            {menu_action_, path("/user/hand/left/input/trackpad/force")},
+            {haptic_action_, path("/user/hand/left/output/haptic")},
+            {haptic_action_, path("/user/hand/right/output/haptic")},
+            {trigger_action_, path("/user/hand/left/input/trigger/click")},
+            {trigger_action_, path("/user/hand/right/input/trigger/click")},
+        }};
+        suggest_optional("index", "/interaction_profiles/valve/index_controller",
+                         index_bindings.data(), index_bindings.size());
+      }
+
+      if (!suggest_simple_profile_) {
+        std::cout << "openxr.interaction_profile.simple=suppressed\n";
+      }
       const std::array<XrActionSuggestedBinding, 7> simple_bindings{{
           {grip_action_, path("/user/hand/left/input/grip/pose")},
           {grip_action_, path("/user/hand/right/input/grip/pose")},
@@ -5573,8 +5713,11 @@ class OpenXrProbe {
       simple.suggestedBindings = simple_bindings.data();
       simple.countSuggestedBindings =
           static_cast<std::uint32_t>(simple_bindings.size());
-      check_xr(xrSuggestInteractionProfileBindings(instance_, &simple),
-               "xrSuggestInteractionProfileBindings(simple)");
+      if (suggest_simple_profile_) {
+        check_xr(xrSuggestInteractionProfileBindings(instance_, &simple),
+                 "xrSuggestInteractionProfileBindings(simple)");
+        std::cout << "openxr.interaction_profile.simple=suggested\n";
+      }
       controller_writer_ =
           std::make_unique<darktidevr::core::SharedControllerStateWriter>();
       std::cout << "openxr.controller_actions=created\n";
@@ -6158,6 +6301,8 @@ class OpenXrProbe {
   std::uint64_t synthetic_holster_frames_{};
   std::array<std::uint64_t, 6> synthetic_controller_phase_frames_{};
   bool d3d12_extension_{};
+  bool frame_controller_extension_{};
+  bool suggest_simple_profile_{true};
   std::optional<XrGraphicsRequirementsD3D12KHR> requirements_;
   std::vector<XrViewConfigurationView> views_;
   std::vector<XrSwapchain> swapchains_;
@@ -6525,6 +6670,9 @@ void usage() {
             << "Creates an independent D3D12 swapchain and reports OpenXR "
                "discovery.\n"
             << "--no-openxr runs desktop graphics only without runtime discovery.\n"
+            << "--no-simple-profile withholds the khr/simple controller "
+               "binding, which SteamVR prefers over an Oculus Touch one and "
+               "which carries select and menu only.\n"
             << "--runtime-d3d11-diagnostics requests the D3D11 debug layer inside this process; not for performance measurements.\n"
             << "It never loads or modifies Darktide.\n";
 }
@@ -6539,6 +6687,7 @@ int wmain(int argc, wchar_t** argv) {
     bool runtime_d3d11_diagnostics = false;
     bool probe_shared_import_adapters = false;
     bool no_openxr = false;
+    bool suggest_simple_profile = true;
     bool require_openxr = false;
     bool require_rendering = false;
     bool theatre = false;
@@ -6596,6 +6745,12 @@ int wmain(int argc, wchar_t** argv) {
       } else if (argument == L"--probe-shared-import-adapters") {
         probe_shared_import_adapters = true;
         runtime_d3d11_diagnostics = true;
+      } else if (argument == L"--no-simple-profile") {
+        // SteamVR looks for a generic-controller binding BEFORE a Touch one,
+        // so the khr/simple profile this viewer offers is the likeliest cause
+        // of a session that comes up with select and menu and nothing else.
+        // Withdrawing it diagnoses that in one run rather than a rebuild.
+        suggest_simple_profile = false;
       } else if (argument == L"--no-openxr") {
         no_openxr = true;
       } else if (argument == L"--require-openxr") {
@@ -6815,7 +6970,7 @@ int wmain(int argc, wchar_t** argv) {
 
     darktidevr::xr::RuntimeD3D11Diagnostics runtime_diagnostics(
         runtime_d3d11_diagnostics,probe_shared_import_adapters);
-    OpenXrProbe openxr(!no_openxr);
+    OpenXrProbe openxr(!no_openxr, suggest_simple_profile);
     Harness harness(show, debug_layer, openxr.adapter_luid(),
                     openxr.minimum_feature_level());
     openxr.create_session(harness.device(), harness.queue(), !theatre);

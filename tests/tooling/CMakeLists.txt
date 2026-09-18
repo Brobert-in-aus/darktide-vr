@@ -61,6 +61,10 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-cascade-stage.py" --native "$<TARGET_FILE:darktidevr-cascade-stage-forwarding-tests>")
   add_test(NAME compute_dispatch_reader COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/test-compute-dispatch.py")
+  add_test(NAME interaction_profiles COMMAND "${Python3_EXECUTABLE}" -B
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-interaction-profiles.py")
+  set_tests_properties(interaction_profiles PROPERTIES
+    PASS_REGULAR_EXPRESSION "interaction_profiles=pass")
   add_test(NAME particle_submission_reader COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/test-particle-submissions.py")
   add_test(NAME stereo_camera_coherence COMMAND "${Python3_EXECUTABLE}" -B
