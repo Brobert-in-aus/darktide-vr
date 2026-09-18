@@ -12,6 +12,11 @@ param(
 
     [switch] $RunXrSmoke,
 
+    # Start a Ready run even though the Quest's controller radio is in a bad
+    # state. The refusal exists because a worn session on a wedged radio is a
+    # wasted one, but a run that is not about input should not be blocked by it.
+    [switch] $AllowDegradedLink,
+
     [switch] $RuntimeD3D11Diagnostics,
 
     [switch] $ProbeSharedImportAdapters,
@@ -200,6 +205,31 @@ if ($Mode -eq 'Ready') {
         -PowerLines $powerLines -PowerExitCode $powerExitCode `
         -SteamVrServerCount $steamVrProcesses.Count
 }
+
+# The Quest's controller radio, read from its own log. On 18 September 2026 a
+# worn session was lost to controllers dropping every few seconds, and the
+# headset had been reporting failed reads of its own radio registers for
+# eighteen minutes before that became noticeable. A run that starts on a wedged
+# radio is a run whose input is unreliable, and nothing downstream can tell.
+#
+# Only where there is an ADB to ask: a Frame has none, and the readiness gate
+# above already splits on that.
+$linkHealth = $null
+if ($adb -and (Get-XrRuntimeProfile -Runtime $activeRuntime) -eq 'VDXR') {
+    try {
+        $linkLog = @(& $adb logcat -d -t 20000 SyncBossFW:* SyncBossHAL:* '*:S' 2>&1)
+        if ($LASTEXITCODE -eq 0) {
+            $linkHealth = Get-ControllerLinkHealth -LogLines $linkLog
+        }
+    } catch {
+        # A headset that cannot be read is already the readiness gate's
+        # business; this check does not get its own opinion about it.
+        $linkHealth = $null
+    }
+}
+$linkMessage = Assert-ControllerLinkHealth -Health $linkHealth -Mode $Mode `
+    -AllowDegradedLink:$AllowDegradedLink
+if ($linkMessage) { Write-Warning $linkMessage }
 
 $gameProcesses = @(Get-Process Darktide -ErrorAction SilentlyContinue)
 $launcherProcesses = @(Get-Process Launcher -ErrorAction SilentlyContinue |

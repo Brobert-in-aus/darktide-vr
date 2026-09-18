@@ -81,9 +81,72 @@ MUTATIONS = [
     ('an empty runtime reads as Virtual Desktop rather than as nothing',
      "    if (-not $Runtime) { return 'none' }",
      "    if (-not $Runtime) { return 'VDXR' }"),
+    # ---- The Quest controller radio heartbeat (18 September 2026) ----------
+    # The check exists because the headset announced this fault eighteen
+    # minutes before the session became unplayable and nobody was reading it.
+    # A mutation that costs those eighteen minutes costs the whole check.
+    ('the early warning is demoted, so it arrives with the symptom instead of before it',
+     "    if ($registerFailures -gt 0) {\n        $state = 'bad'",
+     "    if ($registerFailures -gt 0) {\n        $state = 'degrading'"),
+
+    ('the register failures stop being counted at all',
+     "        $_ -match 'Register read failed' -or $_ -match 'Failed to get or set pulsar value' }).Count",
+     "        $false }).Count"),
+
+    # The signal-strength test is what keeps this from firing every time the
+    # headset is put down. Without it the check cries wolf and gets ignored,
+    # which is the same as not having it.
+    ('the signal-strength test goes, so a controller on a desk reads as a fault',
+     '        if ($rssi -lt $script:ControllerLinkStrongRssiDbm) { continue }',
+     '        if ($false) { continue }'),
+
+    ('the signal-strength test is inverted, so only distant controllers are judged',
+     '        if ($rssi -lt $script:ControllerLinkStrongRssiDbm) { continue }',
+     '        if ($rssi -gt $script:ControllerLinkStrongRssiDbm) { continue }'),
+
+    ('loss is taken against received rather than total, understating every reading',
+     '        $loss = [math]::Round(100.0 * $missed / $total)',
+     '        $loss = [math]::Round(100.0 * $missed / $received)'),
+
+    ('only the last disconnect is kept, so the worst reading is lost',
+     '        if ($loss -gt $worstLoss) { $worstLoss = $loss; $worstRssi = $rssi }',
+     '        $worstLoss = $loss; $worstRssi = $rssi'),
+
+    ('a phantom radio timeout stops being a fault',
+     "    if ($lostRequests -gt 0) {\n        $state = 'bad'",
+     "    if ($lostRequests -gt 0) {\n        $state = 'healthy'"),
+
+    ('a slow enumeration is promoted to bad, so Ready refuses runs over load',
+     "    if ($slowEnumerations -gt 0) {\n        $state = 'degrading'",
+     "    if ($slowEnumerations -gt 0) {\n        $state = 'bad'"),
+
+    ('Ready stops refusing, so a worn session starts on a wedged radio',
+     "    if ($Health.State -eq 'bad' -and $Mode -eq 'Ready' -and -not $AllowDegradedLink) {",
+     "    if ($false) {"),
+
+    ('every mode refuses, so a desk measurement is blocked by the headset',
+     "    if ($Health.State -eq 'bad' -and $Mode -eq 'Ready' -and -not $AllowDegradedLink) {",
+     "    if ($Health.State -ne 'healthy') {"),
+
+    ('the message stops saying what it is NOT, which is where three wrong answers went',
+     "        'This is the headset, not the controllers and not their batteries: ' +",
+     "        'Something is wrong with the controller link: ' +"),
+
+    ('an empty sample divides by zero instead of being skipped',
+     '        if ($total -le 0) { continue }',
+     '        if ($false) { continue }'),
 ]
 
 LEGITIMATE = [
+    # The thresholds are judgement, sized from one rig's numbers -- 0-2% loss
+    # healthy, 24-66% broken. A later rig re-sizes them and must not have to
+    # argue with the harness about it.
+    ('the loss threshold is re-tuned',
+     '$script:ControllerLinkBadLossPercent = 20',
+     '$script:ControllerLinkBadLossPercent = 15'),
+    ('the strong-signal line is re-tuned',
+     '$script:ControllerLinkStrongRssiDbm = -50',
+     '$script:ControllerLinkStrongRssiDbm = -60'),
     ('the two profile branches are written the other way round', [
         ("    if ($runtimeProfile -eq 'SteamVR') {\n"
          "        if ($SteamVrServerCount -lt 1) {\n"

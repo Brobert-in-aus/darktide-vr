@@ -106,6 +106,137 @@ function Assert-XrReadiness {
     }
 }
 
+# The Quest's controller radio, read from the headset's own log.
+#
+# On 18 September 2026 a worn session was lost to controllers that dropped
+# every few seconds, and three wrong answers were given before a headset reboot
+# fixed it. What the log had been saying the whole time was that the HEADSET's
+# radio coprocessor -- `SyncBossFW`, an nRF reached over SPI, not the
+# controllers -- was failing its own register reads. The first of those came
+# EIGHTEEN MINUTES before the session became unplayable.
+#
+# That gap is the whole point of this check. The fault announces itself long
+# before it is felt, and the fix is a forty second reboot, so noticing early
+# costs nothing and noticing late costs a session.
+#
+# Facts in, a decision out: the caller pulls the log, this reads it.
+#
+# The three signatures, in the order they matter:
+#
+#   Register read failed / Failed to get or set pulsar value
+#       The headset cannot talk to its own radio. No controller is involved in
+#       that operation, so it cannot be a battery, a range problem or
+#       interference. This is the early warning.
+#   Got a TX timeout event when no requests were outstanding
+#       The radio reporting a timeout for a request that does not exist: a
+#       state machine that has lost track of itself.
+#   Excessive enumeration duration
+#       Enumerating a controller is a millisecond job. It was taking 7.6
+#       seconds. On its own this is a symptom of load as well as of a wedge,
+#       so it is the weakest of the three and only ever reads as `degrading`.
+#
+# And the quantitative one, from each disconnect's own counters:
+#
+#   Disconnected device stats: RSSI=-24, rx=14107, missed=6953
+#       Heavy loss at STRONG signal is a degraded link. Weak signal with loss
+#       is only range, and a controller put down on a desk reads that way, so
+#       the RSSI test is what keeps this from crying wolf every time the
+#       headset is taken off. Healthy readings on this rig were 0-2% loss over
+#       hundreds of thousands of packets; the bad ones were 24-66%.
+$script:ControllerLinkStrongRssiDbm = -50
+$script:ControllerLinkBadLossPercent = 20
+# Raised from 5 after the first live run reported 6% at -48 dBm from two
+# controllers idling on a desk. A check that speaks up about nothing is a check
+# that gets ignored, and the loss figure was never the early warning anyway --
+# the register failures are, and they carry no threshold at all.
+$script:ControllerLinkDegradingLossPercent = 10
+function Get-ControllerLinkHealth {
+    param([string[]] $LogLines)
+    $lines = @($LogLines)
+    $registerFailures = @($lines | Where-Object {
+        $_ -match 'Register read failed' -or $_ -match 'Failed to get or set pulsar value' }).Count
+    $lostRequests = @($lines | Where-Object {
+        $_ -match 'TX timeout event when no requests were outstanding' }).Count
+    $slowEnumerations = @($lines | Where-Object { $_ -match 'Excessive enumeration duration' }).Count
+    # Every disconnect logs what the link actually managed.
+    $worstLoss = 0
+    $worstRssi = $null
+    $samples = 0
+    foreach ($line in $lines) {
+        if ($line -notmatch 'Disconnected device stats: RSSI=(-?\d+), rx=(\d+), missed=(\d+)') { continue }
+        $rssi = [int] $Matches[1]
+        $received = [double] $Matches[2]
+        $missed = [double] $Matches[3]
+        $total = $received + $missed
+        if ($total -le 0) { continue }
+        $samples++
+        # Only a strong signal says anything about the link's health. A
+        # controller lying on a desk out of range loses packets legitimately.
+        if ($rssi -lt $script:ControllerLinkStrongRssiDbm) { continue }
+        $loss = [math]::Round(100.0 * $missed / $total)
+        if ($loss -gt $worstLoss) { $worstLoss = $loss; $worstRssi = $rssi }
+    }
+    $state = 'healthy'
+    $reasons = @()
+    if ($slowEnumerations -gt 0) {
+        $state = 'degrading'
+        $reasons += "$slowEnumerations slow controller enumeration(s)"
+    }
+    if ($worstLoss -ge $script:ControllerLinkDegradingLossPercent -and
+        $worstLoss -lt $script:ControllerLinkBadLossPercent) {
+        $state = 'degrading'
+        $reasons += "$worstLoss% packet loss at $worstRssi dBm"
+    }
+    if ($worstLoss -ge $script:ControllerLinkBadLossPercent) {
+        $state = 'bad'
+        $reasons += "$worstLoss% packet loss at $worstRssi dBm (strong signal)"
+    }
+    if ($lostRequests -gt 0) {
+        $state = 'bad'
+        $reasons += "$lostRequests radio timeout(s) with no request outstanding"
+    }
+    # Last, so it is the reason that ends up first in the message: it is the
+    # one that cannot be anything else.
+    if ($registerFailures -gt 0) {
+        $state = 'bad'
+        $reasons = @("$registerFailures failed radio register access(es) on the headset") + $reasons
+    }
+    return [pscustomobject]@{
+        State = $state
+        RegisterFailures = $registerFailures
+        LostRequests = $lostRequests
+        SlowEnumerations = $slowEnumerations
+        WorstLossPercent = $worstLoss
+        WorstLossRssi = $worstRssi
+        DisconnectSamples = $samples
+        Reasons = $reasons
+    }
+}
+
+# What to do about it. A worn session on a wedged radio is a wasted session, so
+# Ready refuses; anything else says so and carries on, because a degraded
+# controller link does not invalidate a desk measurement.
+function Assert-ControllerLinkHealth {
+    param($Health, [string] $Mode, [switch] $AllowDegradedLink)
+    if (-not $Health) { return $null }
+    if ($Health.State -eq 'healthy') { return $null }
+    $detail = ($Health.Reasons -join '; ')
+    # Only 'bad' earns "reboot it". Telling somebody to reboot over a reading
+    # that may be nothing is how a check stops being read.
+    $advice = if ($Health.State -eq 'bad') {
+        'This is the headset, not the controllers and not their batteries: ' +
+        'reboot it (adb reboot, about forty seconds) before a worn session.'
+    } else {
+        'Not worth acting on by itself; it is the headset rather than the ' +
+        'controllers, and worth another look before a worn session.'
+    }
+    $message = "Quest controller radio: $($Health.State) -- $detail. $advice"
+    if ($Health.State -eq 'bad' -and $Mode -eq 'Ready' -and -not $AllowDegradedLink) {
+        throw $message
+    }
+    return $message
+}
+
 # Request flags that outlived the run that set them.
 #
 # Every flag the runner writes is restored in its `finally`, which does not run
