@@ -1,112 +1,109 @@
-# Why the controllers keep dropping, 18 September 2026
+# Why the controllers kept dropping, 18 September 2026
 
-Pulled from the headset over adb (`192.168.8.100:5555`, Quest 3).
+**The headset's controller-radio stack was in a bad state. Rebooting the
+headset fixed it.** Not the batteries, not the controllers, not the mod, not
+the PC.
 
-**The controllers are losing a quarter to two thirds of their radio packets at
-excellent signal strength, and only while the headset is being worn.** It is
-not the batteries, it is not range, it is not one controller, and the PC is not
-involved.
+Written after the fact, so the conclusion is the one that was confirmed by the
+fix rather than the one that was argued for. Three earlier answers in this
+document were wrong and are kept below, because the way each was reached is
+worth more than the fact that it was wrong.
 
-## Correction: the first read of this was wrong
+## What the log shows, independently of the fix
 
-This document first said the right controller's cell was browning out, on the
-strength of eight `Reset reason: battery insert or brownout` lines. The user
-then said they had been **pulling the battery to reset the controller**, which
-is the other half of that reset reason, and the timing bears them out: every
-one of those resets lands about a second *after* a reconnect, which is a
-controller booting on a freshly inserted cell and saying so.
+`SyncBossFW` and `SyncBossHAL` are the **headset's** sensor and radio
+coprocessor, not the controllers. Through the whole window they are failing
+their own operations:
 
-The drops that happened *before* any of that — 19:14:43, 19:14:57, 19:15:04 —
-have **no reset line at all**. The controller did not reboot; the link died
-while the controller stayed up. That is a radio fault, not a power one.
+```
+18:56:40 E SyncBossHAL: Excessive enumeration duration (1549ms)
+18:56:40 E SyncBossFW:  {WIHO}: Register read failed (-128)
+18:56:40 E SyncBossFW:  {WIHO}: Failed to get or set pulsar value for reg 36 with error -128
+18:56:41 W SyncBossFW:  {WIHO}: Got a TX timeout event when no requests were outstanding
+19:15:10 E SyncBossHAL: Excessive enumeration duration (7661ms)
+19:15:13 E SyncBossFW:  {WIHO}: Register read failed (-128)
+```
 
-The voltage does not support a flat battery either. 1249 mV is unremarkable for
-a NiMH rechargeable, which sits at 1.2–1.25 V for most of its discharge, and
-the controller's own gauge shows 2 of 4 dots.
+Three things in there say "wedged" rather than "interfered with":
 
-## What the radio statistics say
+- **The headset cannot read its own radio's registers.** `Register read failed
+  (-128)` is local to the headset; no controller is involved in it.
+- **Enumerating a controller takes up to 7.6 seconds.** That is a
+  millisecond-scale operation.
+- **`Got a TX timeout event when no requests were outstanding`** — the radio
+  reporting a timeout for a request that does not exist. That is a state
+  machine that has lost track of itself.
 
-Every disconnect logs the link's own counters. `RSSI` is signal strength in
-dBm, where anything better than about −50 is strong:
+And the packet statistics fit a degraded link rather than a broken controller:
+loss of 24–66% at **strong** signal (RSSI −23 to −41 dBm), on both controllers,
+where the same right controller had earlier run 750,000 packets at 2% loss.
 
-| time | RSSI | rx | missed | loss | headset |
-| --- | --- | --- | --- | --- | --- |
-| 18:49:56 | −39 | 250004 | 1308 | **1%** | off |
-| 18:53:41 | −63 | 750867 | 15858 | **2%** | off |
-| 18:56:40 | −38 | 89447 | 300 | **0%** | off |
-| 19:14:43 | −34 | 133 | 253 | **66%** | worn |
-| 19:14:57 | −25 | 333 | 279 | **46%** | worn |
-| 19:15:04 | −28 | 66 | 63 | **49%** | worn |
-| 19:16:25 | −24 | 14107 | 6953 | **33%** | worn |
-| 19:16:54 | −23 | 1950 | 1424 | **42%** | worn |
-| 19:17:03 | −30 | 470 | 486 | **51%** | worn, **left controller** |
-| 19:17:51 | −24 | 2930 | 911 | **24%** | worn |
-| 19:19:01 | −41 | 4635 | 1622 | **26%** | worn |
+The first of these errors is at **18:56:40**, well before the headset was put
+on at 19:14:32. So the stack was already misbehaving before any of the visible
+symptoms.
 
-Two things fall straight out of that table.
+## Why it looked orientation-dependent
 
-**The signal is not weak — it is being corrupted.** The worst losses come at
-the *strongest* signal readings (−23, −24 dBm). A controller that is too far
-away or blocked by a body shows a weak RSSI and loss together. Strong signal
-with heavy loss is what collisions look like.
+The right controller connected held sideways and dropped held upright, which is
+what an antenna fault looks like — and it was the observation that nearly
+produced a fourth wrong answer. A reboot does not fix an antenna.
 
-**It starts when the headset goes on.** The only proximity event in the buffer
-before the collapse is `PROX_ON` at **19:14:32**, eleven seconds before the
-first bad disconnect. Every reading from the period the headset sat idle is
-1–2% loss over hundreds of thousands of packets; every reading from the period
-it was worn is 24% or worse.
+In a degraded radio state the link is marginal rather than absent, so small
+changes in orientation and in how the hand wraps the grip are enough to tip it
+either side of working. The orientation dependence is a symptom of the margin
+being gone, not of a directional fault in the hardware.
 
-**Both controllers do it.** The left shows 51% loss at 19:17:03. So it is not a
-fault in one controller's radio.
+## Three wrong answers, and what produced each
 
-## What was ruled out, and how
+1. **"The right controller was lost."** From `right_live=false right_flags=0`
+   in the mod telemetry. Wrong: the **left** does exactly the same thing all
+   session, three columns away in the same lines. Settled by the user pointing
+   out that melee on the same trigger kept working.
+2. **"The right controller's battery is browning out."** From eight
+   `Reset reason: battery insert or brownout` lines. Wrong: the user had been
+   pulling the battery to reset the controller, and every one of those resets
+   lands about a second **after** a reconnect — a controller booting on a
+   freshly inserted cell. The drops that mattered carry no reset at all, so the
+   controller never lost power. 1249 mV is also unremarkable for a NiMH
+   rechargeable, which sits at 1.2–1.25 V for most of its discharge; an
+   alkaline curve was read onto a rechargeable.
+3. **"It starts when the headset is worn."** The correlation was real —
+   `PROX_ON` at 19:14:32, eleven seconds before the first bad disconnect, with
+   1–2% loss before and 24%+ after. But the headset-side errors predate it by
+   eighteen minutes, so donning revealed the fault rather than causing it.
 
-- **The batteries.** See the correction above. Both read 30% / 1249 mV, both
-  are on 207.5.0 firmware, and the left does this too without ever having been
-  reset.
-- **Range or body blocking.** RSSI −23 to −41 dBm throughout.
-- **Virtual Desktop and the PC.** VD does not appear in the log after
-  **14:56**. Through the whole bad window the foreground apps are the Quest's
-  own shell, the library panel and the guardian dialog. The streaming link was
-  not up, so the PC cannot be the source — **and this reproduces in the Quest's
-  own menus, with Darktide not running at all.**
-- **The 5 GHz streaming network.** `TheVR` is on 5240 MHz, so it does not share
-  a band with the controllers regardless.
-- **A pending controller firmware update.** `update-required` appears 37 times
-  but only ever on the *disconnected* lines; connected ones read `mcnt`, and
-  both controllers report the same 207.5.0.
+The common thread: each answer came from correlating one signal and stopping.
+The register failures were in the same file the whole time.
 
-## What is left, and how to tell them apart
+## Two things that were correctly ruled out
 
-The controllers use a proprietary 2.4 GHz link. Something is talking over it,
-and it only matters when the headset is awake and worn. In rough order of how
-cheap they are to test:
+- **Virtual Desktop and the PC.** VD does not appear in the log after 14:56;
+  through the whole bad window the foreground apps are the Quest's own shell,
+  library panel and guardian dialog. The fault reproduced with the game not
+  running and no streaming link up.
+- **Band contention with streaming.** `TheVR` is on 5240 MHz, so it does not
+  share a band with the controllers regardless.
 
-1. **Something in the room on 2.4 GHz.** Put the headset on in a different
-   room, well away from the router and the PC, and use the Quest's own menus
-   for a minute. If the controllers behave, it is environmental. The router's
-   2.4 GHz radio is the first suspect — `TheVR` is 5 GHz, but the same router
-   is almost certainly also broadcasting a 2.4 GHz network.
-2. **The headset itself, when its full stack is running.** If it is just as bad
-   in another room, it is headset-side — the cameras, display and compute all
-   start on don, and a desensitised receiver would look exactly like this.
-   Worth a Meta support conversation with these numbers, which are more than
-   most support paths ever get.
-3. **Bluetooth.** The adapter has been on for 25 hours and is 2.4 GHz. It was
-   also on throughout the healthy period, so it is not sufficient on its own —
-   but if something paired to it starts streaming when the headset wakes, that
-   would fit. Worth turning off for a test.
+## For next time
 
-Not worth chasing: the headset is on AC power and was for the healthy period
-too, so the charger and its cable do not correlate.
+- **Reboot the headset first.** It costs a minute and it is the fix for this
+  entire class.
+- **Read `{WIHO}: Disconnected device stats: RSSI=..., rx=..., missed=...`.**
+  Strong RSSI with heavy loss is a degraded link; weak RSSI with loss is range.
+- **Connection and tracking are different columns.** `CONNECTED` / `SEARCHING`
+  is the radio; `POSITION` / `ORIENTATION` / `NONE` is the cameras. Cleaning
+  the lenses helps the second and cannot help the first, so it was never going
+  to fix this one.
+- **If it recurs often**, the register failures are the thing to report to Meta
+  — they are headset-side and specific.
 
-## What this does and does not explain
+## What this does not explain
 
-It explains the dropouts and the `live=false flags=0` telemetry, and very
-likely the hands and body flickering while running (item 52) — a hand whose
-pose stops arriving a third of the time is a hand that flickers.
+**The gun that stopped firing.** A controller with a degraded link delivers
+nothing for a moment and then everything again; it does not deliver working
+melee and a silent rifle on the same trigger. That remains open and separate,
+and the shot-dispatch logging added on 18 September is what will answer it.
 
-**It does not explain the gun that stopped firing.** A controller losing
-packets delivers nothing for a moment and then everything again; it does not
-deliver working melee and a silent rifle on the same trigger. Both faults are
-real and they are separate.
+It also does not explain the hands and body flickering while running — the user
+confirms the controllers were not flickering. That stays with item 52 and the
+body trace.
