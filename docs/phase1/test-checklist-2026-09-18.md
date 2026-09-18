@@ -61,18 +61,32 @@ front.
 with a gun at full extension, and whether the drawn hands separate from where
 you feel the controllers.
 
-### 4. The torso coming back round
+### 4. The torso coming back round — read this, I may have fixed the wrong thing
 
-Glancing still does not turn your body — the dead zone is unchanged. What is
-new: if you *hold* the glance, the torso now drifts round to follow, over a
-couple of seconds. Before, it stopped dead and stayed askew until a real turn
-moved it.
+I made the body *frame* drift toward your head instead of freezing inside its
+dead zone. A review then established that the body frame is not what turns the
+torso you look down at: that is a separate solver, with its own 30 degree dead
+zone and its own recentre after 0.75 seconds of stillness, which already claims
+to do exactly what you asked for.
 
-Look 20-30 degrees off to one side and hold it. Then turn properly and stop.
+So one of two things is true, and the trace now records both so the session
+tells us which:
 
-**Report**: whether the drift feels right, too fast, or too slow — and
-especially whether it fights you when you are trying to hold a position, for
-example peeking round cover while your body stays behind it.
+- the drawn torso still does not recentre, and the bug is in that solver's
+  "have I been still" test rather than anywhere I changed today; or
+- it does recentre and what you noticed was something else — most likely the
+  virtual stock's shoulder anchor, which *is* driven by the body frame.
+
+What I did change has a side effect worth watching for: the virtual stock's
+shoulder anchor now never quite stops moving, so with two-handed aiming on you
+may see the reticle creep by a degree or two over a couple of seconds after a
+glance. If you see that, say so — it is mine and it comes straight back out.
+
+Look 20-30 degrees off to one side and hold it for five seconds. Then turn
+properly and stop.
+
+**Report**: whether the torso comes round at all, how long it takes, and
+whether the aim creeps while you hold still.
 
 ### 5. Leaving aim-down-sights
 
@@ -121,63 +135,95 @@ burst may fall between two of them.
 
 ---
 
-## Not fixed, and why — please do not go hunting for these
+## Still broken — but now instrumented. These need you to DO something
 
-### 9. The ADS reticle being different in each eye (was 62)
+I could not fix these four by reading the code, and twice today that produced a
+confident answer that was wrong. So each one now has an instrument that a
+single session settles. They need specific actions from you, which is why they
+are here rather than in a note.
 
-**Unchanged.** I did not find it, and I am not going to guess at it after
-getting the shooting diagnosis wrong the same day.
+**The body trace is on for this session.** It writes to the usual console log
+and stops at six thousand lines, and it only writes when something is actually
+moving, so standing in the hub costs almost nothing. It is off again on the
+next deployment unless I ask for it.
 
-What I checked and ruled out: the per-eye draw uses each eye's own pose and
-field of view correctly; the zoom correction is computed about the head, and
-the resulting per-eye disagreement is about one millimetre at your settings —
-far too small to be what you saw.
+### 9. Stick turning, deliberately, with the body visible
 
-If you want to help it along: tell me whether the two eyes' reticles differ by
-a *constant* amount or by more when the target is closer. Constant points at
-the draw; distance-dependent points at it being ordinary stereo parallax
-between a reticle at the target's distance and ironsights 50 cm from your face,
-which would mean the reticle is right and the comparison is not.
+Stand still with the full body on, look straight ahead, and turn with the stick
+— **a long slow hold in one direction**, not a flick. Then stop dead and stand
+still for five seconds. Do it two or three times, both directions.
 
-### 10. The ADS vignette (was 56)
+This is the one that needs care: the trace records six different yaws and the
+answer is whichever one moves further per frame than your head does. A short
+flick does not give it enough frames to tell them apart.
 
-**Unchanged, and I now know more about why I could not fix it.** It is being
-submitted — the viewer logs it — it is sized so the darkening peaks at 52
-degrees rather than the old 61, and at 45 degrees off centre it should now
-reach 89 of 255 rather than 9. It is not being dropped by a layer limit
-either: the runtime allows 16 and we submit far fewer.
+**Report**: roughly when you did it, and whether the body led or lagged.
 
-So the geometry is right and it still is not visible, which means the sprite is
-not reaching the surface the quad samples, or the quad is not being composited.
-Neither can be settled by reading the code — it needs the projected-eye
-readback with the sights forced up, which is a desk job, not a worn one.
+### 10. Standing still, looking down at yourself
 
-### 11. The body jitter and the flicker while running (was 52)
+Immediately after the turns, just stand and look down at your body for ten
+seconds or so without moving.
 
-**Unchanged.** You said this feels like the same issue fixed several times
-before, and you are right about the class: both previous fixes were "update the
-scene graph after posing" or "follow the drawn thing, not the source". I found
-the previous fix and the shape of it, but not the specific place it is missing
-this time, and I would rather leave it than change something at random in the
-body path and have you test a guess.
+That gives the trace a clean stretch of "nothing should be moving", which is
+what the jitter is measured against — a settling body's movement shrinks, a
+jittering one's does not.
 
-### 12. Stick turn rotating the body faster than your view (was 52)
+**Report**: whether it is jittering while you stand there, or only while you
+run.
 
-**Unchanged.** Same reason. The body's yaw follows the head through a lag, so
-it should trail rather than lead, which means something else is turning it too
-— and finding which needs the body telemetry read against a stick turn rather
-than more reading.
+### 11. Running, for the flicker
 
-### 13. Nested submenus (was 61)
+Run around for twenty or thirty seconds watching your hands and body.
 
-**Answered, not fixable.** DMF has no submenus. Its `group` type is a heading
-row with an indentation level inside one flat scrolling list — there is no
-sub-page to open. The mod already uses seven of those headings across 48
-settings, which is exactly what you saw: sections, but all on one scroll.
+I checked both places the body hides things and neither runs per-frame, so the
+flicker is not something switching visibility off and on — it is more likely a
+pop in position. The trace's root movement will show that.
+
+**Report**: whether it is the hands, the body, or both, and whether it happens
+in step with your footfalls.
+
+### 12. The ADS reticle, at two distances (was 62)
+
+Aim down sights at something **far away** — 30 metres or more — and hold it for
+a couple of seconds. Then aim at something **close**, a few metres, and hold
+that.
+
+Both distances matter and the item cannot be answered without both. The viewer
+now logs each eye's reticle position and their disparity, with the target's
+distance next to it. A disparity that stays the same at both distances is a
+drawing fault I can fix. One that grows as the target gets closer is ordinary
+stereo — the reticle sitting at the target's distance while the ironsights sit
+50 cm from your face — which would mean the reticle is correct and the two
+simply cannot line up in both eyes at once.
+
+**Report**: whether the mismatch looked worse at one distance than the other.
+
+### 13. The ADS vignette (was 56)
+
+Just aim down sights a few times during the session. You do not need to look
+for anything.
+
+The counters will say whether the darkening is being submitted over an image
+that still has it painted in. It is submitted, correctly sized and not being
+dropped by a layer limit — so what is left is whether the sprite survives to
+the frame it is shown on, and that is counted now rather than reasoned about.
+
+**Report**: nothing, unless it suddenly appears — in which case say when.
+
+---
+
+## Answered, not fixable
+
+### 14. Nested submenus (was 61)
+
+DMF has no submenus. Its `group` type is a heading row with an indentation
+level inside one flat scrolling list; there is no sub-page to open. The mod
+already uses seven of those headings across 48 settings, which is exactly what
+you saw: sections, all on one scroll.
 
 The one lever DMF does give is that an option nested under a switch disappears
-when the switch is off. So the list can be made shorter for anyone who has
-features turned off, but it cannot be made into pages.
+when the switch is off, so the list can be made shorter for anyone with
+features turned off — but it cannot be made into pages.
 
 **Report**: whether shortening it that way is worth doing, or whether you would
 rather it stayed flat and predictable.

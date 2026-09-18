@@ -37,6 +37,17 @@ Skull.GRAB_RADIUS = 0.12
 Skull.SPEED = 10
 Skull.TARGET_DROP = 1
 Skull.FREE_FRACTION = 0.4
+-- ...but never longer than this, however far the throw goes. The free flight
+-- is a straight line along the hand's release velocity with no gravity and no
+-- relation to the target, so its length is how far the drawn skull can end up
+-- from the real one before the blend takes over. At FREE_FRACTION alone a 20 m
+-- throw gives 0.8 s of it, and a natural downward follow-through at 3 m/s puts
+-- the drawn skull two and a half metres below the hand -- through the floor,
+-- most likely -- before it is pulled back (review, 18 September). A quarter of
+-- a second is long enough to read as a throw and short enough that it cannot
+-- go somewhere absurd. Short throws are unaffected: below about 0.6 s of
+-- flight the fraction is already the smaller of the two.
+Skull.FREE_MAX_SECONDS = 0.25
 -- A release counts as the throw that started a flight this soon after it.
 Skull.RELEASE_WINDOW = 0.75
 Skull.MAX_THROW_SECONDS = 4
@@ -96,7 +107,7 @@ end
 function Skull.blend_weight(elapsed, total, free_fraction)
     free_fraction = free_fraction or Skull.FREE_FRACTION
     if not finite(elapsed) or not finite(total) or total <= 0 then return 1 end
-    local free = total * free_fraction
+    local free = math.min(total * free_fraction, Skull.FREE_MAX_SECONDS)
     if elapsed <= free then return 0 end
     if elapsed >= total then return 1 end
     return (elapsed - free) / (total - free)
@@ -356,14 +367,16 @@ function Skull.install(mod, presentation)
         local position
         if side == "left" then position = presentation.left_controller_grip_target()
         elseif side == "right" then position = presentation.controller_grip_target() end
+        -- Before the sampling, not after: without the talent there is no skull
+        -- to throw, and the window below allocates on the input thread every
+        -- frame. `api.following` is deliberately NOT checked here -- it goes
+        -- false while the off hand holds the skull, which is exactly when the
+        -- throw is being wound up.
+        local skull = companion(unit)
+        if not skull then return nil end
         local t = now()
         if position and t then
             local p = array(position)
-            local previous = hand_track.position
-            if previous and hand_track.t and t > hand_track.t then
-                local dt = t - hand_track.t
-                hand_track.velocity = {(p[1] - previous[1]) / dt, (p[2] - previous[2]) / dt, (p[3] - previous[3]) / dt}
-            end
             -- The window the throw is measured over. Trimmed here rather than
             -- at the release so the list cannot grow while the skull is held.
             local samples = hand_track.samples
@@ -385,8 +398,7 @@ function Skull.install(mod, presentation)
             end
             hand_track.position, hand_track.t = p, t
         end
-        local skull = companion(unit)
-        if not skull or not api.following then return nil end
+        if not api.following then return nil end
         zone.centre = Holsters.local_point(frame, array(Unit.world_position(skull, 1)))
         zone.radius = Skull.GRAB_RADIUS / frame.scale
         return zones

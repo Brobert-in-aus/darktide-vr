@@ -4,10 +4,19 @@ local function near(a,b,m) assert(math.abs(a-b)<1e-9,(m or 'mismatch')..': '..to
 near(Skull.flight_time({0,0,0},{0,8,0}),0.8,'8 m at 10 m/s')
 near(Skull.flight_time({1,2,3},{4,6,3}),0.5,'5 m')
 assert(Skull.flight_time(nil,{0,0,0})==nil and Skull.flight_time({0,0,0},{0/0,0,0})==nil)
--- Free for the first 2/5 of the flight, then blended in by its end.
-near(Skull.blend_weight(0,1),0); near(Skull.blend_weight(0.4,1),0,'free until 2/5')
-near(Skull.blend_weight(0.7,1),0.5,'halfway through the blend')
+-- Free for the first 2/5 of the flight OR a quarter of a second, whichever is
+-- shorter, then blended in by its end. The cap is what stops a long throw
+-- flying the drawn skull metres off the real one -- and through the floor --
+-- before the blend takes over.
+near(Skull.FREE_MAX_SECONDS,0.25,'the cap')
+near(Skull.blend_weight(0,1),0)
+near(Skull.blend_weight(Skull.FREE_MAX_SECONDS,1),0,'a one second flight is capped, not 2/5 of it')
+near(Skull.blend_weight(0.625,1),0.5,'halfway through the blend that follows')
 near(Skull.blend_weight(1,1),1); near(Skull.blend_weight(3,1),1)
+-- A short throw is below the cap, so it is unchanged: 2/5 of 0.5 s is 0.2 s.
+near(Skull.blend_weight(0.2,0.5),0,'short throws still use the fraction')
+near(Skull.blend_weight(0.35,0.5),0.5)
+assert(Skull.blend_weight(0.3,1)>0,'and the cap really shortens the free flight')
 near(Skull.blend_weight(0.1,0),1,'no flight: on the real skull')
 local d=Skull.drawn_position({0,0,1},{0,2,0},0.5,{0,4,1},0)
 near(d[1],0); near(d[2],1,'free flight at the release velocity'); near(d[3],1)

@@ -942,6 +942,11 @@ function Mirror.install(mod, presentation, options)
                 state.frames % Mirror.TRACE_EVERY == 0 then
             local ok = pcall(function()
                 local root_world = array(Unit.world_position(unit, 1))
+                -- The solver that actually turns the torso (see
+                -- presentation.apply_body_heading). The yaws above are the
+                -- body FRAME's, which drives the virtual stock and the neck
+                -- follow but not the avatar's heading.
+                local heading = presentation.body_heading_trace
                 local sample = Mirror.yaw_sample(
                     frame and frame.head_yaw,
                     frame and frame.target_yaw,
@@ -981,7 +986,8 @@ function Mirror.install(mod, presentation, options)
                 trace_lines = trace_lines + 1
                 mod:info("DARKTIDEVR_BODY_TRACE t=%.3f dt=%.4f head=%s target=%s frame=%s mirror=%s avatar=%s unit=%s " ..
                     "d_head=%s d_target=%s d_frame=%s d_mirror=%s d_avatar=%s d_unit=%s " ..
-                    "root=%.4f,%.4f,%.4f root_step_m=%s neck_m=%s scale=%.4f why=%s",
+                    "root=%.4f,%.4f,%.4f root_step_m=%s neck_m=%s scale=%.4f why=%s " ..
+                    "solver=%s visual=%s solver_head=%s delta=%s still_s=%s conv=%s stick=%s",
                     type(t) == "number" and t or 0, type(dt) == "number" and dt or 0,
                     degrees("head"), degrees("target"), degrees("frame"),
                     degrees("mirror"), degrees("avatar"), degrees("unit"),
@@ -990,7 +996,14 @@ function Mirror.install(mod, presentation, options)
                     root_world[1], root_world[2], root_world[3],
                     root_step and string.format("%.5f", root_step) or "na",
                     state.neck_distance and string.format("%.4f", state.neck_distance) or "na",
-                    state.scale_ratio or 1, why)
+                    state.scale_ratio or 1, why,
+                    heading and tostring(heading.branch) or "na",
+                    heading and heading.visual_yaw and string.format("%.2f", math.deg(heading.visual_yaw)) or "na",
+                    heading and heading.head_yaw and string.format("%.2f", math.deg(heading.head_yaw)) or "na",
+                    heading and heading.delta and string.format("%.2f", math.deg(heading.delta)) or "na",
+                    heading and heading.still_seconds and string.format("%.2f", heading.still_seconds) or "na",
+                    heading and heading.convergence and string.format("%.1f", heading.convergence) or "na",
+                    heading and tostring(heading.stick) or "na")
                 sample.root = root_world
                 trace_previous = sample
             end)

@@ -10129,6 +10129,26 @@ function presentation.apply_body_heading(world, unit)
         local alpha = 1 - math.exp(-convergence * dt)
         visual_yaw = visual_yaw + desired_delta * alpha
     end
+    -- What this solver just decided, for the body trace. Which branch fired is
+    -- the whole answer to "the torso doesn't recentre": `recentre` never
+    -- firing means the stillness gate is not being satisfied, `deadzone`
+    -- holding means the head is further than 30 degrees round, and `stick`
+    -- means artificial locomotion is claiming it at convergence 6.
+    local trace = presentation.body_heading_trace
+    if not trace then
+        trace = {}
+        presentation.body_heading_trace = trace
+    end
+    trace.head_yaw = head_yaw
+    trace.visual_yaw = visual_yaw
+    trace.delta = delta
+    trace.head_motion = head_motion
+    trace.still_seconds = now - (controller_observation.body_heading_last_motion_t or now)
+    trace.convergence = convergence
+    trace.stick = controller_observation.gameplay_stick_active == true
+    trace.branch = controller_observation.gameplay_stick_active and "stick" or
+        (math.abs(delta) > dead_zone and "deadzone" or
+            (desired_yaw and "recentre" or "held"))
     controller_observation.body_visual_yaw = visual_yaw
     controller_observation.body_visual_yaw_last_t = now
     if presentation.current_game_mode_name() == "hub" then
