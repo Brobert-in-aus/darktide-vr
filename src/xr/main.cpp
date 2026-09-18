@@ -6418,6 +6418,11 @@ class Harness {
   D3D12_VIEW_INSTANCING_TIER view_instancing_tier() const {
     return view_instancing_tier_;
   }
+  D3D12_VARIABLE_SHADING_RATE_TIER shading_rate_tier() const {
+    return shading_rate_tier_;
+  }
+  UINT shading_rate_tile_size() const { return shading_rate_tile_size_; }
+  bool shading_rate_more_rates() const { return shading_rate_more_rates_; }
   ID3D12Device* device() const { return device_.Get(); }
   ID3D12CommandQueue* queue() const { return queue_.Get(); }
   UINT resize_count() const { return resize_count_; }
@@ -6510,6 +6515,20 @@ class Harness {
     if (SUCCEEDED(device_->CheckFeatureSupport(
             D3D12_FEATURE_D3D12_OPTIONS3, &options3, sizeof(options3)))) {
       view_instancing_tier_ = options3.ViewInstancingTier;
+    }
+
+    // Variable rate shading, which is what foveated RENDERING would be built
+    // on: tier 2 adds the screen-space shading rate image, and a foveation
+    // pattern is exactly that image -- fine in the centre, coarse at the
+    // edges. Tier 1 is per-draw only and cannot express foveation. Reported
+    // here because the answer is a property of this adapter, not of the
+    // headset, so it can be had without one.
+    D3D12_FEATURE_DATA_D3D12_OPTIONS6 options6{};
+    if (SUCCEEDED(device_->CheckFeatureSupport(
+            D3D12_FEATURE_D3D12_OPTIONS6, &options6, sizeof(options6)))) {
+      shading_rate_tier_ = options6.VariableShadingRateTier;
+      shading_rate_tile_size_ = options6.ShadingRateImageTileSize;
+      shading_rate_more_rates_ = options6.AdditionalShadingRatesSupported != 0;
     }
 
     if (debug_layer) {
@@ -6625,6 +6644,10 @@ class Harness {
   DXGI_ADAPTER_DESC3 adapter_desc_{};
   D3D12_VIEW_INSTANCING_TIER view_instancing_tier_{
       D3D12_VIEW_INSTANCING_TIER_NOT_SUPPORTED};
+  D3D12_VARIABLE_SHADING_RATE_TIER shading_rate_tier_{
+      D3D12_VARIABLE_SHADING_RATE_TIER_NOT_SUPPORTED};
+  UINT shading_rate_tile_size_{};
+  bool shading_rate_more_rates_{};
   ComPtr<ID3D12Device> device_;
   ComPtr<ID3D12InfoQueue> info_queue_;
   ComPtr<ID3D12CommandQueue> queue_;
@@ -7050,6 +7073,11 @@ int wmain(int argc, wchar_t** argv) {
     std::cout << "d3d12.feature_level=12_0\n"
               << "d3d12.view_instancing_tier="
               << static_cast<unsigned>(harness.view_instancing_tier()) << '\n'
+              << "d3d12.variable_shading_rate_tier="
+              << static_cast<unsigned>(harness.shading_rate_tier())
+              << " tile_size=" << harness.shading_rate_tile_size()
+              << " additional_rates="
+              << (harness.shading_rate_more_rates() ? "yes" : "no") << '\n'
               << "present.frames=" << frames << '\n'
               << "present.resize_count=" << harness.resize_count() << '\n'
               << "present.elapsed_ms=" << elapsed.count() << '\n'
