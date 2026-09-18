@@ -42,7 +42,7 @@ local function new(options)
     Atlas.WIDTH, Atlas.HEIGHT, Atlas.CELLS = WIDTH, HEIGHT, COLUMNS * ROWS
 
     local state = {generation = 0, pending = {}, shown = {}, frame = 0, stamp = -math.huge,
-        materials = {}, skipped = 0,
+        materials = {}, skipped = 0, wanted = 0, peak_wanted = 0, peak_logged = 0,
         -- Per instance, the caller's stamp for the values last replayed
         -- onto it; dies with the instances.
         applied = {}}
@@ -222,6 +222,24 @@ local function new(options)
     function Atlas.claim(t, anchor)
         if not Atlas.begin_frame(t) then return nil, "atlas" end
         local index = #state.pending + 1
+        -- How many were WANTED, not merely how many fit. `#pending` stops at
+        -- the ceiling, so counting that says ceiling+1 for ever and tells
+        -- nobody how big the grid should be; count the attempts in a frame,
+        -- which all share one `t` (18 September).
+        if state.wanted_t ~= t then state.wanted_t, state.wanted = t, 0 end
+        state.wanted = state.wanted + 1
+        if state.wanted > state.peak_wanted then
+            state.peak_wanted = state.wanted
+            -- Said again only when the demand grows meaningfully, so a busy
+            -- scene does not fill the log a line at a time.
+            if state.api and state.api.log and state.wanted > COLUMNS * ROWS and
+                    state.wanted >= state.peak_logged + math.max(2, COLUMNS * ROWS * 0.25) then
+                state.peak_logged = state.wanted
+                state.api.log(string.format(
+                    "%s demand cells=%d wanted=%d claimant=%s", TAG,
+                    COLUMNS * ROWS, state.wanted, Atlas.claimant_name(anchor)))
+            end
+        end
         if index > COLUMNS * ROWS then
             -- Every caller answers this by hiding, so a full atlas reads as a
             -- display quietly going missing with nothing in the log to say

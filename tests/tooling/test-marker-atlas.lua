@@ -164,6 +164,22 @@ assert(backwards.draw("game_world", frame_for) == 0 and backwards.state.resource
     "a stamp from the future is stale and idle at once, not fresh for ever")
 assert(backwards.ensure("game_world") and backwards.claim(now, {x = 0, y = 0, z = 0}),
     "and the next marker rebuilds it on the new clock")
+-- The demand above the ceiling, which is the number the grid must be sized
+-- from: the full line fires AT the ceiling and says nothing about how many
+-- were wanted (18 September).
+do
+    local counted = Atlas.new({name = "demand", log_tag = "DEMAND", cell_width = 64,
+        cell_height = 64, columns = 2, rows = 2, clock = function() return 1 end})
+    counted.configure(api)
+    assert(counted.ensure("game_world"))
+    for i = 1, 4 do assert(counted.claim(1, {key = "k" .. i})) end
+    assert(counted.state.peak_wanted == 4, "four fit in four cells")
+    for i = 5, 20 do assert(not counted.claim(1, {key = "k" .. i})) end
+    assert(counted.state.peak_wanted == 20,
+        "the demand above the ceiling is counted: " .. counted.state.peak_wanted)
+    assert(counted.state.wanted == 20)
+end
+
 -- A full atlas has to say WHICH display went missing. The hand overlays name
 -- their anchors; a marker's anchor is a position, and the one run where this
 -- fired said `anchor=?` (hook-arity-smoke-20260918).

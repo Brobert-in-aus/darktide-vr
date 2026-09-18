@@ -564,9 +564,16 @@ end
 -- question with nothing measuring it. Reported when a new maximum stands for
 -- a second, so a log carries the worst case without a line per draw.
 state.extent = {dx = 0, dy = 0, reported_dx = 0, reported_dy = 0, at = nil}
-local function observe_extent(x, y, scope_atlas)
+local function observe_extent(x, y, scope_atlas, width, height)
     local extent = state.extent
-    local ax, ay = x < 0 and -x or x, y < 0 and -y or y
+    -- A draw's box, not its anchor. `position` is one corner and the size
+    -- runs from it, so both corners are watched: an anchor at +10 with a
+    -- 40 px size reaches 50, and measuring only the anchor said 10 (18
+    -- September, sizing the atlas).
+    local x2 = x + (tonumber(width) or 0)
+    local y2 = y + (tonumber(height) or 0)
+    local ax = math.max(x < 0 and -x or x, x2 < 0 and -x2 or x2)
+    local ay = math.max(y < 0 and -y or y, y2 < 0 and -y2 or y2)
     if ax <= extent.dx and ay <= extent.dy then return end
     if ax > extent.dx then extent.dx = ax end
     if ay > extent.dy then extent.dy = ay end
@@ -580,12 +587,12 @@ local function observe_extent(x, y, scope_atlas)
     local atlas = scope_atlas
     if not (state.api and state.api.log) then return end
     state.api.log(string.format(
-        "DARKTIDEVR_MARKER extents max_dx=%.1f max_dy=%.1f half_cell=%.1f,%.1f",
+        "DARKTIDEVR_MARKER extents max_dx=%.1f max_dy=%.1f half_cell=%.1f,%.1f boxed=1",
         extent.dx, extent.dy, (atlas and atlas.CELL_WIDTH or 0) * 0.5,
         (atlas and atlas.CELL_HEIGHT or 0) * 0.5))
 end
 
-local function shifted(scope, position, logical_scale)
+local function shifted(scope, position, logical_scale, size)
     local factor = scope.factor or 1
     -- The cell question only. The HUD panel's mirror scope draws in full
     -- screen pixels about an origin of zero and has no cell at all, so
@@ -593,7 +600,9 @@ local function shifted(scope, position, logical_scale)
     if not scope.mirror and scope.atlas then
         local unit = logical_scale or 1
         observe_extent((position[1] or 0) * unit * factor - scope.origin_x,
-            (position[2] or 0) * unit * factor - scope.origin_y, scope.atlas)
+            (position[2] or 0) * unit * factor - scope.origin_y, scope.atlas,
+            size and (size[1] or 0) * unit * factor,
+            size and (size[2] or 0) * unit * factor)
     end
     local dx = scope.atlas_x - scope.origin_x
     local dy = scope.atlas_y - scope.origin_y
@@ -622,8 +631,8 @@ atlas_converters.script_draw_bitmap = function(scope, func, self, material, posi
     if not ok then state.atlas_skipped = state.atlas_skipped + 1; return nil end
     dump("atlas_bitmap", state.material_names[material] or material, position[1] - scope.origin_x,
         position[2] - scope.origin_y, size[1], size[2], position[3])
-    return atlas_call(scope, self, func, instance, shifted(scope, position), sized(scope, size),
-        color)
+    return atlas_call(scope, self, func, instance, shifted(scope, position, nil, size),
+        sized(scope, size), color)
 end
 
 atlas_converters.script_draw_bitmap_uv = function(scope, func, self, material, position, size,
@@ -634,8 +643,8 @@ atlas_converters.script_draw_bitmap_uv = function(scope, func, self, material, p
     end
     local instance, ok = atlas_material(scope, material)
     if not ok then state.atlas_skipped = state.atlas_skipped + 1; return nil end
-    return atlas_call(scope, self, func, instance, shifted(scope, position), sized(scope, size),
-        uvs, color)
+    return atlas_call(scope, self, func, instance, shifted(scope, position, nil, size),
+        sized(scope, size), uvs, color)
 end
 
 atlas_converters.script_draw_text = function(scope, func, self, text, font_size, font_type,
@@ -647,7 +656,7 @@ atlas_converters.script_draw_text = function(scope, func, self, text, font_size,
     dump("atlas_text", text, position[1] - scope.origin_x, position[2] - scope.origin_y,
         size and size[1] or 0, size and size[2] or 0, position[3])
     return atlas_call(scope, self, func, text, font_size * (scope.factor or 1), font_type,
-        shifted(scope, position), sized(scope, size), color, options)
+        shifted(scope, position, nil, size), sized(scope, size), color, options)
 end
 
 atlas_converters.draw_rect = function(scope, func, self, position, size, color, retained_id)
@@ -655,7 +664,8 @@ atlas_converters.draw_rect = function(scope, func, self, position, size, color, 
         if scope.mirror then return nil end
         return func(self, position, size, color, retained_id)
     end
-    return atlas_call(scope, self, func, shifted(scope, position, self.scale or 1), size, color)
+    return atlas_call(scope, self, func, shifted(scope, position, self.scale or 1, size),
+        size, color)
 end
 
 atlas_converters.draw_slug_icon = function(scope, func, self, resource, index, position, size,
