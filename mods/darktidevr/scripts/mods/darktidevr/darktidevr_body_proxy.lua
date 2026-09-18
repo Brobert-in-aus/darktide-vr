@@ -928,7 +928,27 @@ function BodyProxy.visual_owner(unit)
     end
 end
 
+-- Whether the SOURCE avatar's slot must be hidden because something else is
+-- drawing that part of the body.
+--
+-- The hand rig is checked before this module's own state, and that is the
+-- whole fix. When a full-profile body (the mirror's copy) takes the rig,
+-- `set_hand_rig` destroys this module's units and clears `state.ready`, so
+-- `BodyProxy.active()` goes false -- and with it went the only thing hiding
+-- the source avatar's arms. The copy drew a pair, the source drew a pair, and
+-- they sat 1.3 cm apart.
+--
+-- Measured rather than reasoned: four explanations for "two pairs of hands,
+-- both merging at the wrists" were offered from the code and all four were
+-- wrong. The arm census named it on its first session --
+-- `slot_3p/slot_body_arms` and `mirror_slot/slot_body_arms`, eight meshes
+-- each, wrists 0.0013 m apart (18 September).
 function BodyProxy.hides_source_slot(slot_name)
+    -- Something else owns the body: hide the source's, whatever this module's
+    -- own units are doing.
+    if hand_rig and Unit.alive(hand_rig) then
+        return hidden_source_slots[slot_name] == true
+    end
     if not BodyProxy.active() then
         return false
     end
