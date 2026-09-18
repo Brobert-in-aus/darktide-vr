@@ -142,6 +142,25 @@ function Assert-NoStaleFlags {
     }
 }
 
-# The one flag that legitimately persists: the mod writes it as a live setting
-# rather than a run request.
+# Flags the mod itself writes as live settings rather than run requests. The
+# DEPLOYMENT's own flags are not listed here: `sync-darktide-vr-dev.ps1` places
+# fourteen of them and which fourteen depends on its options, so a hard-coded
+# list would have refused every run the moment an option changed. They are read
+# from the deployment manifest instead, which is written by the deployment and
+# therefore cannot drift from it.
 $script:PersistentModFlags = @('darktidevr_crosshair_scale.flag')
+
+# The flag names a deployment placed, from its own manifest. Takes the parsed
+# manifest rather than a path so it can be tested without one.
+function Get-DeployedFlagNames {
+    param($Manifest)
+    if (-not $Manifest) { return @() }
+    $entries = if ($Manifest.PSObject.Properties.Name -contains 'entries') {
+        $Manifest.entries
+    } else { $Manifest }
+    return @(
+        @($entries) |
+            ForEach-Object { $_.Destination } |
+            Where-Object { $_ -and ([string]$_).ToLowerInvariant().EndsWith('.flag') } |
+            ForEach-Object { Split-Path $_ -Leaf })
+}

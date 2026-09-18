@@ -2069,7 +2069,26 @@ bool foveation_census_enabled() {
 // A window of presents, then a line per shape and a fresh window. A whole
 // session summed into one total would mix the menu, the loading screen and the
 // mission, and the shapes differ in each.
+//
+// The EARLY windows are short, and that is not tuning. This machine bugchecks
+// at or within a frame of the first frame after a level load -- five times now
+// -- so a census whose first window is six hundred presents away produces
+// nothing at all, which is exactly what the 18 September run produced. Short
+// windows first means the menu and the loading screen are on disk before the
+// point the machine is known to die at, and the run is worth something even if
+// it never reaches the hub.
 constexpr std::uint64_t kFoveationCensusWindow = 600;
+constexpr std::uint64_t kFoveationCensusEarlyWindow = 60;
+constexpr std::uint64_t kFoveationCensusEarlyWindows = 8;
+
+std::atomic<std::uint64_t> foveation_windows_written{0};
+
+std::uint64_t foveation_census_window() {
+  return foveation_windows_written.load(std::memory_order_relaxed) <
+                 kFoveationCensusEarlyWindows
+             ? kFoveationCensusEarlyWindow
+             : kFoveationCensusWindow;
+}
 
 void write_foveation_census(std::uint64_t present) {
   const auto log = foveation_log.load(std::memory_order_acquire);
@@ -2077,7 +2096,8 @@ void write_foveation_census(std::uint64_t present) {
     return;
   }
   const auto start = foveation_window_start.load(std::memory_order_relaxed);
-  if (present < start + kFoveationCensusWindow) {
+  const auto window = foveation_census_window();
+  if (present < start + window) {
     return;
   }
   foveation_window_start.store(present, std::memory_order_relaxed);
@@ -2086,7 +2106,7 @@ void write_foveation_census(std::uint64_t present) {
       header, sizeof(header),
       "DARKTIDEVR_FOVEATION_CENSUS window_end_present=%llu presents=%llu\r\n",
       static_cast<unsigned long long>(present),
-      static_cast<unsigned long long>(kFoveationCensusWindow));
+      static_cast<unsigned long long>(window));
   std::array<char, 8192> body{};
   const auto body_length =
       foveation_census.write(body.data(), static_cast<int>(body.size()) - 1);
@@ -2101,9 +2121,17 @@ void write_foveation_census(std::uint64_t present) {
     WriteFile(log, body.data(), static_cast<DWORD>(body_length), &written,
               nullptr);
   }
-  // Deliberately NOT FlushFileBuffers: it is a synchronous disk flush in the
-  // present hook, and the run reads this file after the game has exited. The
-  // handle is closed on the way out, which flushes it.
+  // The early windows are flushed and the later ones are not. A synchronous
+  // disk flush in the present hook is a stall, and the review that asked for
+  // it to go was right about the cost -- but "the file is read after the game
+  // exits" assumes the game exits. On this machine the likely end is a
+  // bugcheck, which loses everything still in the cache. So the windows that
+  // land before the point it dies at are paid for, and the steady-state ones
+  // are not.
+  if (foveation_windows_written.fetch_add(1, std::memory_order_relaxed) <
+      kFoveationCensusEarlyWindows) {
+    FlushFileBuffers(log);
+  }
 }
 
 // The innermost marker this list is inside, if the marker stacks are being

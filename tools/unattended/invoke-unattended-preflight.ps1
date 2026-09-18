@@ -115,8 +115,30 @@ $questExpected = $runtimeProfile -ne 'SteamVR'
 $presentFlags = @(
     Get-ChildItem -LiteralPath $modRoot -Filter '*.flag' -File -ErrorAction SilentlyContinue |
         ForEach-Object { $_.Name })
+# The deployment's own flags come from the deployment's own manifest, so the
+# gate cannot drift from what `sync-darktide-vr-dev.ps1` actually places.
+$deployedFlags = @()
+$deploymentManifest = Get-ChildItem `
+    -LiteralPath (Join-Path $repoRoot 'artifacts\deployment-backups') `
+    -Directory -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    ForEach-Object { Join-Path $_.FullName 'manifest.json' } |
+    Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+    Select-Object -First 1
+if ($deploymentManifest) {
+    try {
+        $deployedFlags = Get-DeployedFlagNames `
+            -Manifest (Get-Content -LiteralPath $deploymentManifest -Raw | ConvertFrom-Json)
+    } catch {
+        # A manifest that cannot be read is not a reason to refuse the run; it
+        # is a reason to fall back to the stricter list and say so if that
+        # then trips.
+        $deployedFlags = @()
+    }
+}
 if ($Mode -eq 'Ready') {
-    Assert-NoStaleFlags -Present $presentFlags -Allowed $PersistentModFlags -Expected $AllowFlags
+    Assert-NoStaleFlags -Present $presentFlags `
+        -Allowed (@($PersistentModFlags) + @($deployedFlags)) -Expected $AllowFlags
 }
 
 $adb = Get-AdbPath

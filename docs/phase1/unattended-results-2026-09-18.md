@@ -921,3 +921,61 @@ The gate is checked before the ADB section rather than after it, because it is
 a cheap precondition and because the device-inventory test executes that
 section as a source slice -- anything inside it has to be self-contained,
 which the first cut of this was not.
+
+## The census answered it: the shading is at the DLSS internal resolution
+
+Two clean hub runs after the crash, the second one with the proxy actually
+deployed. The dominant shape, over a 600-present window in the hub:
+
+```
+shape=1272x1384 viewport=1272x1384 format=29 binds=7388 draws=540139 vertices=3252163332
+shape=2048x2048 viewport=1024x1024 format=61 binds=2898 draws=315422 vertices=3582781146
+shape=1272x1384 viewport=1272x1384 format=41 binds=3600 draws=31588  vertices=18651396
+shape=1908x2076 viewport=1908x2076 format=28 binds=6000 draws=6000   vertices=21600
+```
+
+**1908 x 2/3 = 1272 and 2076 x 2/3 = 1384.** The main colour pass renders at
+exactly the DLSS Quality internal resolution -- about 900 draws a frame -- and
+the eye extent appears only as `1908x2076` with **ten draws a frame**, which is
+the resolve.
+
+So both guesses in the original plan were wrong, and the census was worth
+building rather than skipping:
+
+- Setting the rate when the eye final is bound would have foveated a blit.
+- Sizing the shading rate image from the eye extent would have missed every
+  shading pass, because they are two thirds of it in each dimension.
+
+The shading rate image belongs on `1272x1384`, and it has to be rebuilt when
+DLSS changes quality mode, because the internal resolution moves with it.
+
+Two other shapes are worth naming. `2048x2048` at a `1024x1024` viewport with
+315k draws and 3.6 G vertices is a shadow atlas -- enormous geometry, no pixel
+shading, and exactly the case the census header warns about when it says draws
+and vertices are not pixels. And a run of `1272x1384` targets at viewports of
+636x692, 318x346, 159x173 and 79x86 is a downsample pyramid; foveating those
+would be pointless at best.
+
+### What the census got wrong, and it is in its own output
+
+`shapes=32 unattributed_draws=289404 overflowed_shapes=219804`. Thirty-two
+distinct (extent, viewport, format) shapes is not enough for this renderer --
+the downsample pyramid alone spends several -- so the tail is truncated and
+roughly a third as many draws again went unattributed as landed on the top
+shape. The headline is unaffected: `1272x1384` was registered early and carries
+540k draws unambiguously. The tail is not trustworthy and the log says so
+rather than presenting a tidy list. `evicted_bindings=0`, so the per-thread
+cache was never the problem.
+
+### The deployment mistake that cost the first clean run
+
+The run before this one reached the hub, exited cleanly, and produced no
+census at all. The bootstrap log said why: the live proxy is
+`binaries\d3d12.dll` and the new build had been hand-copied to
+`mods\darktidevr\bin\d3d12.dll`, which nothing loads. The verification step
+compared the file that had been written against the file it was written from,
+so it passed -- it checked the copy, not the thing the game loads.
+
+`tools\stereo\sync-darktide-vr-dev.ps1` exists precisely to deploy both, and
+using it is what made the second run work. Hand-copying a binary into the
+install is how a run silently measures the previous build.

@@ -144,4 +144,34 @@ catch { $caught = $true }
 if (-not $caught) { throw 'A differently-cased stale flag was accepted.' }
 Assert-NoStaleFlags -Present @('DARKTIDEVR_CROSSHAIR_SCALE.FLAG') -Allowed $persistent -Expected @()
 
-Write-Output 'xr_readiness=pass cases=27'
+# The deployment's own flags come from the deployment's own manifest. A
+# hard-coded list would have refused every run the moment `sync-darktide-vr-dev`
+# changed an option -- and it did: the first cut allowed one flag while the dev
+# deployment places fourteen.
+$manifest = [pscustomobject]@{ entries = @(
+    [pscustomobject]@{ Destination = 'D:\game\mods\darktidevr\darktidevr_hud_panel.flag' },
+    [pscustomobject]@{ Destination = 'D:\game\mods\darktidevr\darktidevr_full_second_eye.flag' },
+    [pscustomobject]@{ Destination = 'D:\game\mods\darktidevr\scripts\mods\darktidevr\darktidevr.lua' },
+    [pscustomobject]@{ Destination = 'D:\gameinaries\d3d12.dll' }
+) }
+$deployed = Get-DeployedFlagNames -Manifest $manifest
+if ($deployed.Count -ne 2) { throw "Only the .flag entries are flags, got $($deployed.Count)" }
+if ($deployed -notcontains 'darktidevr_hud_panel.flag') { throw 'leaf names, not full paths' }
+
+# A manifest given as a bare array works too, and nothing at all is no flags
+# rather than an error.
+if ((Get-DeployedFlagNames -Manifest $manifest.entries).Count -ne 2) { throw 'bare array' }
+if ((Get-DeployedFlagNames -Manifest $null).Count -ne 0) { throw 'no manifest, no flags' }
+
+# Together: the deployment's flags and the runtime one pass, a run request does not.
+$allowed = @($persistent) + @($deployed)
+Assert-NoStaleFlags -Present @('darktidevr_hud_panel.flag', 'darktidevr_full_second_eye.flag',
+                               'darktidevr_crosshair_scale.flag') -Allowed $allowed -Expected @()
+$caught = $false
+try {
+    Assert-NoStaleFlags -Present @('darktidevr_hud_panel.flag', 'darktidevr_foveation.flag') `
+        -Allowed $allowed -Expected @()
+} catch { $caught = $true }
+if (-not $caught) { throw 'A run request was excused by the deployment manifest.' }
+
+Write-Output 'xr_readiness=pass cases=34'

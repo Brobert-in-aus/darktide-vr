@@ -70,8 +70,23 @@ writes a line per shape, busiest first, to
 render state, so a run with it on cannot make the game look wrong. Enabled by
 `darktidevr_foveation.flag` containing `census`.
 
-One unattended run says which extents actually receive the shading, and that
-decides where the rate belongs. Then, and only then:
+**It ran on 18 September, and the answer is `1272x1384`** -- exactly two
+thirds of the 1908x2076 eye extent in each dimension, which is the DLSS Quality
+internal resolution. That shape takes about 900 draws a frame. The eye extent
+appears only as a resolve, at ten draws a frame. Both guesses in this note were
+wrong, which is why the census was built first.
+
+So the shading rate image is sized from the DLSS internal resolution, not the
+eye extent, and it has to be rebuilt when the quality mode changes -- the
+internal resolution moves with it, exactly as it moves with Virtual Desktop's
+FOV tangent.
+
+Two shapes to stay away from, both from the same run: a `2048x2048` shadow
+atlas at a `1024x1024` viewport with 3.6 G vertices and no pixel shading, and a
+downsample pyramid of `1272x1384` targets at viewports of 636x692, 318x346,
+159x173 and 79x86. Foveating either is pointless.
+
+With that known, the rest:
 
 1. `QueryInterface` the hooked list for `ID3D12GraphicsCommandList5`. VRS lives
    there; a list that does not support it is skipped.
