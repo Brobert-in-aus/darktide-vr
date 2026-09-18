@@ -41,6 +41,39 @@ F8 and look at yourself and at the reflection.
 **Report**: how many bodies you can see on yourself, and how many in total with
 the mirror on. The answer I am expecting is one and two.
 
+### 1a. The second body was a second *spawn*, and it was not the stock model
+
+Written after the above, from your report of two bodies on loading into the
+Psykhanium. The stock model was hidden as promised; the arm census in the
+same log named the other body, and it was one this mod spawns itself:
+
+```
+DARKTIDEVR_IK hand_rig=body                              23:13:07.948
+DARKTIDEVR_IK visual_proxy=inactive mode=upper_body      23:13:07.957
+DARKTIDEVR_IK visual_proxy=active   mode=upper_body      23:13:07.964
+DARKTIDEVR_ARM_CENSUS ... source=proxy_body  arms=4 wrist=0.077,5.855,2.020
+DARKTIDEVR_ARM_CENSUS ... source=mirror_copy arms=4 wrist=0.077,5.855,2.020
+```
+
+Under the full-body dev flag the body proxy runs in its older upper-body
+mode and spawns a torso-and-arms profile of its own. The copy took the hands,
+the proxy destroyed its units, and sixteen milliseconds later the upper-body
+branch read its own cleared state as "nothing spawned yet" and spawned them
+again. Only the hands-only branch ever knew about the rig. Two spawned bodies
+on you, at the same wrist, with the stock model correctly hidden underneath
+both.
+
+Fixed in the proxy itself: a body that owns the rig is the body, in either
+mode, and the proxy spawns nothing while it lives. The IK in the main file
+takes the tracked-hands path under a rig too, flag or no flag, because the
+full-body path solves on whatever unit it is handed and under a rig that
+would be your gameplay avatar. Written up in
+[two-bodies-2026-09-19.md](two-bodies-2026-09-19.md).
+
+**Test**: the same as item 1. **Report**: the same count. The log line to
+quote if it is still wrong is `DARKTIDEVR_IK visual_proxy=... mode=...`,
+which now says `body_rig` while the copy owns the hands.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

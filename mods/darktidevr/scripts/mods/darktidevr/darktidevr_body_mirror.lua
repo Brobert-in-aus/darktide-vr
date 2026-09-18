@@ -983,10 +983,18 @@ function Mirror.install(mod, presentation, options)
             -- Deferred: see hide_near_eye. The scale eases over about a
             -- second, so the scan waits for it to settle and for a camera.
             state.near_eye_pending = Mirror.MODES[mode_name].near_eye or nil
-            if Mirror.MODES[mode_name].hand_rig and body_proxy() and body_proxy().set_hand_rig then
+            -- Only a copy that can be posed takes the hands. A layout
+            -- mismatch (below) hides the copy and never poses it; had it
+            -- taken the rig first, the gloves would be gone, the source arms
+            -- hidden on the rig's account, and the player left with a
+            -- floating weapon and no hands at all.
+            if Mirror.MODES[mode_name].hand_rig and state.same_layout and body_proxy() and
+                    body_proxy().set_hand_rig then
                 -- Before the first copy: the wrist basis comes from this spawn pose.
                 state.hand_rig = body_proxy().set_hand_rig(unit)
                 mod:info("DARKTIDEVR_BODY_MIRROR hand_rig=%s", tostring(state.hand_rig))
+            elseif Mirror.MODES[mode_name].hand_rig then
+                log_once("hand_rig_layout", "hand_rig=skipped reason=layout_mismatch")
             end
             local slots, hidden = 0, {}
             for slot_name, slot in pairs(data.slots or {}) do

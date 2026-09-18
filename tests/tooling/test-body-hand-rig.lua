@@ -102,7 +102,8 @@ World = {update_unit_and_children = function() end}
 
 local spawns = 0
 local spawner = {ignore_slot = function() end, spawn_profile = function() end, update = function() end,
-    spawned = function() return false end, destroy = function() end}
+    spawned = function() return false end, spawned_character_unit = function() return nil end,
+    destroy = function() end}
 require = function(name)
     if name:find('ui_profile_spawner', 1, true) then
         return {new = function() spawns = spawns + 1; return spawner end}
@@ -204,14 +205,62 @@ for _, side in ipairs({'left', 'right'}) do
 end
 assert(presentation.sync_equipment_hand_to_proxy(avatar, nil, 'j_head') == false)
 
--- The rig dies: gloves come back (spawned), no stale pose is offered.
+-- The upper-body mode (hands_only false: the full-body dev flag) defers to the
+-- rig as the hands-only mode does. Worn, 19 September: with the flag on, the
+-- copy took the rig, the proxy destroyed its units, and the upper-body branch
+-- read the cleared state as "nothing spawned" and spawned its torso-and-arms
+-- profile again nine milliseconds later -- the arm census then listed
+-- `proxy_body` beside `mirror_copy` at the same wrist. Two spawned bodies.
+assert(BodyProxy.update(world, source, player, true, 0.016, 1.5, false) == source,
+    'upper-body mode under a rig did not hand back the source unit')
+assert(spawns == 0, 'upper-body mode spawned a proxy body under a hand rig')
+assert(BodyProxy.active() and BodyProxy.rigid_hands_active() and BodyProxy.hand_rig_active())
+assert(BodyProxy.hides_source_slot('slot_body_torso'), 'the source torso stays hidden under the rig')
+local p2 = BodyProxy.hand_pose('right')
+assert(p2 ~= nil, 'the recorded pose was dropped by the mode change')
+
+-- The main file's IK takes the tracked-hands path while a rig owns the body,
+-- flag or no flag. The full-body path is the older headless presentation and
+-- solves on whatever unit it is handed; under a rig that unit is the gameplay
+-- avatar, whose root it would scale. The real function, sliced from the
+-- main file, with everything before the branch stubbed.
+local ik_first = assert(main:find('function presentation.apply_body_ik(', 1, true))
+local ik_last = assert(main:find('\nfunction presentation.update_stock_melee_animation_owner(', ik_first, true))
+controller_observation = {body_ik_presentation_update_frame = 0, body_ik_presentation_enabled = true,
+    full_body_experimental_enabled = true, stock_melee_animation_active = false}
+active_game_mode_name = function() return 'shooting_range' end
+mod = {info = function() end, warning = function() end}
+local tracked_calls, full_body_calls = 0, 0
+presentation.update_body_ik_presentation_gate = function() end
+presentation.is_first_person_body_mode = function() return true end
+presentation.keyboard_mouse_hands = function() return false end
+presentation.apply_tracked_arms = function() tracked_calls = tracked_calls + 1 end
+-- First call of the full-body path; stops it there, the rest is not under test.
+presentation.trace_body_capture_boundary = function() full_body_calls = full_body_calls + 1; error('full_body_path') end
+assert(loadstring(main:sub(ik_first, ik_last - 1)))()
+assert(pcall(presentation.apply_body_ik, source, 1, world, source), 'the full-body path ran under a rig')
+assert(tracked_calls == 1 and full_body_calls == 0, 'the tracked-hands path was not taken under a rig with the flag on')
+controller_observation.full_body_experimental_enabled = false
+assert(pcall(presentation.apply_body_ik, source, 1, world, source))
+assert(tracked_calls == 2 and full_body_calls == 0, 'the tracked-hands path was not taken under a rig with the flag off')
+
+-- The rig dies in upper-body mode: the proxy body is the fallback (spawned),
+-- no stale pose is offered, the IK goes back to the full-body path.
 body.dead = true
-assert(BodyProxy.update(world, source, player, true, 0.016, 2, true) == nil)
-assert(spawns == 2, 'glove fallback did not spawn')
-assert(not BodyProxy.active() and BodyProxy.hand_pose('left') == nil)
+assert(BodyProxy.update(world, source, player, true, 0.016, 2, false) == nil)
+assert(spawns == 1, 'upper-body fallback did not spawn when the rig died')
+assert(not BodyProxy.hand_rig_active() and not BodyProxy.active() and BodyProxy.hand_pose('left') == nil)
 local lost = false
 for _, line in ipairs(logs) do lost = lost or line:find('reason=rig_unit_lost', 1, true) ~= nil end
 assert(lost)
+controller_observation.full_body_experimental_enabled = true
+local ran, why = pcall(presentation.apply_body_ik, source, 1, world, source)
+assert(not ran and tostring(why):find('full_body_path', 1, true) and full_body_calls == 1,
+    'the full-body path did not come back once the rig was gone')
+-- And in hands-only mode: gloves come back (spawned).
+assert(BodyProxy.update(world, source, player, true, 0.016, 2, true) == nil)
+assert(spawns == 3, 'glove fallback did not spawn')
+assert(not BodyProxy.active() and BodyProxy.hand_pose('left') == nil)
 assert(BodyProxy.set_hand_rig(nil) == false)
 print = function(...) io.write(table.concat({...}, ' '), '\n') end
-print('body_hand_rig=pass no_glove_units pose_record anatomical_rotation support_blend handedness equipment_follow fallback')
+print('body_hand_rig=pass no_glove_units pose_record anatomical_rotation support_blend handedness equipment_follow upper_body_defers ik_path fallback')

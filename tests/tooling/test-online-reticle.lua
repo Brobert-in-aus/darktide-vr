@@ -165,6 +165,24 @@ if arg[2] then
         return math.sqrt(dx*dx + dy*dy + dz*dz)
     end
 
+    -- OFF, the hit point is published untouched -- which is the whole point
+    -- of the switch: a reticle that marks geometry has to stay on it, and
+    -- turning it about the eye takes it off the surface it was measured on.
+    zp.zoom_aim_correction_flag = false
+    zp.ads_zoom_applied = 1.12
+    for _, yaw in ipairs({0, 0.9, -2.0}) do
+        for _, pitch in ipairs({0, 0.35, -0.4}) do
+            local q = set_head(yaw, pitch)
+            local ahead_v = forward_point(q, 10)
+            local right_v = Q.rotate(q, v3(1, 0, 0))
+            local off_axis = v3(ahead_v[1] + right_v[1]*2.5,
+                ahead_v[2] + right_v[2]*2.5, ahead_v[3] + right_v[3]*2.5)
+            assert(distance(zp.zoom_corrected_aim_point(off_axis), off_axis) < 1e-9,
+                'off, a target well off the view axis is published exactly as measured')
+        end
+    end
+    zp.zoom_aim_correction_flag = true
+
     zp.ads_zoom_applied = 1.12
     -- Dead ahead of the head, at every orientation: the DIRECTION is
     -- untouched. This is the assertion the wrong frame failed, by over a

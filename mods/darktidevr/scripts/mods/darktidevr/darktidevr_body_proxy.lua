@@ -604,12 +604,27 @@ function BodyProxy.update(
     if state.failed_source_unit == source_unit then
         return nil
     end
-    if hands_only and hand_rig and not Unit.alive(hand_rig) then
+    if hand_rig and not Unit.alive(hand_rig) then
         hand_rig, hand_rig_anatomy = nil, {}
         safe_destroy()
         print("DARKTIDEVR_IK hand_rig=gloves reason=rig_unit_lost")
     end
-    if hands_only and hand_rig then
+    -- The hand rig is checked BEFORE the caller's mode, and that is the whole
+    -- fix for the second spawned body. `hands_only` is false under the
+    -- full-body dev flag, and until 19 September 2026 only the hands-only
+    -- branch knew about the rig: with the flag on, the copy took the rig,
+    -- `set_hand_rig` destroyed this module's units and cleared `state.world`,
+    -- and the upper-body branch below read that empty state as "nothing
+    -- spawned yet" and spawned its torso-and-arms profile again on the next
+    -- frame. The log has the whole handover in sixteen milliseconds --
+    -- `hand_rig=body`, `visual_proxy=inactive`, `visual_proxy=active` -- and
+    -- the arm census then listed `proxy_body` beside `mirror_copy`, both at
+    -- the player's wrist.
+    --
+    -- Whatever the mode, a body that owns the rig is the body: this module
+    -- keeps no units of its own while it lives, in either mode, and spawns
+    -- its own again (gloves or upper body, by the mode) only once it is gone.
+    if hand_rig then
         -- Body-drawn hands: no glove units. The source unit carries the head
         -- joint the tracked grip targets need.
         if state.world ~= world or state.source_unit ~= source_unit or
@@ -730,6 +745,15 @@ end
 
 function BodyProxy.rigid_hands_active()
     return state.hands_only and BodyProxy.active()
+end
+
+-- Whether a full-profile body owns the hands right now (set_hand_rig, and the
+-- unit still alive). The main file's IK asks this before choosing the
+-- full-body path: that path solves the crouch, torso, shoulders and arms on
+-- the unit it is handed, and while a body owns the rig the unit it is handed
+-- is the gameplay avatar itself.
+function BodyProxy.hand_rig_active()
+    return hand_rig ~= nil and Unit.alive(hand_rig) == true
 end
 
 function BodyProxy.check_rigid_hands_before_render()

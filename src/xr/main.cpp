@@ -1548,6 +1548,8 @@ class OpenXrProbe {
     // environment and an environment-only switch could not be proved without
     // a head on (18 September).
     std::wstring reticle_in_eyes_flag;
+    std::wstring ads_vignette_off_flag;
+    bool ads_vignette_off = false;
     // Presence makes the published world target stand in for a tracked hand,
     // so an unattended run can see the reticle at all. Nothing else can drive
     // it: the reticle needs a controller within reach of the head, and the
@@ -1578,6 +1580,16 @@ class OpenXrProbe {
             L"..\\darktidevr_reticle_in_eyes.flag";
         reticle_test_flag = executable_directory +
             L"..\\darktidevr_reticle_test.flag";
+        // A/B for the reticle's depth in the sights (19 September). The
+        // vignette is head-locked ONE METRE from the face, covers the whole
+        // field of view and composites AFTER the reticle -- so in the sights
+        // the reticle is seen through a surface at a metre. It is the only
+        // ADS-only difference that is not a few per cent: the zoom is 3 and
+        // the frustum mismatch 4. Presence of the flag suppresses it, so the
+        // question "is it the vignette" can be answered in one session
+        // instead of argued.
+        ads_vignette_off_flag = executable_directory +
+            L"..\\darktidevr_ads_vignette_off.flag";
       }
     }
     float reticle_scale = 0.7F;
@@ -2756,6 +2768,15 @@ class OpenXrProbe {
             if (test_wanted != reticle_test_requested) {
               reticle_test_requested = test_wanted;
               std::cout << "openxr.reticle_test=" << (test_wanted ? 1 : 0) << '\n';
+            }
+            std::error_code vignette_error;
+            const auto vignette_off = !ads_vignette_off_flag.empty() &&
+                std::filesystem::exists(
+                    std::filesystem::path{ads_vignette_off_flag}, vignette_error) &&
+                !vignette_error;
+            if (vignette_off != ads_vignette_off) {
+              ads_vignette_off = vignette_off;
+              std::cout << "openxr.ads_vignette_off=" << (vignette_off ? 1 : 0) << '\n';
             }
           }
           if (enable_gameplay_reticle && reticle_scale_file[0] && reticle_scale_now >= next_reticle_scale_poll) {
@@ -5039,6 +5060,7 @@ class OpenXrProbe {
       // would sample a corner of the captured game window instead -- opaque
       // pixels across the whole view (review, 18 September).
       const bool submit_ads_vignette =
+          !ads_vignette_off &&
           ads_blend > 0.01F && enable_gameplay_reticle && window_capture &&
           flat_swapchain != XR_NULL_HANDLE &&
           view_space_ != XR_NULL_HANDLE && submitted_shared_pair_this_frame;
@@ -5356,6 +5378,29 @@ class OpenXrProbe {
               ndc[eye][0] = clip[0] * inverse_w;
               ndc[eye][1] = clip[1] * inverse_w;
             }
+            // THE FRUSTUM RATIO. The user is certain the reticle sits 1.2x
+            // to 1.7x too far, proportional, and only in the sights. The
+            // reticle is placed through the SUBMITTED frustum while the world
+            // is rendered through the one the mod hands the game's cameras.
+            // If those two differ by a factor, everything in the world reads
+            // at a different depth from everything composited against it, in
+            // exact proportion -- so the two spans, and their ratio, are the
+            // measurement rather than another mechanism to argue about.
+            //
+            // Tangent span, because that is what scales an image: an angle
+            // does not. The runtime's own per-eye span is printed beside it,
+            // since the recentred symmetric frustum is built from it and the
+            // difference between those two is a candidate on its own.
+            const auto span = [](const XrFovf& f) {
+                return std::tan(f.angleRight) - std::tan(f.angleLeft);
+            };
+            const auto submitted_span = span(submitted_view_fovs[0]);
+            const auto runtime_span = span(located_views[0].fov);
+            std::cout << "openxr.ads_reticle_frusta submitted_tan_span=" << submitted_span
+                      << " runtime_tan_span=" << runtime_span
+                      << " submitted_over_runtime="
+                      << (runtime_span != 0.0F ? submitted_span / runtime_span : 0.0F)
+                      << '\n';
             std::cout << "openxr.ads_reticle_eyes left=" << ndc[0][0] << ','
                       << ndc[0][1] << " right=" << ndc[1][0] << ','
                       << ndc[1][1] << " disparity_ndc="

@@ -2926,6 +2926,28 @@ local function apply_head_tracking(clean_position, clean_rotation)
         -- Recorded, not yet believed: whether it reaches the cameras is
         -- decided where they are set.
         presentation.ads_zoom_frame = zoom
+        -- THE OTHER END OF THE FRUSTUM RATIO (19 September). The world is
+        -- rendered through THIS frustum; the reticle is placed through the one
+        -- the viewer submits. The user reports the reticle sits 1.2x to 1.7x
+        -- too far and only in the sights, and a factor that size is not the
+        -- 3 per cent zoom -- so the question is what else differs between the
+        -- two, and tangent spans are how that is read off rather than argued.
+        -- Printed on entry and exit only: this runs every frame.
+        if (zoom > 1.0001) ~= (presentation.ads_frusta_logged == true) then
+            presentation.ads_frusta_logged = zoom > 1.0001
+            local function span(f)
+                return f and math.tan(f.right) - math.tan(f.left) or 0
+            end
+            mod:info(
+                "DARKTIDEVR_AIM ads_frusta zoom=%.4f runtime_tan_span=%.5f " ..
+                "render_tan_span=%.5f render_over_runtime=%.5f " ..
+                "render_vfov=%.5f unzoomed_vfov=%.5f",
+                zoom, span(left_frustum), span(head_render_frusta[1]),
+                span(left_frustum) ~= 0 and
+                    span(head_render_frusta[1]) / span(left_frustum) or 0,
+                head_render_vertical_fov or 0,
+                presentation.head_render_vertical_fov_unzoomed or 0)
+        end
     end
     local runtime_ipd = tonumber(head_pose_values[19])
     controller_observation.body_follow_x = tonumber(head_pose_values[20])
@@ -9074,7 +9096,61 @@ end
 -- The magnification is about the rendered head's forward, so the point is
 -- taken into that frame, moved across the view only, and put back. Returns
 -- the point unchanged when there is no zoom, no head rotation or no eye.
+-- THE RETICLE STAYS ON THE SURFACE IT MARKS.
+--
+-- This correction is off. It is kept, tested and reachable through
+-- `darktidevr_zoom_aim_correction.flag`, because the reasoning behind it is
+-- not wrong in itself -- but what it does to the reticle is.
+--
+-- It takes the raycast's hit point and turns it outward about the eye by the
+-- magnification, so that it lands where the magnified IMAGE shows the
+-- surface. That is coherent for a mark floating in the view. It is wrong for
+-- a mark that has to sit ON geometry, because turning the point about the eye
+-- takes it off the surface it was measured on. Against a floor seen at a
+-- shallow angle a few centimetres perpendicular to the view is a long way
+-- along the floor, and if the turn is toward the surface the point goes
+-- UNDER it. The displacement is proportional to how far off-axis the target
+-- is, so it grows with range.
+--
+-- Which is exactly what was reported, in the user's own terms: "the reticule
+-- is rendering further into objects than it should be", "definitely
+-- proportional rather than fixed", and "this issue didn't exist before we
+-- added the zoom" -- before the zoom this function returned the point
+-- unchanged on its magnification guard, the reticle sat on the hit point and
+-- it was right. Turning the zoom on turned this on with it.
+--
+-- Six candidates were ruled out inside the reticle transport before this,
+-- and the transport was never at fault: `head_distance_m=13.0104` against
+-- the game's `anchor_distance_m=13.0112` says the viewer draws the quad
+-- exactly where the game asks. The game was asking for the wrong point.
+--
+-- The magnification does leave a real residue -- the world renders through a
+-- frustum 4.3% narrower than the one submitted, so it appears that much
+-- nearer than the quad. That is the size of thing nobody reported for the
+-- months the zoom did not exist, and it is not worth moving the reticle off
+-- the geometry to chase.
 function presentation.zoom_corrected_aim_point(world_point)
+    -- The switch is read here rather than in a helper: the tooling tests load
+    -- a marker-bounded SLICE of this chunk that begins at this function, so a
+    -- helper above it does not exist when they run (19 September).
+    if presentation.zoom_aim_correction_flag == nil then
+        local io_api = Mods and Mods.lua and Mods.lua.io
+        local file = io_api and io_api.open(
+            "./../mods/darktidevr/darktidevr_zoom_aim_correction.flag", "r")
+        if file then file:close() end
+        -- Absent means ON here: the flag exists to switch the correction
+        -- OFF for a comparison, not to arm it.
+        presentation.zoom_aim_correction_flag = file == nil
+    end
+    -- Default ON. Square on at a wall the angular half of this does nothing
+    -- -- a centred target has nothing across the view to scale -- and the
+    -- reticle still renders into the wall (user, 19 September). So the fault
+    -- dead ahead is the projection the world is rendered through against the
+    -- one the reticle is composited against, and the radial half below is the
+    -- right shape for it even though 3 per cent is plainly the wrong size.
+    -- The flag turns the whole correction off for an A/B against the
+    -- behaviour that predates the zoom, which was reported correct.
+    if presentation.zoom_aim_correction_flag == false then return world_point end
     local magnification = tonumber(presentation.ads_zoom_applied)
     if not world_point or not magnification or magnification <= 1.0001 or
             not controller_observation.head_aim_qw then
@@ -10980,7 +11056,19 @@ function presentation.apply_body_ik(unit, sequence, world, anchor_unit)
         end
         return
     end
-    if not controller_observation.full_body_experimental_enabled then
+    -- ONE BODY (19 September). The full-body path below is the older headless
+    -- presentation: it solves the crouch, torso, shoulders and arms on the
+    -- body proxy's own upper-body rig. While a full-profile copy owns the
+    -- body (BodyProxy.set_hand_rig, from the body overlay) the proxy keeps no
+    -- units and hands back the gameplay avatar as `unit`, so this path would
+    -- run on the avatar itself -- apply_calibrated_body_height would scale
+    -- the gameplay unit -- and the copy re-solves all of it anyway from the
+    -- recorded wrist poses. The tracked-hands path is what records those
+    -- poses, so it is the path with the flag as without it.
+    local body_rig = presentation.body_proxy ~= nil and
+        presentation.body_proxy.hand_rig_active ~= nil and
+        presentation.body_proxy.hand_rig_active() == true
+    if not controller_observation.full_body_experimental_enabled or body_rig then
         presentation.apply_tracked_arms(unit, sequence, world, anchor_unit)
         return
     end
@@ -12316,6 +12404,13 @@ mod:hook_safe(
             mod:info(
                 "DARKTIDEVR_IK visual_proxy=%s mode=%s source=ui_profile authoritative_body=gameplay",
                 proxy_active and "active" or "inactive",
+                -- "body_rig" names the state the log could not tell apart on
+                -- 19 September: the copy owned the hands and the proxy had
+                -- spawned its own upper body anyway, and both printed as
+                -- `upper_body`.
+                presentation.body_proxy ~= nil and
+                    presentation.body_proxy.hand_rig_active ~= nil and
+                    presentation.body_proxy.hand_rig_active() and "body_rig" or
                 controller_observation.full_body_experimental_enabled and
                     "upper_body" or "tracked_hands")
         end
