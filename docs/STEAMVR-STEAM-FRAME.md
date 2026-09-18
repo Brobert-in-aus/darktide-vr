@@ -220,7 +220,32 @@ drifting with a SteamVR setting. The existing evidence tooling compares only
 like-for-like extents, so any performance comparison against the VD baseline
 must state both extents or it means nothing.
 
-### 4. Swapchain creation robustness
+### 4. Swapchain creation robustness — DONE except the alpha question (18 September)
+
+- `sampleCount` is **requested as 1**, not inherited from
+  `recommendedSwapchainSampleCount`. Every delivery path writes the image with
+  `CopyTextureRegion`, which is invalid against a multisampled destination. A
+  runtime recommending anything else now says so
+  (`openxr.swapchain_sample_count.recommended=`) instead of producing a stream
+  of D3D12 errors and no image.
+- The **allocated extent is read back** from the enumerated images' `GetDesc()`
+  and compared with what was requested. SteamVR is reported to round up to a
+  multiple of four, and every copy and the submitted `imageRect` are built from
+  the requested extent, so a silent rounding would place the eye image in a
+  corner of a larger surface. `openxr.swapchain_extent_rounded` before the
+  first frame.
+- `XrSystemGraphicsProperties::maxLayerCount` is **read and logged**
+  (`openxr.max_layer_count`), and `layer_count` is clamped to it. The
+  specification's floor is 16 and this viewer submits at most 8, so it has
+  never bitten -- but submitting more layers than a runtime accepts fails
+  `xrEndFrame`, which stops the viewer, and the layers are appended in order of
+  importance so the tail is what goes.
+- **Premultiplied alpha stays open**: it is a worn observation, not something
+  code can settle. Look at HUD and pointer edges on the first Frame session.
+
+*The original analysis follows.*
+
+#### The original analysis
 
 - `sampleCount` is taken from `recommendedSwapchainSampleCount`
   (`src/xr/main.cpp:5296`). Every delivery path writes the swapchain image with
@@ -242,7 +267,27 @@ must state both extents or it means nothing.
   HUD and pointer edges on the first worn run before concluding the layer
   geometry is wrong.
 
-### 5. Head orientation from eye 0
+### 5. Head orientation from eye 0 — MEASURED, not changed (18 September)
+
+The head orientation is still the left eye's, and deliberately so: switching to
+the `VIEW` reference space would move the recentre anchor on the one path that
+is proven, to fix a fault no runtime here exhibits.
+
+What is new is that the viewer now measures the thing the decision depends on.
+The angle between the two located eye orientations is computed each frame and
+reported once when it first exceeds a tenth of a degree:
+
+```
+openxr.canted_views degrees=<n> head_orientation_source=eye0 note=the_head_pose_should_come_from_VIEW_space
+```
+
+A Frame session that prints that line is the evidence the VIEW-space head pose
+is needed, and by how much. A session that never prints it is the evidence it
+is not, which is worth as much.
+
+*The original analysis follows.*
+
+#### The original analysis
 
 The published head orientation is the left eye's orientation, with the position
 averaged across both eyes (`src/xr/main.cpp:1505`-`src/xr/main.cpp:1519`). On

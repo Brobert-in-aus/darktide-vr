@@ -304,6 +304,19 @@ class OpenXrProbe {
     check_xr(system_result, "xrGetSystem");
     std::cout << "openxr.system=hmd-available\n";
 
+    XrSystemProperties system_properties{XR_TYPE_SYSTEM_PROPERTIES};
+    if (XR_SUCCEEDED(xrGetSystemProperties(instance_, system_id_,
+                                           &system_properties))) {
+      max_layer_count_ = system_properties.graphicsProperties.maxLayerCount;
+      std::cout << "openxr.system_name=" << system_properties.systemName << '\n'
+                << "openxr.max_layer_count=" << max_layer_count_
+                << " max_swapchain=" << system_properties.graphicsProperties
+                                            .maxSwapchainImageWidth
+                << 'x'
+                << system_properties.graphicsProperties.maxSwapchainImageHeight
+                << '\n';
+    }
+
     std::uint32_t view_count{};
     check_xr(xrEnumerateViewConfigurationViews(
                  instance_, system_id_, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
@@ -1697,6 +1710,40 @@ class OpenXrProbe {
               (located_views[0].pose.position.z +
                located_views[1].pose.position.z) *
                   0.5F};
+          // The published head orientation is the LEFT EYE's, with only the
+          // position averaged. On a headset whose displays are parallel --
+          // the Quest 3 through VDXR, which is everything measured here -- the
+          // two eye orientations are identical and this is exact. On one with
+          // canted displays the left eye is rotated outward, and the in-game
+          // camera would quietly inherit that yaw: the whole world would sit
+          // a few degrees off the way the head is actually pointed.
+          //
+          // Not changed blind. The correct source for any optics is the VIEW
+          // reference space, which is already created, but switching to it
+          // would move the recentre anchor on the one path that is proven, to
+          // fix a fault no runtime here exhibits. So this MEASURES it: the
+          // angle between the two eye orientations, said once when it first
+          // exceeds a tenth of a degree. A Steam Frame session reporting this
+          // line is the evidence that the VIEW-space head pose is needed; a
+          // session that never reports it is the evidence that it is not.
+          if (!canted_views_reported_) {
+            const auto& left = located_views[0].pose.orientation;
+            const auto& right = located_views[1].pose.orientation;
+            // |dot| of two unit quaternions gives cos(half the angle between
+            // the rotations); the sign is the double cover and is not a
+            // difference.
+            const auto dot = std::abs(left.x * right.x + left.y * right.y +
+                                      left.z * right.z + left.w * right.w);
+            const auto clamped = dot > 1.0F ? 1.0F : dot;
+            const auto degrees =
+                2.0F * std::acos(clamped) * 180.0F / 3.14159265358979323846F;
+            if (degrees > 0.1F) {
+              canted_views_reported_ = true;
+              std::cout << "openxr.canted_views degrees=" << degrees
+                        << " head_orientation_source=eye0"
+                        << " note=the_head_pose_should_come_from_VIEW_space\n";
+            }
+          }
           current_head.orientation = {
               located_views[0].pose.orientation.x,
               located_views[0].pose.orientation.y,
@@ -5147,6 +5194,19 @@ class OpenXrProbe {
                   &ads_vignette_quad);
         }
       }
+      // A runtime that accepts fewer layers than were assembled must cost the
+      // optional ones, not the frame. They are appended in order of
+      // importance -- the eye projection, then the board, then the pointer and
+      // vignette quads -- so the tail is what goes.
+      if (layer_count > max_layer_count_) {
+        if (!layer_clamp_reported_) {
+          layer_clamp_reported_ = true;
+          std::cout << "openxr.layers_clamped assembled=" << layer_count
+                    << " max=" << max_layer_count_
+                    << " dropped=the_trailing_quads\n";
+        }
+        layer_count = max_layer_count_;
+      }
       XrFrameEndInfo frame_end{XR_TYPE_FRAME_END_INFO};
       frame_end.displayTime = frame_state.predictedDisplayTime;
       frame_end.environmentBlendMode = environment_blend_mode_;
@@ -6044,7 +6104,18 @@ class OpenXrProbe {
       create_info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |
                                XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
       create_info.format = swapchain_format_;
-      create_info.sampleCount = view.recommendedSwapchainSampleCount;
+      // NOT `view.recommendedSwapchainSampleCount`. Every delivery path here
+      // writes the swapchain image with CopyTextureRegion, which is invalid
+      // against a multisampled destination, so a runtime that recommended
+      // anything above 1 would produce a stream of D3D12 errors and no image.
+      // Both runtimes brought up so far recommend 1; that is not a guarantee,
+      // and the recommendation is only a recommendation.
+      create_info.sampleCount = 1;
+      if (view.recommendedSwapchainSampleCount != 1) {
+        std::cout << "openxr.swapchain_sample_count.recommended="
+                  << view.recommendedSwapchainSampleCount
+                  << " requested=1 reason=copy_destination\n";
+      }
       create_info.width = view.recommendedImageRectWidth;
       create_info.height = view.recommendedImageRectHeight;
       create_info.faceCount = 1;
@@ -6121,7 +6192,24 @@ class OpenXrProbe {
                    swapchain, image_count, &image_count,
                    reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())),
                "xrEnumerateSwapchainImages(list)");
-      swapchain_images_.push_back(std::move(images));
+      // SteamVR is reported to round swapchain extents up to a multiple of
+      // four. Every copy and the submitted `imageRect` are built from the
+      // requested extent, so a rounding nobody noticed would place the eye
+      // image in a corner of a larger surface and stretch or crop it. Read
+      // what was actually allocated and say so before the first frame.
+      if (!swapchain_images_.back().empty() &&
+          swapchain_images_.back().front().texture) {
+        const auto actual = swapchain_images_.back().front().texture->GetDesc();
+        if (actual.Width != create_info.width ||
+            actual.Height != create_info.height) {
+          std::cout << "openxr.swapchain_extent_rounded eye="
+                    << (swapchains_.size() - 1)
+                    << " requested=" << create_info.width << 'x'
+                    << create_info.height << " allocated=" << actual.Width << 'x'
+                    << actual.Height
+                    << " note=copies_and_imageRect_use_the_requested_extent\n";
+        }
+      }
     }
 
     std::cout << "openxr.swapchains=" << swapchains_.size() << '\n'
@@ -6302,6 +6390,14 @@ class OpenXrProbe {
   std::array<std::uint64_t, 6> synthetic_controller_phase_frames_{};
   bool d3d12_extension_{};
   bool frame_controller_extension_{};
+  // The specification's floor is 16 and this viewer submits at most 8, so the
+  // clamp below has never bitten. It is read rather than assumed because
+  // submitting more layers than a runtime accepts fails xrEndFrame, which
+  // stops the viewer -- an expensive way to discover a number that can be
+  // asked for.
+  std::uint32_t max_layer_count_{16};
+  bool layer_clamp_reported_{};
+  bool canted_views_reported_{};
   bool suggest_simple_profile_{true};
   std::optional<XrGraphicsRequirementsD3D12KHR> requirements_;
   std::vector<XrViewConfigurationView> views_;
