@@ -15,7 +15,15 @@ SightAds.SIGHT_EYE_OFFSET = 0.032
 -- short grace before letting go.
 SightAds.ENTER_DISTANCE = 0.06
 SightAds.EXIT_DISTANCE = 0.09
-SightAds.RELEASE_GRACE_SECONDS = 0.3
+-- Was 0.3 s. Worn on 18 September the grace was the thing people noticed:
+-- "remove the delay in ending ads when moving your hand out of the zone". It
+-- was added on 15 September against a flicker at the boundary, but the
+-- hysteresis between ENTER_DISTANCE and EXIT_DISTANCE already covers that --
+-- the gun has to travel 3 cm further out than it came in before the sights
+-- drop -- so the timer was a second defence that cost a visible lag on every
+-- exit. Zero means the release is immediate; `hold` still handles it, so the
+-- grace can be put back by this number alone if the flicker returns.
+SightAds.RELEASE_GRACE_SECONDS = 0
 SightAds.MIN_BEHIND = 0.03   -- the eye is behind the grip plane along the aim
 SightAds.MAX_BEHIND = 0.6
 SightAds.ENTER_FACING = math.cos(math.rad(25))

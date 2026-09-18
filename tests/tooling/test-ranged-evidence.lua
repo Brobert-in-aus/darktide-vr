@@ -54,20 +54,41 @@ for _,class in pairs(classes) do
     local a,b=class._shoot(action,Vector3(0,0,0),Vector3(0,1,0),100,.5,12)
     assert(a==nil and b==123 and action._shot_result.hit_minion,'observer altered stock return/results')
 end
-assert(action.stock_calls==5 and #logs==4,'diagnostic was not bounded')
+-- Four detailed lines and then a compact one. The fifth line is the whole
+-- point: on 18 September the log went silent after the fourth dispatch, so a
+-- session where the gun stopped producing bullets could not say whether a shot
+-- had been dispatched at all. "No line" has to mean "no shot".
+assert(action.stock_calls==5 and #logs==5,'diagnostic was not bounded')
+assert(logs[5]:find('dispatches=5',1,true) and logs[5]:find('since_last=1',1,true),
+    'the line past the cap carries the count')
+assert(not logs[5]:find('muzzle=',1,true),'past the cap it is the compact line, not the detailed one')
 assert(logs[1]:find('weapon=fixture_gun',1,true) and logs[1]:find('shot_vs_reticle_deg=0.000',1,true))
 assert(logs[1]:find('hit_minion=true',1,true))
 assert(logs[1]:find('muzzle=0.3000,0.0000,0.0000',1,true))
-action._player_unit='remote'; instance.observe(action); assert(#logs==4)
+-- Bounded: thirty more shots inside the same window write nothing. An
+-- autogun holding the trigger must not write a line per round.
+for _=1,30 do instance.observe(action,Vector3(0,0,0),Vector3(0,1,0),100,.5,12) end
+assert(#logs==5,'the summary is throttled by time')
+instance.observe(action,Vector3(0,0,0),Vector3(0,1,0),100,.5,17.0001)
+assert(#logs==6 and logs[6]:find('since_last=31',1,true),'the window reopens and counts what it missed')
+-- A time that is not a number falls back to counting. Written the other way
+-- round -- "unknown time, log anyway" -- it also STORED the unusable time, so
+-- one bad `t` disarmed the throttle for the rest of the session and every
+-- later shot logged (review, 18 September).
+for _=1,10 do instance.observe(action,Vector3(0,0,0),Vector3(0,1,0),100,.5,0/0) end
+assert(#logs==6,'an unusable time logged instead of counting')
+for _=1,10 do instance.observe(action,Vector3(0,0,0),Vector3(0,1,0),100,.5,0/0) end
+assert(#logs==7,'the count throttle still reports, once')
+action._player_unit='remote'; instance.observe(action); assert(#logs==7)
 action._player_unit='local'; action._unit_data_extension={is_resimulating=true}
-instance.observe(action); assert(#logs==4)
+instance.observe(action); assert(#logs==7)
 action._unit_data_extension.is_resimulating=false
 Managers.state.game_session={}; instance.observe(action,Vector3(0,0,0),Vector3(1,0,0),100,.5,12)
-assert(#logs==5 and logs[5]:find('shot_vs_reticle_deg=90.000',1,true),'visit did not reset or angular evidence changed')
+assert(#logs==8 and logs[8]:find('shot_vs_reticle_deg=90.000',1,true),'visit did not reset or angular evidence changed')
 presentation.controller_aim.cached_reticle_target=function() error('retired target') end
 instance.observe(action,Vector3(0,0,0),Vector3(0,1,0))
 instance.observe(action,Vector3(0,0,0),Vector3(0,1,0))
-assert(instance.failures==2 and #logs==6,'failure created repeating error messages')
+assert(instance.failures==2 and #logs==9,'failure created repeating error messages')
 commands.dtvr_ranged_evidence()
 print('PASS ranged evidence: five dispatch hooks, stock nil returns/results, bounded output, angular evidence, remote/replay/visit guards and failure isolation')
 
@@ -80,8 +101,20 @@ assert(hits[1].position==endpoint and hits[1].actor.unit=='proxy','observer chan
 assert(logs[before+1]:find('distance=0.0200',1,true) and logs[before+2]:find('proxy=right_hand_proxy',1,true))
 for n=1,6 do hit_scan.process_hits(true,{}, {},'local',{},hits,Vector3(0,0,0),Vector3(0,1,0)) end
 assert(#logs==before+8,'hit observer exceeds four bounded shots')
+-- Past the cap the sweep still reports. Without this, "the sweep never ran"
+-- and "the sweep ran and stopped on the player's own hitbox at distance 0"
+-- look identical in the log, and those are the two candidates the 18
+-- September fault is between. first_self is named for exactly that reason.
+local hit_clock=0
+Managers.time={has_timer=function() return true end,time=function() return hit_clock end}
+hit_scan.process_hits(true,{}, {},'local',{},hits,Vector3(0,0,0),Vector3(0,1,0))
+assert(#logs==before+9,'the sweep past the cap reports')
+assert(logs[#logs]:find('sweeps=8',1,true) and logs[#logs]:find('since_last=4',1,true))
+assert(logs[#logs]:find('first_self=false',1,true),'and says whose hitbox it started in')
+for _=1,10 do hit_scan.process_hits(true,{}, {},'local',{},hits,Vector3(0,0,0),Vector3(0,1,0)) end
+assert(#logs==before+9,'the sweep summary is throttled too')
 hit_scan.process_hits(true,{}, {},'remote',{},hits,Vector3(0,0,0),Vector3(0,1,0))
-assert(#logs==before+8,'remote hit observed')
+assert(#logs==before+9,'remote hit observed')
 Managers.state.game_session={}
 Actor.unit=function() error('retired actor') end
 hit_scan.process_hits(true,{}, {},'local',{},hits,Vector3(0,0,0),Vector3(0,1,0))

@@ -23,7 +23,16 @@
 local Skull = {}
 
 Skull.RULE = "cryptic_servo_skull_flamethrower"
-Skull.FORWARD = 0.30
+-- Where the throwable skull rests, relative to stock. FORWARD replaces the
+-- stock forward offset outright (stock hovers it 15 cm BEHIND the eye);
+-- SIDE_RIGHT and DOWN are added to the stock side and height.
+--
+-- Sized worn, 18 September: "the flamethrower skull needs to come forward,
+-- right and down 30cm each". FORWARD was 0.30, so 30 cm further forward is
+-- 0.60; the other two axes were stock and now carry the offset.
+Skull.FORWARD = 0.60
+Skull.SIDE_RIGHT = 0.30
+Skull.DOWN = 0.30
 Skull.GRAB_RADIUS = 0.12
 Skull.SPEED = 10
 Skull.TARGET_DROP = 1
@@ -204,6 +213,52 @@ function Skull.stock_offset(delta, heading)
     return {-(delta[1] * right_x + delta[2] * right_y), delta[1] * forward_x + delta[2] * forward_y, delta[3]}
 end
 
+-- How a release is turned into a throw. A hand's velocity measured across a
+-- SINGLE frame is the wrong instrument for this: at 120 Hz it is an 8 ms
+-- finite difference of tracked data, it is dominated by tracker noise, and at
+-- the moment someone lets go of a button their hand is decelerating -- so the
+-- number it reports is close to zero however hard the throw was. That is what
+-- "throwing it has no physics, it just floats where released" is: the free
+-- flight ran with a velocity of nearly nothing, so the skull sat where it was
+-- released until the blend pulled it to its destination.
+--
+-- Measured across a window instead, which is what the hand actually did.
+-- Capped, so a tracking glitch cannot fling the drawn skull off somewhere the
+-- real one never goes.
+Skull.THROW_WINDOW_SECONDS = 0.15
+Skull.THROW_MAX_SPEED = 12
+
+-- The velocity a release carries. `samples` is {t, x, y, z} entries, oldest
+-- first; `t` is the release time. Returns a world 3-array, zero when there is
+-- nothing usable to measure. Pure.
+function Skull.release_velocity(samples, t)
+    if type(samples) ~= "table" or not finite(t) then return {0, 0, 0} end
+    local newest = samples[#samples]
+    if type(newest) ~= "table" or not finite(newest[1]) then return {0, 0, 0} end
+    -- The oldest sample still inside the window. Walking back from the newest
+    -- stops at the first one outside it, so a stale entry left over from
+    -- before a gap cannot widen the window and understate the speed.
+    local oldest
+    for index = #samples, 1, -1 do
+        local sample = samples[index]
+        if type(sample) ~= "table" or not finite(sample[1]) or
+                t - sample[1] > Skull.THROW_WINDOW_SECONDS then break end
+        oldest = sample
+    end
+    if not oldest or oldest == newest then return {0, 0, 0} end
+    local span = newest[1] - oldest[1]
+    if not (span > 0) then return {0, 0, 0} end
+    local v = {(newest[2] - oldest[2]) / span, (newest[3] - oldest[3]) / span,
+        (newest[4] - oldest[4]) / span}
+    local speed = math.sqrt(v[1] * v[1] + v[2] * v[2] + v[3] * v[3])
+    if not finite(speed) or speed <= 0 then return {0, 0, 0} end
+    if speed > Skull.THROW_MAX_SPEED then
+        local k = Skull.THROW_MAX_SPEED / speed
+        v[1], v[2], v[3] = v[1] * k, v[2] * k, v[3] * k
+    end
+    return v
+end
+
 -- The lead along the player's horizontal velocity, a world 3-array: none
 -- below LEAD_MIN_SPEED, LEAD_METRES at LEAD_FULL_SPEED and beyond. Pure.
 function Skull.lead(velocity)
@@ -220,10 +275,20 @@ end
 -- a rest offset's x by the player's field-of-view setting over the default
 -- (fov, 1 when unset): the stock rest keeps that, the lead is an exact
 -- world distance and is divided by it first. Pure.
+-- `forward` is given only for the throwable skull, so it is also what says
+-- whether the worn side and height offsets apply: the other skulls keep their
+-- stock rest exactly. x is to the LEFT, so moving right subtracts, and it is
+-- divided by fov for the same reason the lead is -- it is an exact world
+-- distance, and the stock update multiplies x by fov afterwards. Height is
+-- not scaled, because stock does not scale it.
 function Skull.fed_offset(rest, mirror, forward, lead, heading, fov)
     fov = (finite(fov) and fov > 0.1) and fov or 1
     local l = Skull.stock_offset(lead or {0, 0, 0}, heading)
-    return {(mirror and -rest[1] or rest[1]) + l[1] / fov, (forward or rest[2]) + l[2], rest[3]}
+    local thrown = forward ~= nil
+    return {(mirror and -rest[1] or rest[1]) + l[1] / fov -
+            (thrown and Skull.SIDE_RIGHT / fov or 0),
+        (forward or rest[2]) + l[2],
+        rest[3] - (thrown and Skull.DOWN or 0)}
 end
 
 -- While the off hand holds the skull it sits just above the hand.
@@ -293,13 +358,32 @@ function Skull.install(mod, presentation)
         elseif side == "right" then position = presentation.controller_grip_target() end
         local t = now()
         if position and t then
+            local p = array(position)
             local previous = hand_track.position
             if previous and hand_track.t and t > hand_track.t then
                 local dt = t - hand_track.t
-                local p = array(position)
                 hand_track.velocity = {(p[1] - previous[1]) / dt, (p[2] - previous[2]) / dt, (p[3] - previous[3]) / dt}
             end
-            hand_track.position, hand_track.t = array(position), t
+            -- The window the throw is measured over. Trimmed here rather than
+            -- at the release so the list cannot grow while the skull is held.
+            local samples = hand_track.samples
+            if not samples then samples = {} hand_track.samples = samples end
+            if hand_track.t == nil or t > hand_track.t then
+                samples[#samples + 1] = {t, p[1], p[2], p[3]}
+                local keep = 1
+                while keep < #samples and t - samples[keep][1] > Skull.THROW_WINDOW_SECONDS do
+                    keep = keep + 1
+                end
+                -- One sample older than the window is kept: it is what makes
+                -- the window a full THROW_WINDOW_SECONDS rather than however
+                -- much of it happens to have landed inside.
+                if keep > 2 then
+                    local shifted = {}
+                    for index = keep - 1, #samples do shifted[#shifted + 1] = samples[index] end
+                    hand_track.samples = shifted
+                end
+            end
+            hand_track.position, hand_track.t = p, t
         end
         local skull = companion(unit)
         if not skull or not api.following then return nil end
@@ -326,8 +410,12 @@ function Skull.install(mod, presentation)
         local finder = unit_data and unit_data:read_component("action_module_position_finder")
         local target = finder and finder.position_valid and array(finder.position)
         if target then target[3] = target[3] - Skull.TARGET_DROP end
-        pending = {t = t, position = hand_track.position, velocity = hand_track.velocity or {0, 0, 0}, target = target}
-        mod:info("DARKTIDEVR_SKULL_THROW released target=%s", target and "valid" or "none")
+        local velocity = Skull.release_velocity(hand_track.samples, t)
+        pending = {t = t, position = hand_track.position, velocity = velocity, target = target}
+        mod:info("DARKTIDEVR_SKULL_THROW released target=%s speed=%.2f samples=%d",
+            target and "valid" or "none",
+            math.sqrt(velocity[1] * velocity[1] + velocity[2] * velocity[2] + velocity[3] * velocity[3]),
+            hand_track.samples and #hand_track.samples or 0)
     end
 
     -- Every node directly under the skull's root: the parts are nine

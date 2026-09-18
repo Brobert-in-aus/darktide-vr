@@ -105,10 +105,20 @@ assert(math.abs(Skull.lead({2, 0, 0})[1] - 0.15) < 1e-9)
 -- The fed offset: the stock flamethrower rest (-0.55 is 55 cm to the right)
 -- mirrored to the left and brought forward, plus the lead in the heading's
 -- frame; an unmirrored one (left-handed) keeps its side.
+--
+-- `forward` being given is also what says this is the THROWABLE skull, so it
+-- is what gates the worn side and height offsets. The other skulls keep their
+-- stock rest exactly, which is the property worth holding: the 18 September
+-- answer was about the flamethrower skull alone.
 local fed = Skull.fed_offset({-0.55, 0.15, -0.25}, true, 0.30, {0, 0.3, 0}, 0)
-assert(math.abs(fed[1] - 0.55) < 1e-9 and math.abs(fed[2] - 0.60) < 1e-9 and fed[3] == -0.25)
+assert(math.abs(fed[1] - (0.55 - Skull.SIDE_RIGHT)) < 1e-9, 'moved right, and x is to the left')
+assert(math.abs(fed[2] - 0.60) < 1e-9, 'the forward offset replaces the stock one, plus the lead')
+assert(math.abs(fed[3] - (-0.25 - Skull.DOWN)) < 1e-9, 'and lowered')
+assert(Skull.SIDE_RIGHT > 0 and Skull.DOWN > 0, 'right and down are positive magnitudes')
+near(Skull.FORWARD, 0.60, 'the worn forward rest')
+-- No `forward`: not the throwable skull, so not one of the three axes moves.
 fed = Skull.fed_offset({-0.55, 0.15, -0.25}, false, nil, {0, 0, 0}, 0.7)
-assert(fed[1] == -0.55 and fed[2] == 0.15)
+assert(fed[1] == -0.55 and fed[2] == 0.15 and fed[3] == -0.25, 'the other skulls are untouched')
 -- Running to the right of the heading leads to the right: a smaller x.
 fed = Skull.fed_offset({0, 0, 0}, false, nil, {0.3, 0, 0}, 0)
 assert(math.abs(fed[1] + 0.3) < 1e-9 and math.abs(fed[2]) < 1e-9)
@@ -119,4 +129,37 @@ fed = Skull.fed_offset({-0.55, 0.15, -0.25}, true, nil, {0.3, 0, 0}, 0, 1.25)
 assert(math.abs(fed[1] - (0.55 - 0.3 / 1.25)) < 1e-9, 'lead divided, rest not')
 assert(Skull.fed_offset({0, 0, 0}, false, nil, {0.3, 0, 0}, 0, 0)[1] == -0.3, 'a nonsense factor is 1')
 assert(Skull.HOLD_UP == 0.07)
+
+-- The release velocity. A single frame's finite difference reported almost
+-- nothing at the moment of release, which is what "throwing it has no physics,
+-- it just floats where released" was (user, 18 September): the free flight ran
+-- at nearly zero.
+local samples = {}
+for i = 0, 15 do samples[#samples + 1] = {i * 0.01, 0, i * 0.01 * 4, 0} end
+local v = Skull.release_velocity(samples, 0.15)
+assert(math.abs(v[2] - 4) < 1e-6, 'four metres a second across the window, got ' .. v[2])
+assert(v[1] == 0 and v[3] == 0)
+-- A hand that STOPS before the button comes up still throws: the window sees
+-- the movement, where the last frame alone sees the stop. This is the case the
+-- change exists for, so it is asserted rather than assumed.
+samples[#samples + 1] = {0.16, 0, 0.6, 0}
+samples[#samples + 1] = {0.17, 0, 0.6, 0}
+local stopped = Skull.release_velocity(samples, 0.17)
+assert(stopped[2] > 1.5, 'the window still carries the throw, got ' .. stopped[2])
+-- Capped, so a tracking glitch cannot fling the drawn skull somewhere the real
+-- one never goes.
+local glitch = Skull.release_velocity({{0, 0, 0, 0}, {0.01, 0, 50, 0}}, 0.01)
+assert(math.abs(math.sqrt(glitch[1] ^ 2 + glitch[2] ^ 2 + glitch[3] ^ 2) -
+    Skull.THROW_MAX_SPEED) < 1e-6, 'capped at THROW_MAX_SPEED')
+-- Nothing usable is a zero, never a nil or a nan.
+for _, bad in ipairs({{}, {{0, 0, 0, 0}}, 'not a list'}) do
+    local zero = Skull.release_velocity(bad, 1)
+    assert(zero[1] == 0 and zero[2] == 0 and zero[3] == 0)
+end
+assert(Skull.release_velocity({{0, 0, 0, 0}, {0.01, 0, 1, 0}}, 0 / 0)[2] == 0, 'no release time, no throw')
+-- Samples older than the window are ignored, and one stale entry before a gap
+-- cannot widen the window and understate the speed.
+local gapped = {{0, 0, 0, 0}, {0.9, 0, 1, 0}, {0.95, 0, 1.5, 0}, {1.0, 0, 2, 0}}
+assert(math.abs(Skull.release_velocity(gapped, 1.0)[2] - 10) < 1e-6,
+    'measured across the window that is there, not back to the stale sample')
 print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed stock_offset lead fed_offset')

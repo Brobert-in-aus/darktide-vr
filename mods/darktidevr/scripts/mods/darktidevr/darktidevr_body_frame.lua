@@ -19,6 +19,15 @@ BodyFrame.MAX_HAND_YAW = math.rad(60)
 BodyFrame.DEAD_ZONE = math.rad(20)
 BodyFrame.SETTLED = math.rad(2)
 BodyFrame.CATCH_UP_SECONDS = 0.15
+-- Inside the dead zone the body used to stop dead and stay there, so a glance
+-- held for a minute left the torso permanently askew under the head: "the
+-- torso also doesn't slowly recenter if I'm still for a bit" (user, worn, 18
+-- September). It now drifts toward the head the whole time, on a time constant
+-- slow enough that a glance still reads as a glance -- about 1.4 s to close
+-- half the gap, against CATCH_UP_SECONDS' tenth of a second once a real turn
+-- has been declared. The dead zone is what makes a glance free; this is what
+-- stops "free" meaning "for ever".
+BodyFrame.RECENTRE_SECONDS = 2.0
 BodyFrame.PITCH_SAFE_FROM = math.rad(50)
 BodyFrame.NECK_BACK, BodyFrame.NECK_DOWN = 0.07, 0.08
 BodyFrame.SHOULDER_SIDE, BodyFrame.SHOULDER_DOWN = 0.17, 0.08
@@ -81,10 +90,15 @@ function BodyFrame.new()
         else
             local diff = wrap(target - state.yaw)
             if math.abs(diff) > BodyFrame.DEAD_ZONE then state.turning = true end
-            if state.turning then
-                local weight = 1 - math.exp(-dt / BodyFrame.CATCH_UP_SECONDS)
-                state.yaw = wrap(state.yaw + diff * weight)
-                if math.abs(wrap(target - state.yaw)) < BodyFrame.SETTLED then state.turning = false end
+            -- Turning: catch up quickly. Not turning: drift, rather than
+            -- freeze. Both are the same exponential, and which time constant
+            -- applies is the only difference between them.
+            local tau = state.turning and BodyFrame.CATCH_UP_SECONDS or
+                BodyFrame.RECENTRE_SECONDS
+            state.yaw = wrap(state.yaw + diff * (1 - math.exp(-dt / tau)))
+            if state.turning and
+                    math.abs(wrap(target - state.yaw)) < BodyFrame.SETTLED then
+                state.turning = false
             end
         end
         local eye_height = finite(input.eye_height) and input.eye_height > 0.5 and input.eye_height or

@@ -46,10 +46,17 @@ return {
                             {
                                 -- User, 18 September: "add a small zoom to ADS
                                 -- - maybe 10-15%". Per cent of magnification
-                                -- while the sights are up.
+                                -- while the sights are up. Worn the same day
+                                -- it was judged by eye at 12 and then at 3,
+                                -- and the answer was "set the default zoom to
+                                -- 5%" -- so 5, which is what a fresh install
+                                -- gets. An install that has already saved a
+                                -- value keeps it: DMF stores the chosen
+                                -- number, and a default only ever applies to
+                                -- a setting that has never been set.
                                 setting_id = "vr_ads_zoom",
                                 type = "numeric",
-                                default_value = 12,
+                                default_value = 5,
                                 range = {0, 30},
                                 decimals_number = 0,
                                 step_size_value = 1,

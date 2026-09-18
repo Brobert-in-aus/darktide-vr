@@ -8,32 +8,63 @@ and what it turns into. Answers first; conclusions after.
 > "A short while into the session, shooting broke. Regardless of being ADS or
 > no, bullets no longer fire from my gun. Melee still works."
 
-**Traced to the second, from the console log.** Fire is `action_one`, which is
-`analog_button(right.trigger)` (`core/gameplay_input.cpp:59`). It worked
-normally until **07:55:46.897** -- rapid `delivered=action_one_pressed` /
-`action_one_release` pairs, `missing=none` -- and then never appeared again in
-a session that ran to 08:02:49.
+### The first diagnosis was wrong, and the user corrected it
 
-The left trigger kept working throughout (`action_two` edges at 07:55:49,
-07:55:50, 07:55:51, and ADS toggling on and off cleanly afterwards). So this
-is **right-hand specific**, not a latch in the shared input path and not ADS
-holding something down.
+It was recorded here as a lost right controller: no `action_one` edges after
+**07:55:46.897**, and `right_live=false right_flags=0` in the controller
+telemetry. Both observations were real and the conclusion drawn from them was
+not:
 
-The cause is in the viewer: `read_float` returns **0.0 when the action is not
-active** (`src/xr/main.cpp:5940`), and an OpenXR action goes inactive when its
-device stops being reported. The controller telemetry agrees -- the right
-controller drops to `right_live=false right_flags=0` repeatedly through the
-session and is still out at the last sample (08:02:39), while the left is
-`left_flags=15`.
+> "I was pulling the trigger, it was tracking correctly, the gun was playing
+> the firing sound and animation, it just generated no bullets. It's also
+> impossible for melee to keep working if the controller was off, since it's
+> bound to right trigger too."
 
-So the right controller stopped being reported by the runtime -- asleep, flat,
-or its link dropped -- and from that moment the trigger read a hard zero.
-Nothing in the mod or the game was broken; the button simply stopped existing.
+Both halves land. Sound and animation mean the input reached the game, and
+melee on the same physical trigger means the controller was reporting. Two
+mistakes made in reading the log:
 
-**What this earns**: losing a controller costs the player their gun with no
-indication whatsoever. Seven minutes of a worn session went into a mystery
-that the viewer already knew the answer to. A "controller not reporting"
-signal belongs in the log and in front of the player.
+- **`right_live=false` is not a lost controller.** The LEFT controller does
+  exactly the same thing, over and over, all session -- `left_live=false
+  left_flags=0` at 08:00:19, 08:01:17, 08:02:05, 08:02:28, 08:03:10 and on.
+  These are tracking transitions, which is what the line is named. Reading one
+  hand's transitions as a device failure while the other hand's sat three
+  columns away in the same lines is not a subtle error.
+- **"Never appeared again" was simply false.** `pressed=1` occurs thirteen
+  more times, at 08:04:14 through 08:04:20, every one of them
+  `delivered=action_one_pressed missing=none`. A truncated grep was read as an
+  absence.
+
+### What the log does establish
+
+- The gun (`slot_secondary`) was wielded from 08:04:06, ADS entered at
+  08:04:09.99, and thirteen trigger presses were delivered cleanly between
+  08:04:14.710 and 08:04:20.182. That burst is the reported fault happening,
+  with the input path healthy end to end.
+- **No Lua errors anywhere in the session**, mod or engine.
+- Every shot the log did record starts its sweep inside the player's own
+  hitbox: `collision=1 distance=0 self=true zone=afro`, because the shoot
+  origin is the first-person position rather than the muzzle. Stock skips self
+  and the shots landed, so this is not yet a fault -- but it means every shot
+  depends on that self-skip continuing to apply.
+
+### What the log cannot establish, which is the whole question
+
+Whether `_shoot` was dispatched at all during that burst. `RANGED_EVIDENCE`
+and `HIT_EVIDENCE` cap at four dispatches per weapon route (`row.calls>4`), and
+the fourth was written at **07:51:52** -- twelve minutes before the fault. From
+then on, silence in the log means "capped", not "no shot". The single question
+that separates "the trigger never reached the weapon action" from "the weapon
+action ran and produced nothing" had no answer in a 13,357 line log.
+
+**That is the defect worth fixing first, and it has been.** Past the detail
+cap the module now writes a compact `dispatches=N since_last=N` line, throttled
+to one per five seconds per route, so a burst of fire always leaves a mark and
+"the trigger was pulled here and nothing dispatched" becomes a readable fact
+rather than an inference. The next occurrence answers itself.
+
+**Still open**: the cause. The honest position is that the wrong answer was
+given confidently once already, so the next one waits for the instrument.
 
 ## Answers
 
@@ -119,8 +150,13 @@ Five separate faults:
 - **Stick turn rotates the body faster than the view.** A gain mismatch
   between the body yaw and the camera yaw.
 - **The body is jittery underneath.**
-- **The head needs to come up a little more** -- the standing height is still
-  short. No centimetre figure this time, so it stays qualitative.
+- **The head needs to come up a little more.** Sized on a second look
+  (user, 18 September): "eyes only need to come up ~5cm, they also need to
+  come forward ~5cm too". Both done -- `presentation.EYE_ANCHOR_FORWARD_M`
+  and `EYE_ANCHOR_UP_M`, applied to the captured anchor on every read rather
+  than folded into the capture, which would compound. The measurement itself
+  is left alone: the avatar's eye node is where it is, and this is a
+  correction on top of it.
 - **The torso never recentres when still.** There is meant to be a slow return
   to forward; there is not.
 - **Hands and body flicker while running.**
@@ -152,15 +188,16 @@ Four closed. The skulls:
 
 Ranked by what it costs the player:
 
-1. **A lost controller must say so.** Nothing about the failure was visible in
-   the headset. (New.)
+1. **Why the gun fires and no bullet appears.** Reopened: the first answer
+   was wrong. The instrument that would have settled it is in (the shot log no
+   longer goes quiet after four dispatches); the cause is not yet known.
 2. **The ADS reticle differs between the eyes** and neither matches the
    ironsights. A regression from today. (62)
 3. **The ADS vignette is still invisible** after being rebuilt. (56)
 4. **Servo skull throwing has no physics**, and the flamethrower skull's hold
    pose is out by 30 cm on three axes. (53)
-5. **Five body faults**: stick-turn gain, jitter, height, no recentre, flicker
-   while running. (52)
+5. **Four body faults**: stick-turn gain, jitter, no recentre, flicker while
+   running. Height is done. (52)
 6. **Two ADS settings**: default zoom to 5 per cent, and no delay leaving ADS.
    (55)
 7. **DMF submenus are not a thing**; the options are still one long scroll.

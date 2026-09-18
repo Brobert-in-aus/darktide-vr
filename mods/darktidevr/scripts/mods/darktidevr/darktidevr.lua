@@ -329,6 +329,7 @@ local controller_observation = {
     body_eye_anchor_local_z = nil,
     body_eye_anchor_source = nil,
     body_camera_eye_offset_unit = nil,
+    body_camera_eye_offset_since = nil,
     body_camera_eye_offset_x = nil,
     body_camera_eye_offset_y = nil,
     body_camera_eye_offset_z = nil,
@@ -5003,6 +5004,17 @@ presentation.MAX_EYE_CAPTURE_PITCH = math.rad(15)
 -- a rotation, which is visible in a headset.
 presentation.EYE_CAPTURE_DEADLINE = 2
 
+-- The measured anchor puts the camera on the avatar's own eyes, and worn that
+-- still reads as sitting too low and too far back inside the head (user, 18
+-- September: "eyes only need to come up ~5cm, they also need to come forward
+-- ~5cm too"). The measurement is not wrong -- the model's eye node is where it
+-- is -- so this is a correction on top of it rather than a different
+-- measurement. In the aim's own yaw frame, +y is forward and +z is up, so both
+-- are positive. The capture reads about 8.5 cm forward and 6 cm above the
+-- first-person position, which these take to about 13.5 cm and 11 cm.
+presentation.EYE_ANCHOR_FORWARD_M = 0.05
+presentation.EYE_ANCHOR_UP_M = 0.05
+
 function presentation.cyclopean_eye_offset(aim_rotation, offset, allow_pitch)
     if not aim_rotation or not offset then return nil, "aim_unavailable" end
     local ok, pitch = pcall(Quaternion.pitch, aim_rotation)
@@ -5014,6 +5026,44 @@ function presentation.cyclopean_eye_offset(aim_rotation, offset, allow_pitch)
     local local_offset = presentation.rotate_vector(
         presentation.inverse_quaternion(yaw_only), offset)
     return Vector3(0, Vector3.y(local_offset), Vector3.z(local_offset))
+end
+
+-- Applied to the CAPTURED offset every call, never folded into the stored one:
+-- the capture happens once per unit and a correction written into it would
+-- compound on every later read. Pure, and separate from the measurement above
+-- so the measurement stays a measurement.
+function presentation.eye_anchor_correction(local_offset)
+    if not local_offset then return nil end
+    return Vector3(
+        Vector3.x(local_offset),
+        Vector3.y(local_offset) + presentation.EYE_ANCHOR_FORWARD_M,
+        Vector3.z(local_offset) + presentation.EYE_ANCHOR_UP_M)
+end
+
+-- Where the camera goes before the capture succeeds, or when it cannot.
+--
+-- This has to carry the correction as well, and that is not tidiness. The
+-- guess is 5 cm straight up; the capture is about 8.5 cm forward and 6 cm up.
+-- The gap between them is a world-space translation of the whole scene at the
+-- instant the capture lands, and bounding it is the reason
+-- EYE_CAPTURE_DEADLINE exists at all. Correcting only the captured path would
+-- have grown that jump from 8.6 cm to 14.8 cm -- making the artifact the
+-- deadline was written against 72% worse, in the name of a 5 cm fix (review,
+-- 18 September).
+--
+-- Without a basis there is no forward to put the forward term along, so only
+-- the height is applied. That case already has no forward term to disagree
+-- with, so it does not widen the jump either.
+presentation.EYE_ANCHOR_FALLBACK_UP_M = 0.05
+function presentation.eye_anchor_fallback(head_position, basis)
+    if not head_position then return nil end
+    local corrected = presentation.eye_anchor_correction(
+        Vector3(0, 0, presentation.EYE_ANCHOR_FALLBACK_UP_M))
+    if not basis then
+        return head_position + Vector3.up() *
+            (presentation.EYE_ANCHOR_FALLBACK_UP_M + presentation.EYE_ANCHOR_UP_M)
+    end
+    return head_position + presentation.rotate_vector(basis, corrected)
 end
 
 function presentation.body_camera_anchor(unit)
@@ -5035,7 +5085,8 @@ function presentation.body_camera_anchor(unit)
             observation.body_camera_eye_offset_x == nil then
         if not model_eye or not active_base_rotation or
                 not presentation.body_upright_state(unit) then
-            return head_position + Vector3.up() * 0.05,
+            return presentation.eye_anchor_fallback(head_position,
+                    active_base_rotation and active_base_rotation:unbox()),
                 "first_person_fallback", left_eye, right_eye, captured
         end
         -- Measured in the aim's own yaw frame, so the avatar's facing (and
@@ -5054,7 +5105,8 @@ function presentation.body_camera_anchor(unit)
         local local_offset, refused = presentation.cyclopean_eye_offset(
             component.rotation, model_eye - head_position, overdue)
         if not local_offset then
-            return head_position + Vector3.up() * 0.05,
+            return presentation.eye_anchor_fallback(head_position,
+                    active_base_rotation and active_base_rotation:unbox()),
                 refused == "aim_pitched" and "aim_pitched" or "first_person_fallback",
                 left_eye, right_eye, captured
         end
@@ -5076,6 +5128,13 @@ function presentation.body_camera_anchor(unit)
                 tostring(reverse_order_enabled))
         end
         observation.body_camera_eye_offset_unit = unit
+        -- The wait is over: clear its start, or the NEXT capture (a body
+        -- visibility toggle, a height calibration, a respawn) reads this one's
+        -- timer, is overdue on its first frame, waives MAX_EYE_CAPTURE_PITCH
+        -- and bakes whatever pitch the player happened to be holding into the
+        -- height -- which is the fault this correction exists to fix, arriving
+        -- by another door (review, 18 September).
+        observation.body_camera_eye_offset_since = nil
         observation.body_camera_eye_offset_x = Vector3.x(local_offset)
         observation.body_camera_eye_offset_y = Vector3.y(local_offset)
         observation.body_camera_eye_offset_z = Vector3.z(local_offset)
@@ -5091,10 +5150,10 @@ function presentation.body_camera_anchor(unit)
     end
     local basis = active_base_rotation and active_base_rotation:unbox() or
         Quaternion.identity()
-    local local_offset = Vector3(
+    local local_offset = presentation.eye_anchor_correction(Vector3(
         observation.body_camera_eye_offset_x,
         observation.body_camera_eye_offset_y,
-        observation.body_camera_eye_offset_z)
+        observation.body_camera_eye_offset_z))
     return head_position + presentation.rotate_vector(basis, local_offset),
         "stable_first_person_cyclopean_offset", left_eye, right_eye, captured
 end
@@ -5288,7 +5347,8 @@ local function update_stereo(manager)
                 eye_anchor_captured =
                     presentation.body_camera_anchor(player_unit)
             clean_position = model_eye_position or
-                (head_position + Vector3.up() * 0.05)
+                presentation.eye_anchor_fallback(head_position,
+                    active_base_rotation and active_base_rotation:unbox())
             body_anchor_position = clean_position
             if not controller_observation.body_camera_anchor_logged then
                 controller_observation.body_camera_anchor_logged = true
@@ -5304,14 +5364,20 @@ local function update_stereo(manager)
                     Vector3.z(head_position))
                 if model_eye_position and eye_anchor_captured then
                     mod:info(
-                        "DARKTIDEVR_BODY model_eyes calibration=stable_root_space left=%.4f,%.4f,%.4f right=%.4f,%.4f,%.4f ipd=%.4f first_person_delta=%.4f,%.4f,%.4f",
+                        "DARKTIDEVR_BODY model_eyes calibration=stable_root_space left=%.4f,%.4f,%.4f right=%.4f,%.4f,%.4f ipd=%.4f corrected_first_person_delta=%.4f,%.4f,%.4f correction=%.2f,%.2f",
                         Vector3.x(left_eye), Vector3.y(left_eye),
                         Vector3.z(left_eye), Vector3.x(right_eye),
                         Vector3.y(right_eye), Vector3.z(right_eye),
                         presentation.vector_distance(left_eye, right_eye),
                         Vector3.x(model_eye_position - head_position),
                         Vector3.y(model_eye_position - head_position),
-                        Vector3.z(model_eye_position - head_position))
+                        -- Named, because DARKTIDEVR_ANCHOR eye_capture prints
+                        -- the RAW capture a few lines away and the two now
+                        -- differ by exactly this. A log that quietly disagrees
+                        -- with itself is what cost the day's first diagnosis.
+                        Vector3.z(model_eye_position - head_position),
+                        presentation.EYE_ANCHOR_FORWARD_M,
+                        presentation.EYE_ANCHOR_UP_M)
                 end
             end
         end
@@ -7657,6 +7723,7 @@ function presentation.update_body_visibility_gate(frame)
     controller_observation.body_eye_anchor_local_z = nil
     controller_observation.body_eye_anchor_source = nil
     controller_observation.body_camera_eye_offset_unit = nil
+    controller_observation.body_camera_eye_offset_since = nil
     controller_observation.body_camera_eye_offset_x = nil
     controller_observation.body_camera_eye_offset_y = nil
     controller_observation.body_camera_eye_offset_z = nil
@@ -8551,6 +8618,11 @@ function presentation.apply_calibrated_body_height(world, unit, local_player)
     controller_observation.body_calibration_retarget = nil
     controller_observation.body_eye_anchor_unit = nil
     controller_observation.body_camera_eye_offset_unit = nil
+    -- And the wait it started. A height calibration is the likeliest cause of
+    -- a SECOND capture, and a second capture that inherits the first one's
+    -- timer is overdue on its first frame: it waives MAX_EYE_CAPTURE_PITCH and
+    -- bakes whatever pitch the player is holding into the height.
+    controller_observation.body_camera_eye_offset_since = nil
     mod:info(
         "DARKTIDEVR_CALIBRATION body_height breed=%s authored_eye_m=%.4f floor_eye_m=%.4f visual_scale=%.4f client_only=true collision_scale=1 clamp=0.70,1.40",
         tostring(breed_name), authored_eye_height, source_eye_height,

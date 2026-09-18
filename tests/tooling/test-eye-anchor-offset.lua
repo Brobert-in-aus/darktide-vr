@@ -12,7 +12,14 @@ local function near(a, b, eps, label)
 end
 
 -- Engine stubs: z up, +y forward, yaw about z. A rotation is {yaw, pitch}.
-local function vec(x, y, z) return {x = x, y = y, z = z} end
+-- The fallback builds a position with + and *, so the stub vectors need them.
+local vec_meta = {}
+local function vec(x, y, z) return setmetatable({x = x, y = y, z = z}, vec_meta) end
+vec_meta.__add = function(a, b) return vec(a.x + b.x, a.y + b.y, a.z + b.z) end
+vec_meta.__mul = function(a, k)
+    if type(a) == 'number' then a, k = k, a end
+    return vec(a.x * k, a.y * k, a.z * k)
+end
 Vector3 = setmetatable({
     x = function(v) return v.x end, y = function(v) return v.y end, z = function(v) return v.z end,
     up = function() return vec(0, 0, 1) end,
@@ -81,4 +88,147 @@ assert(presentation.EYE_CAPTURE_DEADLINE > 0 and presentation.EYE_CAPTURE_DEADLI
 assert(presentation.cyclopean_eye_offset(nil, offset_for(0), true) == nil)
 assert(presentation.cyclopean_eye_offset({yaw = 0, pitch = 0 / 0}, offset_for(0), true) == nil)
 
-print('eye_anchor_offset=pass aim_frame cyclopean pitch_defers deadline')
+-- The worn correction (user, 18 September): the measured anchor reads as 5 cm
+-- too low and 5 cm too far back, so the correction is added to the capture.
+-- Forward is +y and up is +z in this frame, so a sign slip here would push the
+-- eyes further into the head rather than out of it.
+--
+-- Asserted against the CONSTANTS, not against 0.05. The next worn answer sizes
+-- this again, and a test that pins today's centimetres turns every later
+-- adjustment into an argument with the harness. What must not move is the
+-- wiring, the axis each constant lands on, and the sign; the number itself
+-- lives in the constant's own comment and in the day's document.
+assert(type(presentation.eye_anchor_correction) == 'function', 'the slice defines the correction')
+local FORWARD = presentation.EYE_ANCHOR_FORWARD_M
+local UP = presentation.EYE_ANCHOR_UP_M
+assert(FORWARD > 0 and FORWARD < 0.5, 'a plausible correction in metres, not centimetres or a typo')
+assert(UP > 0 and UP < 0.5, 'a plausible correction in metres, not centimetres or a typo')
+local corrected = assert(presentation.eye_anchor_correction(vec(0, DEPTH, HEIGHT)))
+near(Vector3.x(corrected), 0, 1e-9, 'the correction is not lateral')
+near(Vector3.y(corrected), DEPTH + FORWARD, 1e-9, 'forward by the forward constant')
+near(Vector3.z(corrected), HEIGHT + UP, 1e-9, 'up by the up constant')
+assert(Vector3.y(corrected) > DEPTH, 'forward, not back')
+assert(Vector3.z(corrected) > HEIGHT, 'up, not down')
+assert(presentation.eye_anchor_correction(nil) == nil, 'no capture, no correction')
+
+-- Which constant lands on which axis cannot be measured while the two are
+-- equal: swapping them is arithmetically invisible today and wrong the moment
+-- one of them is re-sized on its own. So the pairing is held on the source.
+local correction_body = source:sub(
+    (assert(source:find('function presentation.eye_anchor_correction(', 1, true))))
+correction_body = correction_body:sub(1, (assert(correction_body:find('\nend', 1, true))))
+-- Patterns, not exact text: what must hold is that the forward constant is
+-- added to a y term and the up constant to a z term. [^,\n] keeps the match
+-- inside one argument, so a swap cannot reach across the comma to the term
+-- above it and read as correct.
+assert(correction_body:find('y[^,\n]-%+%s*presentation%.EYE_ANCHOR_FORWARD_M'),
+    'forward is added to y')
+assert(correction_body:find('z[^,\n]-%+%s*presentation%.EYE_ANCHOR_UP_M'),
+    'up is added to z')
+
+-- It must not be folded into the stored capture: applying it to its own result
+-- doubles it, which is what a correction written into the stored offset would
+-- do on every later read.
+local twice = presentation.eye_anchor_correction(corrected)
+near(Vector3.y(twice), DEPTH + 2 * presentation.EYE_ANCHOR_FORWARD_M, 1e-9,
+    'applying twice doubles, so it is applied once')
+
+-- A correction that is written but never called is the failure this whole
+-- change is most likely to ship as, and no amount of testing the helper in
+-- isolation would see it. The anchor's own return must read the capture
+-- through it. Checked on the source because body_camera_anchor needs the
+-- engine, which this slice deliberately does not have.
+-- find returns TWO values; each of these takes only the first, or sub() reads
+-- the match's end as its own end and slices away everything being checked.
+local function slice(text, from, to)
+    local start = assert(text:find(from, 1, true), 'missing: ' .. from)
+    local stop = assert(text:find(to, start, true), 'missing: ' .. to)
+    return text:sub(start, stop)
+end
+--
+-- Sliced from the RETURN BACKWARDS, not from the function forwards. A review
+-- on 18 September got three mutations past the forward-slicing version: a
+-- correction applied one line above the slice's start, a dead
+-- `local _unused = eye_anchor_correction(...)` next to an uncorrected return,
+-- and an assertion on `body_camera_eye_offset_x` that held whatever the return
+-- read, because that name also appears twice earlier in the same slice. All
+-- three are the same mistake -- checking that the correction appears SOMEWHERE
+-- rather than that it is what the anchor returns.
+local anchor_body = slice(source, '\nfunction presentation.body_camera_anchor(',
+    'stable_first_person_cyclopean_offset')
+-- The LAST assignment to local_offset before the return: anything earlier is
+-- not what the return reads.
+local last_assignment
+local search = 1
+while true do
+    local at = anchor_body:find('local local_offset = ', search, true)
+    if not at then break end
+    last_assignment, search = at, at + 1
+end
+assert(last_assignment, 'the anchor assigns the offset it returns')
+local return_statement = anchor_body:sub(last_assignment)
+assert(return_statement:find('presentation.eye_anchor_correction(', 1, true),
+    'the offset the anchor returns is the corrected one')
+assert(return_statement:find('body_camera_eye_offset_x', 1, true),
+    'and the correction is applied to the stored capture')
+assert(return_statement:find('head_position %+ presentation%.rotate_vector%(basis, local_offset%)'),
+    'and that offset is what the returned position is built from')
+-- The stored capture stays raw: correcting it anywhere in the capture block
+-- would add the offset once when it is written and again on every read.
+-- The slice starts at the MEASUREMENT, not at the store, because a fold-in
+-- placed between the two is still a fold-in.
+local store = slice(source, 'local local_offset, refused = presentation.cyclopean_eye_offset(',
+    'DARKTIDEVR_ANCHOR eye_capture')
+assert(not store:find('eye_anchor_correction', 1, true), 'the stored capture is the raw measurement')
+-- By name or by constant: either way it is the correction.
+assert(not store:find('EYE_ANCHOR_FORWARD_M', 1, true), 'nor is the forward constant folded in')
+assert(not store:find('EYE_ANCHOR_UP_M', 1, true), 'nor the up constant')
+
+-- The fallback carries the correction as well. Correcting only the captured
+-- path grows the jump between them from 8.6 cm to 14.8 cm, and bounding that
+-- jump is the entire reason EYE_CAPTURE_DEADLINE exists (review, 18 Sept).
+assert(type(presentation.eye_anchor_fallback) == 'function', 'the slice defines the fallback')
+local fallback_body = slice(source, 'function presentation.eye_anchor_fallback(', '\nend')
+assert(fallback_body:find('presentation.eye_anchor_correction(', 1, true),
+    'the fallback is corrected too')
+assert(not source:find('head_position + Vector3.up() * 0.05', 1, true),
+    'no uncorrected 5 cm fallback survives anywhere')
+-- Run it, rather than spot the call: a fallback that computes the correction
+-- and then returns something else passes any search for the name.
+local guessed = presentation.eye_anchor_fallback(vec(0, 0, 0), {yaw = 0, pitch = 0})
+near(Vector3.y(guessed), FORWARD, 1e-9, 'the fallback carries the forward correction')
+near(Vector3.z(guessed), presentation.EYE_ANCHOR_FALLBACK_UP_M + UP, 1e-9,
+    'and the up correction on top of its own guess')
+near(Vector3.x(guessed), 0, 1e-9, 'and is not lateral either')
+-- Without a basis there is no forward to apply, but the height still applies.
+local flat = presentation.eye_anchor_fallback(vec(0, 0, 0), nil)
+near(Vector3.z(flat), presentation.EYE_ANCHOR_FALLBACK_UP_M + UP, 1e-9,
+    'the basis-less fallback still rises by the correction')
+assert(presentation.eye_anchor_fallback(nil, nil) == nil, 'no head position, no guess')
+
+-- The deadline's timer has to be cleared when the capture lands, and at every
+-- reset that can cause a SECOND capture. Left set, the next capture is overdue
+-- on its first frame, waives MAX_EYE_CAPTURE_PITCH, and bakes whatever pitch
+-- the player happened to be holding into the height -- which is the same fault
+-- this correction exists to fix, arriving by another door (review, 18 Sept).
+assert(store:find('body_camera_eye_offset_since = nil', 1, true),
+    'a successful capture clears the wait it started')
+-- Every site that clears the capture clears its timer. Walked by POSITION,
+-- not by matched text: the two reset sites are character for character
+-- identical, so searching the file for each line's text finds the first one
+-- twice and never looks at the second. That is how the calibration reset --
+-- the likeliest cause of a second capture there is -- got past the first cut.
+local reset_marker = 'controller_observation.body_camera_eye_offset_unit = nil'
+local sites, at = 0, 1
+while true do
+    local found = source:find(reset_marker, at, true)
+    if not found then break end
+    sites = sites + 1
+    local window = source:sub(found, found + 700)
+    assert(window:find('body_camera_eye_offset_since = nil', 1, true),
+        'the reset at character ' .. found .. ' leaves the capture timer behind')
+    at = found + #reset_marker
+end
+assert(sites >= 2, 'both reset sites are checked, found ' .. sites)
+
+print('eye_anchor_offset=pass aim_frame cyclopean pitch_defers deadline worn_correction wired timer')

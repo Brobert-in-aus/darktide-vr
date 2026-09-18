@@ -1,5 +1,23 @@
 -- Bounded observation after stock dispatch. No input, action, pose or hit writes.
+--
+-- The detail is capped per weapon route because four shots show the geometry
+-- and four hundred show it four hundred times. The COUNT is not capped, and
+-- that distinction was bought the hard way: on 18 September the gun stopped
+-- producing bullets mid-session while the trigger, the sound and the animation
+-- all still worked, and the log could not answer whether a shot had been
+-- dispatched at all, because the last line it wrote was the fourth, four
+-- minutes before the fault. "No line" meant "capped", not "no shot", so the
+-- one question that mattered had no answer in a 13,000 line log.
+--
+-- So past the cap a compact line still goes out, throttled by time rather than
+-- by count: enough that a burst of fire always leaves a mark, few enough that
+-- holding down an autogun does not fill the file.
 local Evidence={}
+local DETAIL_SHOTS=4
+local SUMMARY_SECONDS=5
+-- The count throttle used when there is no usable clock. Chosen so a fast
+-- weapon still writes a line every couple of seconds rather than per shot.
+local SUMMARY_SHOTS=20
 local function finite(n) return type(n)=='number' and n==n and math.abs(n)<math.huge end
 local function vector_text(v)
     if not v then return 'unavailable' end
@@ -8,7 +26,7 @@ local function vector_text(v)
     return string.format('%.4f,%.4f,%.4f',x,y,z)
 end
 function Evidence.install(mod,presentation)
-    local instance={rows={},failures=0}
+    local instance={rows={},failures=0,total=0}
     instance.hits=mod:io_dofile('darktidevr/scripts/mods/darktidevr/darktidevr_hit_evidence').install(mod,presentation)
     local owner,session
     local function observe(action,position,rotation,power,charge,t)
@@ -25,9 +43,30 @@ function Evidence.install(mod,presentation)
         local kind=tostring(action._action_settings and action._action_settings.kind or action.__class_name or 'unknown')
         local key=weapon..'/'..kind
         local row=instance.rows[key]
-        if not row then row={calls=0}; instance.rows[key]=row end
+        if not row then row={calls=0} instance.rows[key]=row end
         row.calls=row.calls+1
-        if row.calls>4 then return end
+        instance.total=instance.total+1
+        if row.calls>DETAIL_SHOTS then
+            -- Past the detail cap. A count and a time, so a later reader can
+            -- ask "did anything fire here" and get an answer.
+            -- An unusable time falls back to counting rather than logging.
+            -- Written the other way round -- "unknown time, log anyway" -- it
+            -- also stored nil, so a single bad `t` disarmed the throttle
+            -- permanently and a fast weapon then wrote a line per shot for the
+            -- rest of the session (review, 18 September).
+            local now=type(t)=='number' and t==t and t or nil
+            local due
+            if now then due=row.summary_t==nil or now>=row.summary_t+SUMMARY_SECONDS
+            else due=row.calls-(row.summary_calls or DETAIL_SHOTS)>=SUMMARY_SHOTS end
+            if due then
+                row.summary_t=now or row.summary_t
+                local since=row.calls-(row.summary_calls or DETAIL_SHOTS)
+                row.summary_calls=row.calls
+                mod:info('DARKTIDEVR_RANGED_EVIDENCE weapon=%s kind=%s dispatches=%d since_last=%d time=%s',
+                    weapon,kind,row.calls,since,tostring(t))
+            end
+            return
+        end
         local direction=rotation and Quaternion.forward(rotation)
         local aim=presentation.controller_aim
         local point=aim and aim.cached_reticle_target()
@@ -74,7 +113,12 @@ function Evidence.install(mod,presentation)
         local keys={}
         for key in pairs(instance.rows) do keys[#keys+1]=key end
         table.sort(keys)
-        mod:echo('Ranged evidence: %d weapon routes, %d diagnostic failures',#keys,instance.failures)
+        -- instance.total counts the session; instance.rows is wiped on an
+        -- owner or game-session change, so say which is which rather than
+        -- print a total that does not add up to the lines under it.
+        mod:echo('Ranged evidence: %d weapon routes, %d dispatches since the last respawn, %d this session, %d diagnostic failures',
+            #keys,(function() local n=0 for _,row in pairs(instance.rows) do n=n+row.calls end return n end)(),
+            instance.total,instance.failures)
         for _,key in ipairs(keys) do mod:echo('%s: %d stock dispatches',key,instance.rows[key].calls) end
     end)
     return instance

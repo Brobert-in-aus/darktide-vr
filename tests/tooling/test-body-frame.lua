@@ -22,9 +22,24 @@ local frame=BodyFrame.new()
 local function step(head_yaw,hands,dt) return assert(frame.update({eye=eye,head_forward=dir(head_yaw),head_up=up_for(head_yaw),hands=hands,eye_height=1.62},dt)) end
 local f=step(0,nil,1/90)
 near(f.yaw,0,1e-9,'starts at head yaw')
-for _=1,90 do f=step(math.rad(18),nil,1/90) end
-near(f.yaw,0,1e-9,'18 degree glance held')
+f=step(math.rad(18),nil,1/90)
+assert(math.abs(f.yaw) < math.rad(0.2),
+    'a glance does not move the body on the frame it happens: '..math.deg(f.yaw))
+-- Held, the torso comes round. Before 18 September the body stopped dead
+-- inside the dead zone and stayed askew until a real turn moved it, which is
+-- what "the torso also doesn't slowly recenter if I'm still for a bit" was.
+for _=1,89 do f=step(math.rad(18),nil,1/90) end
+assert(f.yaw > math.rad(4) and f.yaw < math.rad(12),
+    'a second into a held glance the body is on its way, not there: '..math.deg(f.yaw))
+for _=1,90*7 do f=step(math.rad(18),nil,1/90) end
+assert(math.abs(f.yaw-math.rad(18)) < math.rad(1),
+    'and arrives if the glance is held: '..math.deg(f.yaw))
+-- The drift has to stay far slower than a turn, or the dead zone means nothing.
+assert(BodyFrame.RECENTRE_SECONDS > BodyFrame.CATCH_UP_SECONDS*5,
+    'the recentre is a drift, not a turn')
 -- A 40 degree turn: the body follows within about half a second.
+frame.reset()
+f=step(0,nil,1/90)
 for _=1,45 do f=step(math.rad(40),nil,1/90) end
 assert(math.abs(f.yaw-math.rad(40))<math.rad(2),'body followed the turn: '..math.deg(f.yaw))
 -- Glancing 40 degrees while both hands hold a gun forward keeps the body within 20 degrees.
