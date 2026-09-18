@@ -172,10 +172,36 @@ and block still read properly.
 
 ## Deployment
 
-Nothing is deployed. The sync script refuses while Darktide is running, and it
-was running for this whole session, so everything above is committed and built
-but not installed. It needs the game closed and a deploy with
-`-FullBodyExperimental -BodyTrace -ArmCensus -ViewerLog`.
+**Deployed and ready to launch.** Commit `c99d9aa`, pushed to both remotes,
+282/282 tests passing, deployed as
+`deployment-d593a6291d4a42e4a46db3f43279e5fc` (134 files, `deployment=committed`).
+Verified after the fact rather than assumed: every installed Lua file matches
+the repo byte for byte, and the installed viewer is the new build with the new
+`head_distance_m` diagnostic in it.
 
-The viewer binary changed for item 3, so this is a deploy of the harness as well
-as the Lua.
+Diagnostics on for this run, and nothing else — the deploy writes every other
+flag as `disabled`, so no leftover from an earlier session is running:
+
+| flag | why |
+|------|-----|
+| `darktidevr_full_body_experimental` | item 1 lives behind it |
+| `darktidevr_body_trace` | the torso yaw chain for item 2 |
+| `darktidevr_arm_census` | names the units on you if item 1 is still wrong |
+| `darktidevr_xr_log` | `head_distance_m` and `resolved=` for item 3 |
+
+The previous session's viewer logs are archived to
+`artifacts/worn/2026-09-19-pre-deploy/` and cleared, so whatever is in
+`mods/darktidevr/bin/darktidevr-xr-viewer.log` afterwards is from this run
+alone.
+
+### One setting to check before you start
+
+**Melee animations** (item 4) is a new checkbox and it defaults to **on**, which
+is the behaviour you already had. Turn it off in the mod options to test it.
+Everything else is where you left it.
+
+### What the trace budget will and will not cover
+
+The body trace spends 25,000 lines and the last worn session used its whole
+budget inside about five minutes of standing around. If item 2 matters most,
+do the stick turns early rather than late.
