@@ -43,11 +43,14 @@ assert(find("set_resource")[3] == "display", "the world material samples the com
 assert(state.world_gui == "world_gui" and find("create_world_gui")[1] == "game_world")
 
 -- Frame 1: cells claimed, nothing shown yet (no completed copy).
+local CW, CH = Atlas.CELL_WIDTH, Atlas.CELL_HEIGHT
 local x, y = Atlas.claim(1, {x = 0, y = 2, z = 0})
-assert(x == 512 and y == 256 and find("render_pass")[4] == true, "the target is cleared each frame")
+assert(x == CW * 0.5 and y == CH * 0.5 and find("render_pass")[4] == true,
+    "the first cell's centre, and the target cleared each frame")
 local x2, y2 = Atlas.claim(1, {x = 1, y = 2, z = 0})
 local x3, y3 = Atlas.claim(1, {x = 2, y = 2, z = 0})
-assert(x2 == 1536 and y2 == 256 and x3 == 512 and y3 == 768)
+assert(x2 == CW * 1.5 and y2 == CH * 0.5, "the second cell is the next column")
+assert(x3 == CW * 0.5 and y3 == CH * 1.5, "the third wraps to the next row")
 local function frame_for(anchor) return "tm", 0.002 end
 assert(Atlas.draw("game_world", frame_for) == 0 and not find("copy"))
 
@@ -62,11 +65,15 @@ assert(quad[2] == state.world_material and quad[4] == "tm" and quad[5] == 1000)
 -- keeps its size in the world and a minified sample (a distant pickup's
 -- marker) stays clear of the neighbouring cell.
 assert(Atlas.GUTTER == 8)
-assert(math.abs(args.size[1] - (1024 - 16) * 0.002) < 1e-9 and math.abs(args.size[2] - (512 - 16) * 0.002) < 1e-9)
-assert(math.abs(args.position_offset[1] + (1024 - 16) * 0.001) < 1e-9, 'still centred on the anchor')
+assert(math.abs(args.size[1] - (CW - 16) * 0.002) < 1e-9 and
+    math.abs(args.size[2] - (CH - 16) * 0.002) < 1e-9, 'the cell less its gutter')
+assert(math.abs(args.position_offset[1] + (CW - 16) * 0.001) < 1e-9, 'still centred on the anchor')
 local iu, iv = Atlas.GUTTER / Atlas.WIDTH, Atlas.GUTTER / Atlas.HEIGHT
-assert(math.abs(args.uv00[1] - (0.5 - iu)) < 1e-9 and math.abs(args.uv00[2] - (0.5 - iv)) < 1e-9 and
-    math.abs(args.uv11[1] - iu) < 1e-9 and math.abs(args.uv11[2] - (0.25 + iv)) < 1e-9,
+-- The third cell is column 0, row 1: its far V edge is two cell heights down.
+assert(math.abs(args.uv00[1] - (0.5 - iu)) < 1e-9 and
+    math.abs(args.uv00[2] - (2 * CH / Atlas.HEIGHT - iv)) < 1e-9 and
+    math.abs(args.uv11[1] - iu) < 1e-9 and
+    math.abs(args.uv11[2] - (CH / Atlas.HEIGHT + iv)) < 1e-9,
     "the third cell, U and V reversed as on the HUD panel quad")
 for i = 1, Atlas.CELLS do assert(Atlas.claim(2, {x = i, y = 2, z = 0})) end
 local none, why = Atlas.claim(2, {x = 0, y = 0, z = 0})
@@ -205,4 +212,18 @@ assert(Atlas.claimant_name(boxed) == "at v(1,2,3)", "a marker says where it is")
 assert(Atlas.claimant_name({position = {unbox = function() error("gone") end}}) == "unnamed",
     "an anchor whose position throws is still named, not an error")
 assert(Atlas.claimant_name({x = 12.34, y = 56.78}) == "at 12.3,56.8", "a plain point")
+-- The grid, and the measurement it was sized from. `extents ... boxed=1` in
+-- the hub on 18 September: a marker's drawing needs 425 x 15 about the cell's
+-- centre. The width is nearly spent; the height was eleven times what
+-- anything used, so it was halved -- sixteen markers instead of eight, and
+-- half the transparent quad on every marker, every frame.
+assert(Atlas.CELLS == 16, "the atlas holds sixteen markers: " .. Atlas.CELLS)
+assert(Atlas.CELL_WIDTH * 0.5 - Atlas.GUTTER >= 433,
+    "a marker needs 425 px of half-width plus the gutter")
+assert(Atlas.CELL_HEIGHT * 0.5 - Atlas.GUTTER >= 23,
+    "a marker needs 15 px of half-height plus the gutter")
+assert(Atlas.CELL_HEIGHT * 0.5 - Atlas.GUTTER >= 23 * 3,
+    "and the margin over the measurement is thin: one quiet scene is thin evidence")
+assert(Atlas.WIDTH <= 2048 and Atlas.HEIGHT <= 2048,
+    "the atlas texture must not grow to buy cells")
 print("marker_atlas.result=pass")

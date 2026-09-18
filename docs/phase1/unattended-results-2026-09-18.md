@@ -567,3 +567,42 @@ Two things follow, neither yet done:
 - **`anchor=?`** is unhelpful. The log names the anchor's `key`, and marker
   anchors have none, so the one-shot line cannot say *which* display went
   missing. It should fall back to something identifying.
+
+## Sizing the marker atlas, from measurement
+
+Two runs, because the first measured nothing. The Psykhanium was chosen for
+the demand measurement and spent 150 seconds in a room with no markers in it;
+the hub has the vendors, players and interactables, and answered both
+questions at once:
+
+```
+DARKTIDEVR_MARKER extents max_dx=425.3 max_dy=14.9 half_cell=512.0,256.0 boxed=1
+DARKTIDEVR_MARKER_ATLAS demand cells=8 wanted=2 claimant=at 0.9,-87.4
+```
+
+**The width was nearly spent and the height was eleven times what anything
+used.** A marker's drawing needs 425 by 15 pixels about the cell's centre;
+the half-cell was 512 by 256. Note the horizontal figure against the 199 the
+old instrument reported: including each draw's own size, rather than only
+where it was anchored, more than doubled it. Sizing the cell from 199 would
+have clipped markers.
+
+So the cell is 1024 by **256**, and the grid 2 by **8**:
+
+| | before | after |
+|---|---|---|
+| cells | 8 | **16** |
+| half-height against the 23 px needed | 11.2x | 5.6x |
+| quad area per marker | 1024x512 | **1024x256** |
+
+Two things for the price of one. The atlas holds sixteen markers where
+`atlas_full cells=8` had already fired in the Psykhanium -- past the ceiling a
+marker is simply not drawn -- and the quad shrinks with the cell, so every
+marker stops paying for half a cell of transparent overdraw on every frame.
+
+**A further halving to 32 cells is available and was not taken.** One quiet
+scene is thin evidence for spending a margin, and `max_dy=14.9` came from a
+hub with two markers in view. The extents line reports against the half-cell
+in every run, so the margin can be watched before it is spent -- and the
+demand line now reports the peak whether or not it overflows, which is the
+whole reason the second run answered anything.

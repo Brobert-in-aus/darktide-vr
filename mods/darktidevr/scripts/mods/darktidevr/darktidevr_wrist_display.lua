@@ -87,14 +87,15 @@ end
 
 function Wrist.install(mod, presentation, observation)
     local api = {visible = false}
-    local world, gui, failed, logged = nil, nil, false, false
+    -- No GUI of its own: this display draws into the hand overlay's atlas,
+    -- and the `gui` this used to own went with that move.
+    local world, failed, logged = nil, false, false
     local consecutive_failures, total_failures = 0, 0
     local UIFonts
     -- Letting go of the world's resources, without touching the failure
     -- count: the draw path does this after a bad frame and keeps counting.
     local function teardown()
-        if gui and world then pcall(World.destroy_gui, world, gui) end
-        world, gui = nil, nil
+        world = nil
     end
     -- The module is installed once for the whole session and destroyed at
     -- every level load, so this is the only place a failure count can be
@@ -104,7 +105,7 @@ function Wrist.install(mod, presentation, observation)
         teardown()
         consecutive_failures, total_failures, failed = 0, 0, false
     end
-    local function hide() api.visible = false; if gui then Gui.set_visible(gui, false) end end
+    local function hide() api.visible = false end
     local test_poll, test_mode = 0, nil
     local function test_flag()
         test_poll = test_poll - 1

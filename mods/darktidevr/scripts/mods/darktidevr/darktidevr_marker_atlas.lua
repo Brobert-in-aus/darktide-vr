@@ -19,8 +19,23 @@ local function new(options)
     options = options or {}
     local Atlas = {}
 
-    local CELL_WIDTH, CELL_HEIGHT = options.cell_width or 1024, options.cell_height or 512
-    local COLUMNS, ROWS = options.columns or 2, options.rows or 4
+    -- Measured 18 September in the hub, with the drawing's own size included
+    -- rather than only where it is anchored (`extents ... boxed=1`): the box a
+    -- marker needs is 425 x 15 about the cell's centre, against a half-cell of
+    -- 512 x 256. So the width is nearly right -- 18 per cent of headroom -- and
+    -- the height was eleven times what anything used.
+    --
+    -- Halving it buys two things. The atlas holds sixteen markers instead of
+    -- eight, and `atlas_full cells=8` had already fired in the Psykhanium,
+    -- which is a nearly empty room: past the ceiling a marker is simply not
+    -- drawn. And the quad shrinks with the cell, so every marker stops paying
+    -- for half a cell of transparent overdraw on every frame.
+    --
+    -- A further halving (32 cells) is available and not taken: one quiet
+    -- scene is thin evidence, and the extents line reports against the
+    -- half-cell every run, so the margin can be watched before it is spent.
+    local CELL_WIDTH, CELL_HEIGHT = options.cell_width or 1024, options.cell_height or 256
+    local COLUMNS, ROWS = options.columns or 2, options.rows or 8
     local NAME, TAG = options.name or "darktidevr_markers", options.log_tag or "DARKTIDEVR_MARKER_ATLAS"
     local WIDTH, HEIGHT = CELL_WIDTH * COLUMNS, CELL_HEIGHT * ROWS
     Atlas.CELL_WIDTH, Atlas.CELL_HEIGHT = CELL_WIDTH, CELL_HEIGHT

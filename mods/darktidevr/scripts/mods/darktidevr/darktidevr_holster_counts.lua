@@ -35,14 +35,14 @@ end
 
 function Counts.install(mod, presentation)
     local api = {}
-    local world, gui, failed, logged = nil, nil, false, {}
+    -- No GUI of its own: drawn into the hand overlay's atlas.
+    local world, failed, logged = nil, false, {}
     local consecutive_failures, total_failures = 0, 0
     local UIFonts
     -- Letting go of the world's resources, without touching the failure
     -- count: the draw path does this after a bad frame and keeps counting.
     local function teardown()
-        if gui and world then pcall(World.destroy_gui, world, gui) end
-        world, gui = nil, nil
+        world = nil
     end
     -- The module is installed once for the whole session and destroyed at
     -- every level load, so this is the only place a failure count can be
@@ -52,7 +52,10 @@ function Counts.install(mod, presentation)
         teardown()
         consecutive_failures, total_failures, failed = 0, 0, false
     end
-    local function hide() if gui then Gui.set_visible(gui, false) end end
+    -- Nothing to do: the cell simply goes unclaimed this frame and the atlas
+    -- stops showing it. Kept so the three "give up and hide" paths below read
+    -- as what they are rather than as bare returns.
+    local function hide() end
     -- Unattended runs: darktidevr_holster_counts_test.flag "enabled".
     local test_poll, test_enabled = 0, false
     local function test_flag()

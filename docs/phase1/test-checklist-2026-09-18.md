@@ -201,6 +201,24 @@ Anything odd here is worth reporting even if it seems unrelated to VR -- the
 change was mechanical and wide, and mechanical-and-wide is how a quiet
 regression gets in.
 
+### 65. World markers, after the atlas was resized (a look, not a test)
+
+The marker atlas held eight markers and ran out in the Psykhanium, which is a
+nearly empty room -- past the ceiling a marker is simply not drawn. It holds
+sixteen now, bought by halving the cell's height, which measurement says was
+eleven times taller than anything drawn into it.
+
+What to look for, anywhere with a few things to look at:
+
+- **Anything clipped top or bottom.** A nameplate, an interaction prompt, a
+  tag or a pickup label with its edge cut off is the one way this change can
+  be wrong, and it would mean the measurement was taken in too quiet a scene.
+- Markers that used to go missing in a crowd should not any more.
+
+The cell is also half as tall in the world now, so the transparent area
+around each marker is smaller. Nothing should look different in position or
+size -- only in what no longer disappears.
+
 ## Suggested order
 
 1. In the Psykhanium with a ranged weapon: 55 and 56 together (aim, hold,
