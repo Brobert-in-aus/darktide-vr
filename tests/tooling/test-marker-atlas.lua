@@ -178,6 +178,18 @@ do
     assert(counted.state.peak_wanted == 20,
         "the demand above the ceiling is counted: " .. counted.state.peak_wanted)
     assert(counted.state.wanted == 20)
+    -- Reported below the ceiling too: a run that never overflows still has to
+    -- say how close it came, and the first measurement run said nothing at
+    -- all because nothing overflowed (18 September).
+    local said = {}
+    local quiet = Atlas.new({name = "quiet", log_tag = "QUIET", cell_width = 64,
+        cell_height = 64, columns = 4, rows = 4, clock = function() return 1 end})
+    quiet.configure(setmetatable({log = function(line) said[#said + 1] = line end}, {__index = api}))
+    assert(quiet.ensure("game_world"))
+    for i = 1, 8 do assert(quiet.claim(1, {key = "q" .. i})) end
+    assert(#said > 0, "eight of sixteen cells said nothing about the demand")
+    assert(said[#said]:find("wanted=8"), "the last line names the peak: " .. tostring(said[#said]))
+    assert(said[#said]:find("cells=16"), "and the ceiling it is measured against")
 end
 
 -- A full atlas has to say WHICH display went missing. The hand overlays name

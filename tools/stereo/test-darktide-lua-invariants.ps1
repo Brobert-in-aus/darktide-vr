@@ -1313,4 +1313,32 @@ if ($droppedTail.Count -gt 0) {
         ($droppedTail -join "`n  "))
 }
 
+# The eye target's dimensions are a bootstrap default, replaced by whatever
+# the runtime reports (darktidevr.lua: "these values must never select a
+# render resolution"). Virtual Desktop's FOV tangent makes the real target
+# 1908x2076 rather than 2112x2304, and every layout that assumed the larger
+# one spilled into its neighbour -- twice, both found only after the user saw
+# it (16 and 17 September). A copy of either number anywhere else is that bug
+# waiting to happen, so there may be exactly one of each: its declaration.
+$eyeTargetLiterals = @()
+foreach ($hookedSource in $hookedSources) {
+    $where = Split-Path -Leaf $hookedSource
+    $lineNumber = 0
+    foreach ($line in (Get-Content -LiteralPath $hookedSource)) {
+        $lineNumber++
+        $code = ($line -replace '--.*$', '')
+        foreach ($literal in @('2112', '2304', '1908', '2076')) {
+            if ($code -match ('(?<![0-9.])' + $literal + '(?![0-9.])')) {
+                $eyeTargetLiterals += ('{0}:{1}: {2}' -f $where, $lineNumber, $line.Trim())
+            }
+        }
+    }
+}
+# The two declarations in the main chunk are the whole allowance.
+$allowedEyeTargetLiterals = 2
+if ($eyeTargetLiterals.Count -gt $allowedEyeTargetLiterals) {
+    throw ("The eye target's dimensions are a bootstrap default and must be read from the runtime, not written down. Expected {0} declaration(s), found {1}:`n  {2}" -f
+        $allowedEyeTargetLiterals, $eyeTargetLiterals.Count, ($eyeTargetLiterals -join "`n  "))
+}
+
 Write-Output "lua_source_assertions=pass"

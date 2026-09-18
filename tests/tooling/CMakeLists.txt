@@ -385,7 +385,10 @@ if(BUILD_TESTING)
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_wrist_display.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_item_radial.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_holster_counts.lua"
-    "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_ammo_readout.lua")
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_ammo_readout.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_forearm_holsters.lua")
+  set_tests_properties(overlay_cell_fit PROPERTIES
+    PASS_REGULAR_EXPRESSION "overlay_cell_fit=pass")
   add_test(NAME claim_arbitration COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-claim-arbitration.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings.lua"

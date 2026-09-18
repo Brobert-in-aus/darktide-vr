@@ -230,9 +230,12 @@ local function new(options)
         state.wanted = state.wanted + 1
         if state.wanted > state.peak_wanted then
             state.peak_wanted = state.wanted
-            -- Said again only when the demand grows meaningfully, so a busy
-            -- scene does not fill the log a line at a time.
-            if state.api and state.api.log and state.wanted > COLUMNS * ROWS and
+            -- Reported as the peak grows, not only once it overflows: a run
+            -- that never fills the atlas still has to say how close it came,
+            -- and the first measurement run reported nothing at all because
+            -- nothing overflowed (18 September). Throttled by growth, so a
+            -- busy scene does not fill the log a line at a time.
+            if state.api and state.api.log and state.wanted >= 2 and
                     state.wanted >= state.peak_logged + math.max(2, COLUMNS * ROWS * 0.25) then
                 state.peak_logged = state.wanted
                 state.api.log(string.format(

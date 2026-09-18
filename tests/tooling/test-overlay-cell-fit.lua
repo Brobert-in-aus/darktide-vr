@@ -10,6 +10,7 @@ local Wrist = dofile(assert(arg[2]))
 local Radial = dofile(assert(arg[3]))
 local Counts = dofile(assert(arg[4]))
 local Readout = dofile(assert(arg[5]))
+local Forearm = dofile(assert(arg[6]))
 
 -- The eye targets: 100 per cent of Virtual Desktop's FOV tangent, the 90 the
 -- user runs, and 80 as the next step down. Height comes with width, but only
@@ -20,7 +21,7 @@ local TARGETS = {
     {name = "80% tangent", width = 1700, height = 1850},
 }
 
-local failures = {}
+local failures, shrunk = {}, {}
 local function check(target, display, half_width_metres, pixel_metres)
     local cell = Overlay.cell_width({width = target.width, height = target.height})
     local room = cell * 0.5 - Overlay.CELL_MARGIN
@@ -58,10 +59,44 @@ for _, target in ipairs(TARGETS) do
         end
     end
 
+    -- The forearm holsters' item name, drawn centred at its anchor. This is
+    -- the label that spilled into its neighbour once before (17 September),
+    -- and it was the one consumer the first version of this test left out.
+    -- An item name is as long as Darktide's longest; "Ammunition Crate" is a
+    -- fair worst case among the pocketables it labels.
+    -- Text is fitted rather than clipped, so the rule is the radial's: never
+    -- dropped, and never shrunk past reading. Reported at every tangent
+    -- because the shrink itself is the interesting number.
+    local forearm_widest = Overlay.estimated_width("Ammunition Crate", Forearm.LABEL_FONT)
+    local forearm_room = Overlay.text_room(0, cell, nil)
+    local forearm_font = Overlay.fitted_font(Forearm.LABEL_FONT, forearm_widest, forearm_room)
+    if not forearm_font then
+        failures[#failures + 1] = string.format(
+            "%-22s forearm item name dropped entirely: %.1f px of text, %.1f px of room",
+            target.name, forearm_widest, forearm_room)
+    else
+        io.write(string.format("%-22s forearm item name %d px of %d asked (%.0f%%)\n",
+            target.name, forearm_font, Forearm.LABEL_FONT,
+            forearm_font / Forearm.LABEL_FONT * 100))
+        if forearm_font < Forearm.LABEL_FONT * 0.5 then
+            shrunk[#shrunk + 1] = string.format(
+                "%s: a longest item name renders at %d px of %d",
+                target.name, forearm_font, Forearm.LABEL_FONT)
+        end
+    end
+
     -- The holster counts and the ammo readout draw about their anchor; the
     -- ring is the readout's widest mark.
     check(target, "holster count", Counts.FONT_SIZE * Counts.PIXEL_METRES * 0.5, Counts.PIXEL_METRES)
     check(target, "ammo ring", Readout.RING_RADIUS, Readout.PIXEL_METRES / Readout.PANEL_DENSITY)
+end
+
+-- Not a failure: the overlay is doing what it was asked to. It is a finding,
+-- and the user has already said the selection wheel's text is "low resolution
+-- and too hard to see" (17 September), which is the same arithmetic.
+if #shrunk > 0 then
+    io.write("\nlabels shrunk past half their asked size:\n")
+    for _, line in ipairs(shrunk) do io.write("  ", line, "\n") end
 end
 
 if #failures > 0 then
@@ -80,4 +115,4 @@ assert(fixed_half > cell_90 * 0.5 - Overlay.CELL_MARGIN,
 assert(Wrist.LAYOUT_HALF_WIDTH / Wrist.pixel_metres(cell_90) <= cell_90 * 0.5 - Overlay.CELL_MARGIN,
     "the wrist display's fit does not cure it")
 
-print("overlay_cell_fit=pass wrist radial holster_count ammo_ring at 2112/1908/1700")
+print("overlay_cell_fit=pass wrist radial forearm_label holster_count ammo_ring at 2112/1908/1700")
