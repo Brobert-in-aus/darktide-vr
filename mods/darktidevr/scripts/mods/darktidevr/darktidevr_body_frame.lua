@@ -110,7 +110,11 @@ function BodyFrame.new()
             e[3] - f[3] * BodyFrame.NECK_BACK * s - u[3] * BodyFrame.NECK_DOWN * s}
         local rx, ry = math.cos(state.yaw), math.sin(state.yaw)
         local side, down = BodyFrame.SHOULDER_SIDE * s, BodyFrame.SHOULDER_DOWN * s
-        return {yaw = state.yaw, head_yaw = head_yaw, scale = s, neck = neck,
+        -- target_yaw is reported so a trace can tell "the target moved too
+        -- far" from "the smoothing overshot it". They are the two halves of
+        -- the body turning faster than the view, and without both the line
+        -- says only that it did.
+        return {yaw = state.yaw, head_yaw = head_yaw, target_yaw = target, scale = s, neck = neck,
             shoulder_left = {neck[1] - rx * side, neck[2] - ry * side, neck[3] - down},
             shoulder_right = {neck[1] + rx * side, neck[2] + ry * side, neck[3] - down}}
     end

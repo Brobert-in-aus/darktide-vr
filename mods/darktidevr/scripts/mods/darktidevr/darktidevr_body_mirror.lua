@@ -312,6 +312,56 @@ function Mirror.smooth_yaw(previous, target, dt)
     return (previous + diff * (1 - math.exp(-dt / Mirror.YAW_TAU)) + math.pi) % (2 * math.pi) - math.pi
 end
 
+-- One sample of the yaw chain, as degrees, for the trace below. Every yaw a
+-- frame of the body passes through, in the order it passes through them:
+--
+--   head    the headset's own yaw, which is what the player sees turn
+--   target  the body frame's target (head yaw pulled toward the hands)
+--   frame   the body frame's smoothed yaw, after its dead zone and catch-up
+--   mirror  after Mirror.smooth_yaw, which is what the copy's root is set to
+--   avatar  the game character's yaw, which the copy is posed from
+--   unit    the copy's root after everything, read back from the world
+--
+-- "Turning with stick turns the body faster than my view" has to be one of
+-- these moving more per frame than `head` does. Reading the source has not
+-- found which, twice, so the chain is measured instead. Pure.
+function Mirror.yaw_sample(head, target, frame, mirror, avatar, unit)
+    local function degrees(value)
+        if type(value) ~= "number" or value ~= value then return nil end
+        return math.deg((value + math.pi) % (2 * math.pi) - math.pi)
+    end
+    return {head = degrees(head), target = degrees(target), frame = degrees(frame),
+        mirror = degrees(mirror), avatar = degrees(avatar), unit = degrees(unit)}
+end
+
+-- Whether this sample is worth a line: anything moved, or the heartbeat is
+-- due. `steps` is a list of yaw steps in degrees (nil entries ignored) and
+-- `root_step` the root's travel in metres (nil on the first sample, which is
+-- always worth a line because it is the baseline every later step is read
+-- against). Pure.
+function Mirror.trace_due(steps, root_step, frames_since_line)
+    if (frames_since_line or 0) >= Mirror.TRACE_HEARTBEAT_FRAMES then return true, "heartbeat" end
+    if root_step == nil then return true, "first" end
+    if root_step > Mirror.TRACE_MOVED_M then return true, "moved" end
+    for _, step in ipairs(steps or {}) do
+        if type(step) == "number" and step == step and
+                math.abs(step) > Mirror.TRACE_MOVED_DEG then
+            return true, "turned"
+        end
+    end
+    return false, nil
+end
+
+-- The signed difference between two of those degree values, wrapped, or nil
+-- when either is missing. The trace prints steps rather than absolutes because
+-- the fault is a RATE: a body that turns faster than the view is one whose
+-- step is bigger, and comparing absolutes across a wrap is how that gets
+-- missed. Pure.
+function Mirror.yaw_step(now, before)
+    if type(now) ~= "number" or type(before) ~= "number" then return nil end
+    return (now - before + 180) % 360 - 180
+end
+
 -- The root of a copy turned half a turn about the vertical through pivot and
 -- stood distance ahead of it along heading (Stingray yaw): {x, y, z}, the
 -- height kept. Its yaw is the copy's plus pi. 3-arrays. Pure.
@@ -326,6 +376,22 @@ end
 -- turn on the older headless third-person body, whose head floats above a
 -- body of the character's own height (worn, 17 September); the overlay is
 -- the body scaled so its neck reaches the player's head. Pure.
+-- The yaw/position trace (below) is off unless this file says "enabled".
+-- Players never have it; it is written by the unattended tooling and by hand
+-- for a worn session that is meant to answer the body questions.
+Mirror.TRACE_FLAG = "./../mods/darktidevr/darktidevr_body_trace.flag"
+-- Every second frame while something is MOVING, and a heartbeat otherwise.
+-- A flat every-Nth-frame trace spends its whole budget on the first hundred
+-- seconds of standing in the hub, and the two things being looked for -- a
+-- stick turn and a jitter -- may not have happened yet. The thresholds are
+-- deliberately below what a person can see: half a millimetre of root travel
+-- and a tenth of a degree of yaw, so a jitter too small to describe is still
+-- above the line.
+Mirror.TRACE_EVERY = 2
+Mirror.TRACE_HEARTBEAT_FRAMES = 120
+Mirror.TRACE_MOVED_M = 0.0005
+Mirror.TRACE_MOVED_DEG = 0.1
+Mirror.TRACE_MAX_LINES = 6000
 Mirror.OPTION_MODE = "overlay"
 function Mirror.requested_mode(flag_mode, mirror_toggled, in_psykhanium, option_on)
     if flag_mode and Mirror.MODES[flag_mode] then return flag_mode end
@@ -381,6 +447,23 @@ function Mirror.install(mod, presentation, options)
     local destroy_own
     local logged = {}
     local mirror_toggled = false
+    -- Polled like the other modules' test flags: a failed open on the main
+    -- thread every frame is where these modules' spikes came from
+    -- (docs/LUA-FRAME-PROFILE-2026-09-16.md).
+    local trace_poll, trace_enabled, trace_lines, trace_previous = 0, false, 0, nil
+    local trace_since_line = 0
+    local function trace_flag()
+        trace_poll = trace_poll - 1
+        if trace_poll > 0 then return trace_enabled end
+        trace_poll = 300
+        local io_api = Mods and Mods.lua and Mods.lua.io
+        local file = io_api and io_api.open(Mirror.TRACE_FLAG, "r")
+        if not file then trace_enabled = false; return false end
+        local value = file:read(32) or ""
+        file:close()
+        trace_enabled = value:match("^%s*enabled%s*$") ~= nil
+        return trace_enabled
+    end
     local function in_psykhanium()
         local name = presentation.current_game_mode_name and presentation.current_game_mode_name()
         return name == "shooting_range" or name == "training_grounds"
@@ -850,6 +933,73 @@ function Mirror.install(mod, presentation, options)
                 (state.last_scale_ratio and math.abs(state.scale_ratio - state.last_scale_ratio) < 0.002)) then
             state.near_eye_pending = nil
             hide_near_eye(unit, state.data)
+        end
+        -- The trace. Yaws and the root's own movement, at half the frame rate,
+        -- so a stick turn and a stationary jitter are both readable in the
+        -- same lines: during a turn compare the steps, at rest look at whether
+        -- root_step_m is oscillating rather than settling.
+        if trace_flag() and trace_lines < Mirror.TRACE_MAX_LINES and
+                state.frames % Mirror.TRACE_EVERY == 0 then
+            local ok = pcall(function()
+                local root_world = array(Unit.world_position(unit, 1))
+                local sample = Mirror.yaw_sample(
+                    frame and frame.head_yaw,
+                    frame and frame.target_yaw,
+                    frame and frame.yaw,
+                    state.yaw,
+                    Quaternion.yaw(Unit.world_rotation(avatar, 1)),
+                    Quaternion.yaw(Unit.world_rotation(unit, 1)))
+                local previous = trace_previous
+                -- Two shapes of the same numbers: by name for the line, as a
+                -- list for the due rule. Built explicitly rather than by
+                -- appending to the same table, where a nil step would have
+                -- silently shortened the list the rule walks.
+                local raw, moved = {}, {}
+                for _, name in ipairs({"head", "target", "frame", "mirror", "avatar", "unit"}) do
+                    local value = previous and Mirror.yaw_step(sample[name], previous[name])
+                    raw[name] = value
+                    if value then moved[#moved + 1] = value end
+                end
+                local function step(name)
+                    return raw[name] and string.format("%.2f", raw[name]) or "na"
+                end
+                local root_step = previous and previous.root and
+                    math.sqrt((root_world[1] - previous.root[1]) ^ 2 +
+                        (root_world[2] - previous.root[2]) ^ 2 +
+                        (root_world[3] - previous.root[3]) ^ 2)
+                local due, why = Mirror.trace_due(moved, root_step, trace_since_line)
+                if not due then
+                    trace_since_line = trace_since_line + 1
+                    sample.root = root_world
+                    trace_previous = sample
+                    return
+                end
+                trace_since_line = 0
+                local function degrees(name)
+                    return sample[name] and string.format("%.2f", sample[name]) or "na"
+                end
+                trace_lines = trace_lines + 1
+                mod:info("DARKTIDEVR_BODY_TRACE t=%.3f dt=%.4f head=%s target=%s frame=%s mirror=%s avatar=%s unit=%s " ..
+                    "d_head=%s d_target=%s d_frame=%s d_mirror=%s d_avatar=%s d_unit=%s " ..
+                    "root=%.4f,%.4f,%.4f root_step_m=%s neck_m=%s scale=%.4f why=%s",
+                    type(t) == "number" and t or 0, type(dt) == "number" and dt or 0,
+                    degrees("head"), degrees("target"), degrees("frame"),
+                    degrees("mirror"), degrees("avatar"), degrees("unit"),
+                    step("head"), step("target"), step("frame"),
+                    step("mirror"), step("avatar"), step("unit"),
+                    root_world[1], root_world[2], root_world[3],
+                    root_step and string.format("%.5f", root_step) or "na",
+                    state.neck_distance and string.format("%.4f", state.neck_distance) or "na",
+                    state.scale_ratio or 1, why)
+                sample.root = root_world
+                trace_previous = sample
+            end)
+            if not ok then
+                -- One diagnostic that cannot be taken must not become a
+                -- repeating mod error in front of the player.
+                trace_lines = Mirror.TRACE_MAX_LINES
+                log_once("trace", "trace=unavailable")
+            end
         end
         state.last_scale_ratio = state.scale_ratio
         state.frames = state.frames + 1

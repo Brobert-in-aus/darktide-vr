@@ -152,4 +152,39 @@ assert(Mirror.requested_mode(nil, true, true, true) == "mirror", 'the key shows 
 assert(Mirror.requested_mode(nil, true, false, false) == nil, 'and nowhere else')
 assert(Mirror.requested_mode(nil, true, false, true) == "overlay", 'outside it the option still runs')
 assert(Mirror.requested_mode(nil, false, true, true) == "overlay" and Mirror.MODES[Mirror.OPTION_MODE] ~= nil)
-print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles')
+-- The yaw chain the trace prints. Degrees, wrapped, and nil rather than a
+-- number when a yaw is missing -- a trace that prints 0 for "not measured"
+-- reads as "did not move", which is the one answer it must never fake.
+local sample = Mirror.yaw_sample(0, math.rad(10), math.rad(20), math.rad(30), math.rad(40), math.rad(50))
+near(sample.head, 0, 1e-9); near(sample.target, 10, 1e-9); near(sample.frame, 20, 1e-9)
+near(sample.mirror, 30, 1e-9); near(sample.avatar, 40, 1e-9); near(sample.unit, 50, 1e-9)
+local missing = Mirror.yaw_sample(nil, 0/0, 0, nil, nil, nil)
+assert(missing.head == nil and missing.target == nil, 'a missing yaw is nil, not zero')
+assert(missing.frame == 0, 'and a real zero survives')
+-- Wrapped, so a body crossing the back of the compass does not read as a
+-- 359 degree step -- which is exactly the frame a stick turn is measured on.
+near(Mirror.yaw_sample(math.rad(190), 0, 0, 0, 0, 0).head, -170, 1e-9)
+near(Mirror.yaw_step(179, -179), -2, 1e-9, 'a step across the wrap is small')
+near(Mirror.yaw_step(-179, 179), 2, 1e-9)
+near(Mirror.yaw_step(10, 4), 6, 1e-9)
+assert(Mirror.yaw_step(nil, 4) == nil and Mirror.yaw_step(4, nil) == nil, 'no step without both ends')
+assert(Mirror.TRACE_EVERY >= 1 and Mirror.TRACE_MAX_LINES > 0, 'the trace is bounded')
+-- The due rule spends the line budget on movement. A flat every-Nth-frame
+-- trace burns it all standing in the hub, and the two things being looked for
+-- may not have happened yet.
+local function due(steps, root, since) return (Mirror.trace_due(steps, root, since)) end
+assert(due({}, nil, 0), 'the first sample is always taken -- later steps are read against it')
+assert(not due({0, 0, 0}, 0, 0), 'a still body at rest writes nothing')
+assert(due({0, 0, 0}, 0, Mirror.TRACE_HEARTBEAT_FRAMES), 'but the heartbeat still comes')
+assert(due({0, 0, 0}, Mirror.TRACE_MOVED_M * 2, 0), 'movement of the root is taken')
+assert(due({0, Mirror.TRACE_MOVED_DEG * 2, 0}, 0, 0), 'and a turn of any yaw in the chain')
+assert(due({0, -Mirror.TRACE_MOVED_DEG * 2, 0}, 0, 0), 'in either direction')
+assert(not due({0 / 0}, 0, 0), 'a nan step is not movement')
+-- The thresholds have to sit below what a person can see, or a jitter too
+-- small to describe is also too small to record.
+assert(Mirror.TRACE_MOVED_M <= 0.001 and Mirror.TRACE_MOVED_DEG <= 0.25,
+    'the thresholds are below the visible')
+local _, why = Mirror.trace_due({0}, Mirror.TRACE_MOVED_M * 2, 0)
+assert(why == 'moved', 'the line says why it was taken, got ' .. tostring(why))
+
+print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace')

@@ -25,6 +25,13 @@ param(
 
     [switch] $FullBodyExperimental,
 
+    # The body yaw/position trace (darktidevr_body_mirror). Written as
+    # "disabled" by every deployment that does not ask for it, so a session
+    # that once turned it on cannot leave it running for a player: the answer
+    # to "is the trace on" is always this switch, never what happens to be on
+    # disk. Off by default like every other diagnostic.
+    [switch] $BodyTrace,
+
     [bool] $EnableGameplayInput = $true,
 
     [bool] $EnableControllerAim = $true
@@ -250,6 +257,13 @@ foreach ($flag in $bootstrapFlags) {
 $fullBodyFlag = Join-Path $modRoot 'darktidevr_full_body_experimental.flag'
 $fullBodyFlagValue = if ($FullBodyExperimental) { 'enabled' } else { 'disabled' }
 $deploymentEntries += @{ Destination = $fullBodyFlag; Content = $fullBodyFlagValue + [Environment]::NewLine }
+
+# The body trace. Always written, so it is asserted off rather than merely not
+# turned on -- the same reason the production runtime flags below are written
+# every deployment.
+$bodyTraceFlag = Join-Path $modRoot 'darktidevr_body_trace.flag'
+$bodyTraceValue = if ($BodyTrace) { 'enabled' } else { 'disabled' }
+$deploymentEntries += @{ Destination = $bodyTraceFlag; Content = $bodyTraceValue + [Environment]::NewLine }
 
 # Controller locomotion and right-hand aiming are production behavior, not
 # diagnostics.  Every normal deployment reasserts them so a helper that

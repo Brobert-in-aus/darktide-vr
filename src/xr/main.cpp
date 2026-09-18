@@ -1594,6 +1594,33 @@ class OpenXrProbe {
     std::vector<float> ads_painted_blend(
         flat_images.empty() ? std::size_t{1} : flat_images.size(), -1.0F);
     bool ads_vignette_logged{};
+    // Why the aim-down-sights vignette is still invisible, counted rather than
+    // reasoned about. The sizing was fixed on 18 September -- the ramp peaks at
+    // 52 degrees now, not 61, and at 45 degrees off centre it should reach 89
+    // of 255 where it used to reach 9 -- the quad IS submitted, and nothing is
+    // being dropped by a layer limit (max_layer_count=16). It is still not
+    // visible, so the sprite is not reaching the image the quad samples, or
+    // the quad is not being composited, and neither of those is settleable by
+    // reading the code.
+    //
+    // `unpainted` is the specific suspicion. A frame that takes the full
+    // capture copy writes the whole captured window over this swapchain image,
+    // sprite corner included, and marks it for repainting NEXT time round
+    // rather than repainting it now -- so that frame submits the quad over an
+    // image whose sprite has just been erased. If `unpainted` tracks
+    // `submitted`, that is the answer and no further guessing is needed.
+    std::uint32_t ads_vignette_submitted_frames{};
+    std::uint32_t ads_vignette_unpainted_frames{};
+    std::uint32_t ads_vignette_blocked_frames{};
+    std::uint32_t ads_vignette_active_frames{};
+    std::uint32_t ads_vignette_reports{};
+    // Per-eye reticle placement while the sights are up. The existing
+    // openxr.gameplay_reticle_clip line needs BOTH a readback request and the
+    // reticle drawn into the eye images, and neither is on in an ordinary
+    // session -- so the one report that says "the reticle is in a different
+    // place in each eye" has never had a number against it.
+    std::uint32_t reticle_clip_reports{};
+    bool reticle_clip_ads_was_active{};
     auto ads_last_tick = start;
     auto last_live_report = start;
     auto next_cached_pair_report = start;
@@ -4998,7 +5025,35 @@ class OpenXrProbe {
           ads_blend > 0.01F && enable_gameplay_reticle && window_capture &&
           flat_swapchain != XR_NULL_HANDLE &&
           view_space_ != XR_NULL_HANDLE && submitted_shared_pair_this_frame;
+      // Which conjunct refused, named once. "Nothing was submitted" and
+      // "something was submitted and could not be seen" are different faults
+      // and the log has never distinguished them.
+      if (ads_blend > 0.01F && !submit_ads_vignette &&
+          ads_vignette_blocked_frames == 0) {
+        std::cout << "openxr.ads_vignette_blocked reticle="
+                  << (enable_gameplay_reticle ? 1 : 0)
+                  << " capture=" << (window_capture ? 1 : 0)
+                  << " flat_swapchain="
+                  << (flat_swapchain != XR_NULL_HANDLE ? 1 : 0)
+                  << " view_space=" << (view_space_ != XR_NULL_HANDLE ? 1 : 0)
+                  << " shared_pair=" << (submitted_shared_pair_this_frame ? 1 : 0)
+                  << '\n';
+      }
+      if (ads_blend > 0.01F) {
+        ++ads_vignette_active_frames;
+        if (!submit_ads_vignette) ++ads_vignette_blocked_frames;
+      }
       if (submit_ads_vignette) {
+        ++ads_vignette_submitted_frames;
+        // The sprite in the image this quad will sample. -1 means the corner
+        // was overwritten by a full capture copy and has not been repainted,
+        // so the quad is about to be shown over an image with no vignette in
+        // it; anything other than the current blend means it holds a stale
+        // strength.
+        const auto painted = flat_image_index < ads_painted_blend.size()
+                                 ? ads_painted_blend[flat_image_index]
+                                 : -1.0F;
+        if (painted != ads_blend) ++ads_vignette_unpainted_frames;
         ads_vignette_quad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
         ads_vignette_quad.space = view_space_;
         ads_vignette_quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
@@ -5025,6 +5080,27 @@ class OpenXrProbe {
           vignette_half = 1.8F;
         }
         ads_vignette_quad.size = {2.0F * vignette_half, 2.0F * vignette_half};
+        // Every hundred frames the sights are up, not once a session: the
+        // question is what the counters do over a session, and one line
+        // written at the first flicker of blend answers none of it.
+        const bool due = !ads_vignette_logged ||
+                         (ads_vignette_submitted_frames % 100 == 0 &&
+                          ads_vignette_reports < 60);
+        if (due) {
+          if (ads_vignette_logged) ++ads_vignette_reports;
+          std::cout << "openxr.ads_vignette_frames active="
+                    << ads_vignette_active_frames
+                    << " submitted=" << ads_vignette_submitted_frames
+                    << " unpainted=" << ads_vignette_unpainted_frames
+                    << " blocked=" << ads_vignette_blocked_frames
+                    << " painted_for_image="
+                    << (flat_image_index < ads_painted_blend.size()
+                            ? ads_painted_blend[flat_image_index]
+                            : -2.0F)
+                    << " blend=" << ads_blend
+                    << " image=" << flat_image_index << '/'
+                    << ads_painted_blend.size() << '\n';
+        }
         if (!ads_vignette_logged) {
           ads_vignette_logged = true;
           std::cout << "openxr.ads_vignette blend=" << ads_blend
@@ -5232,6 +5308,48 @@ class OpenXrProbe {
               reinterpret_cast<const XrCompositionLayerBaseHeader*>(
                   &ads_vignette_quad);
         }
+        // Where the reticle lands in EACH eye, on the quad-layer path the
+        // player actually runs -- the existing clip line needs a readback
+        // request and the reticle drawn into the eye images, so it has never
+        // covered this. Both eyes' numbers come from the same quad pose
+        // through each eye's own submitted pose and field of view, which is
+        // the transform the runtime will use.
+        //
+        // Reported on every entry into the sights and then sparsely, because
+        // the question -- "it's no longer in the same location per eye" -- is
+        // about aiming, not about standing still. `distance` separates the two
+        // explanations: a fixed disparity is a drawing fault, one that grows
+        // as the target comes closer is ordinary stereo parallax against
+        // ironsights 50 cm from the face, which would mean the reticle is
+        // right and the comparison is not.
+        if (submitted_view_projection_valid && gameplay_reticle_pose &&
+            gameplay_reticle_quad.size.width > 0.0F &&
+            gameplay_aim_state.aiming_down_sights) {
+          const bool entered = !reticle_clip_ads_was_active;
+          if ((entered || reticle_clip_reports % 120 == 0) &&
+              reticle_clip_reports < 400) {
+            float ndc[2][2]{};
+            for (std::size_t eye = 0; eye < submitted_view_poses.size() && eye < 2;
+                 ++eye) {
+              const auto clip = darktidevr::harness::panel_point_clip(
+                  submitted_view_poses[eye], submitted_view_fovs[eye],
+                  gameplay_reticle_quad.pose, gameplay_reticle_quad.size,
+                  0.5F, 0.5F);
+              const auto inverse_w = clip[3] != 0.0F ? 1.0F / clip[3] : 0.0F;
+              ndc[eye][0] = clip[0] * inverse_w;
+              ndc[eye][1] = clip[1] * inverse_w;
+            }
+            std::cout << "openxr.ads_reticle_eyes left=" << ndc[0][0] << ','
+                      << ndc[0][1] << " right=" << ndc[1][0] << ','
+                      << ndc[1][1] << " disparity_ndc="
+                      << (ndc[1][0] - ndc[0][0]) << ','
+                      << (ndc[1][1] - ndc[0][1])
+                      << " distance_m=" << gameplay_reticle_distance_metres_
+                      << " entered=" << (entered ? 1 : 0) << '\n';
+          }
+          ++reticle_clip_reports;
+        }
+        reticle_clip_ads_was_active = gameplay_aim_state.aiming_down_sights;
       }
       // A runtime that accepts fewer layers than were assembled must cost the
       // optional ones, not the frame. They are appended in order of
