@@ -16107,28 +16107,44 @@ mod:command("dtvr_marker_plane",
     elseif action == "flip" then
         presentation.marker_plane_flip = not presentation.marker_plane_flip
     elseif action == "surface" then
+        local was = presentation.marker_world.state.surface
         local ok, why = presentation.marker_world.set_surface(mode)
+        if ok and presentation.marker_world.state.surface ~= was then
+            presentation.marker_world.forget_extents("surface")
+        end
         if not ok then mod:echo("surface: " .. tostring(why)) end
         if mode ~= "atlas" then pcall(presentation.marker_atlas.destroy) end
     elseif action == "text" then
+        local was = presentation.marker_world.state.text_mode
         local ok, why = presentation.marker_world.set_text_mode(mode)
-        if ok then presentation.marker_world.forget_extents("text") end
+        if ok and presentation.marker_world.state.text_mode ~= was then
+            presentation.marker_world.forget_extents("text")
+        end
         if not ok then mod:echo("text mode: " .. tostring(why)) end
     elseif action == "origin" then
+        local was = presentation.marker_world.state.text_origin
         local ok, why = presentation.marker_world.set_text_origin(mode)
-        if ok then presentation.marker_world.forget_extents("origin") end
+        if ok and presentation.marker_world.state.text_origin ~= was then
+            presentation.marker_world.forget_extents("origin")
+        end
         if not ok then mod:echo("origin: " .. tostring(why)) end
     elseif action == "layer" then
+        local was = presentation.marker_world.state.layer_base
         local ok, why = presentation.marker_world.set_layer_base(mode)
+        if ok and presentation.marker_world.state.layer_base ~= was then
+            presentation.marker_world.forget_extents("layer")
+        end
         if not ok then mod:echo("layer: " .. tostring(why)) end
     elseif action == "dump" then
         presentation.marker_world.set_dump(mode or 1)
         mod:echo("marker plane: logging the routed draws of the next frame(s)")
     elseif action == "drop" then
         local value = tonumber(mode)
-        if value then
+        if value and value ~= presentation.interaction_popup_drop then
             presentation.interaction_popup_drop = value
             presentation.marker_world.forget_extents("drop")
+        elseif value then
+            presentation.interaction_popup_drop = value
         end
         mod:echo("interaction popup drop (fraction of its height): " ..
             tostring(presentation.interaction_popup_drop))

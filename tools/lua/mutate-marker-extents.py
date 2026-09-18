@@ -39,11 +39,10 @@ MUTATIONS = [
         if each.dx > each.reported_dx + 0.5 or each.dy > each.reported_dy + 0.5 then
             each.reported_dx, each.reported_dy = each.dx, each.dy
             state.api.log(string.format(
-                "DARKTIDEVR_MARKER extents claimant=%s max_dx=%.1f max_dy=%.1f half_cell=%.1f,%.1f boxed=1",
+                "DARKTIDEVR_MARKER extents claimant=%s max_dx=%.1f max_dy=%.1f half_cell=%.1f,%.1f boxed=1 boxless=%d",
                 name, each.dx, each.dy, (atlas and atlas.CELL_WIDTH or 0) * 0.5,
-                (atlas and atlas.CELL_HEIGHT or 0) * 0.5))
-        end
-    end''',
+                (atlas and atlas.CELL_HEIGHT or 0) * 0.5, each.boxless or 0))
+        end''',
      '''    state.api.log(string.format(
         "DARKTIDEVR_MARKER extents max_dx=%.1f max_dy=%.1f half_cell=%.1f,%.1f boxed=1",
         extent.dx, extent.dy, (atlas and atlas.CELL_WIDTH or 0) * 0.5,
@@ -93,6 +92,20 @@ MUTATIONS = [
     ('logical draws measured in logical units, understating by the scale',
      '        local unit = logical_scale or 1',
      '        local unit = 1'),
+
+    ('a uv bitmap is measured by its corner -- the fifth converter, left out at first',
+     '''    return atlas_call(scope, self, func, instance, shifted(scope, position, nil, size),
+        sized(scope, size), uvs, color)''',
+     '''    return atlas_call(scope, self, func, instance, shifted(scope, position, nil, nil),
+        sized(scope, size), uvs, color)'''),
+
+    ('box-less text stops being counted, so a claimant reads narrower than it is',
+     '''    if width == nil and height == nil then
+        slot.boxless = (slot.boxless or 0) + 1
+    end''',
+     '''    if false then
+        slot.boxless = (slot.boxless or 0) + 1
+    end'''),
 
     ('the HUD panel mirror is measured as though it had a cell',
      '    if not scope.mirror and scope.atlas then',

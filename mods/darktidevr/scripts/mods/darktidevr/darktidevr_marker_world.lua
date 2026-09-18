@@ -585,6 +585,11 @@ state.extent = {dx = 0, dy = 0, at = nil, per = {}}
 -- letting the next report look like a quiet one (review, 18 September).
 function MarkerWorld.forget_extents(why)
     local extent = state.extent
+    -- `extent.at` is deliberately left alone: it is the last report's time,
+    -- not a measurement, and clearing it sends the next draw down the "start
+    -- the clock" branch, pushing the first report a full second past it --
+    -- losing the short-lived claimant a reset exists to watch (review,
+    -- 18 September).
     extent.dx, extent.dy, extent.per = 0, 0, {}
     if state.api and state.api.log then
         state.api.log("DARKTIDEVR_MARKER extents reset=" .. tostring(why))
@@ -601,8 +606,19 @@ local function observe_extent(x, y, scope_atlas, width, height, claimant)
     local who = claimant or "?"
     local slot = extent.per[who]
     if not slot then
-        slot = {dx = 0, dy = 0, reported_dx = 0, reported_dy = 0}
+        slot = {dx = 0, dy = 0, reported_dx = 0, reported_dy = 0, boxless = 0}
         extent.per[who] = slot
+    end
+    -- Text drawn with no layout box is measured by its anchor alone and
+    -- contributes ZERO width, so a cell could be sized without the widest
+    -- thing on it (review, 18 September). Only `script_draw_text` can arrive
+    -- without a size; every other converter passes one. The engine can say
+    -- how wide such text is, but not for free on a per-draw path, so this
+    -- COUNTS the blind spot rather than closing it: if a run says boxless=0
+    -- there is nothing to buy, and if it does not, the count says how much
+    -- the measurement is missing before anything is paid for it.
+    if width == nil and height == nil then
+        slot.boxless = (slot.boxless or 0) + 1
     end
     -- A draw's box, not its anchor. `position` is one corner and the size
     -- runs from it, so both corners are watched: an anchor at +10 with a
@@ -631,9 +647,9 @@ local function observe_extent(x, y, scope_atlas, width, height, claimant)
         if each.dx > each.reported_dx + 0.5 or each.dy > each.reported_dy + 0.5 then
             each.reported_dx, each.reported_dy = each.dx, each.dy
             state.api.log(string.format(
-                "DARKTIDEVR_MARKER extents claimant=%s max_dx=%.1f max_dy=%.1f half_cell=%.1f,%.1f boxed=1",
+                "DARKTIDEVR_MARKER extents claimant=%s max_dx=%.1f max_dy=%.1f half_cell=%.1f,%.1f boxed=1 boxless=%d",
                 name, each.dx, each.dy, (atlas and atlas.CELL_WIDTH or 0) * 0.5,
-                (atlas and atlas.CELL_HEIGHT or 0) * 0.5))
+                (atlas and atlas.CELL_HEIGHT or 0) * 0.5, each.boxless or 0))
         end
     end
 end

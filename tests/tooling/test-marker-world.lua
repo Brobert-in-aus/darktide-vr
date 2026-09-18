@@ -429,6 +429,44 @@ draw_in("bitmap", function()
 end)
 assert(near(extent.per.bitmap.dx, 33) and near(extent.per.bitmap.dy, 44),
     "a bitmap is measured by its box; script_ entry points are already in pixels")
+draw_in("bitmap_uv", function()
+    MarkerWorld.route("script_draw_bitmap_uv", stock("bitmap_uv"), renderer, handle,
+        V3(0, 0, 0), V3(21, 12, 0), {0, 0, 1, 1}, {255, 255, 255, 255})
+end)
+assert(near(extent.per.bitmap_uv.dx, 21) and near(extent.per.bitmap_uv.dy, 12),
+    "a uv bitmap -- the fill and progress art on a marker -- is measured by its box too")
+assert(extent.per.bitmap.boxless == 0 and extent.per.icon.boxless == 0 and
+    extent.per.rect.boxless == 0 and extent.per.bitmap_uv.boxless == 0,
+    "a draw that carried a box is not counted as one that did not")
+
+-- Text with no layout box contributes zero width, so a claimant whose widest
+-- draw is box-less is measured as narrower than it is. The engine can say how
+-- wide it is but not for free per draw, so the instrument COUNTS the blind
+-- spot and the log carries the count: a run reporting boxless=0 has nothing
+-- to buy, and one reporting more says how much is missing before it is paid
+-- for.
+draw_in("boxless", function()
+    MarkerWorld.route("script_draw_text", stock("text"), renderer, "wide text", 20,
+        "proxima", V3(7, 3, 0), nil, {255, 255, 255, 255}, nil)
+end)
+assert(extent.per.boxless.boxless == 1,
+    "text with no size is counted, not silently measured as a point")
+assert(near(extent.per.boxless.dx, 7) and near(extent.per.boxless.dy, 3),
+    "and what can be measured of it -- its anchor -- still is")
+extent_log = {}
+api.log = function(line) extent_log[#extent_log + 1] = line end
+clock_now = clock_now + 2
+draw_in("boxless", function()
+    MarkerWorld.route("script_draw_text", stock("text"), renderer, "x", 20, "proxima",
+        V3(0, 0, 0), V3(1, 1, 0), {255, 255, 255, 255}, {})
+end)
+local said_boxless
+for i = 1, #extent_log do
+    if string.find(extent_log[i], "claimant=boxless", 1, true) then
+        said_boxless = string.match(extent_log[i], "boxless=(%d+)$")
+    end
+end
+assert(said_boxless == "1", "the log carries the count, or nobody can act on it")
 
 -- The HUD panel's mirror draws in full screen pixels about an origin of zero.
 -- It has no cell, so measuring it would saturate the maximum -- the guard
@@ -439,6 +477,11 @@ MarkerWorld.mirror(mirror_atlas, source, 1, 0, 0, function()
 end)
 assert(near(extent.dx, before_dx), "a mirror draw is not a cell and must not be measured")
 assert(extent.per["?"] == nil, "and it must not turn up under any claimant either")
+-- Self-contained, rather than passing because the mirror converter threw and
+-- measured nothing at all: a throwing converter would satisfy both asserts
+-- above for entirely the wrong reason (review, 18 September).
+assert((MarkerWorld.state.mirror_errors or 0) == 0,
+    "the mirror draw ran; it was excluded, not lost to an error")
 
 -- A scope built without naming itself reads as "?" -- the tell that a new
 -- call site forgot. The mod must not default it to a real claimant's name,

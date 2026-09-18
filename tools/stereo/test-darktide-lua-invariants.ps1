@@ -1377,25 +1377,112 @@ if ((Test-Path -LiteralPath $dropSource) -and (Test-Path -LiteralPath $dropTest)
     }
 }
 
-# The marker extents instrument buckets by claimant, and a claimant is one of
-# Darktide's own world-marker template names -- nameplate, objective, beacon,
-# and among them "interaction", which is the icon in the world and NOT
-# HudElementInteraction's popup. The two HUD elements that claim a cell whole
-# are prefixed `hud_` so they cannot land in a template's bucket; without the
-# prefix the popup shares its measurement with a different, smaller thing and
-# the cell is sized from the pair -- which is the 18 September failure exactly.
-$claimantOffenders = @()
-$scopeText = [string]::Join("`n", $lines)
-foreach ($match in [regex]::Matches($scopeText,
-        'marker_plane_scope\s*\((?:[^()"]|\([^()]*\))*,\s*"([^"]+)"')) {
-    $claimant = $match.Groups[1].Value
-    if (-not $claimant.StartsWith('hud_')) {
-        $claimantOffenders += $claimant
+# The marker extents instrument buckets by claimant, and the claimant is one of
+# Darktide's twenty world-marker template names -- among them "interaction",
+# which is the icon in the world and NOT HudElementInteraction's popup. Three
+# things have to hold, and a review showed that NONE of them was guarded: the
+# fixes lived in this file while every test that covered them loaded a
+# different one, so restoring any of the three left the whole suite green.
+#
+# A prefix rule is not enough either: `"hud_marker"` satisfies it and pools all
+# twenty templates back into one bucket, which is the failure being fixed. The
+# HUD claimants are therefore a whitelist of exactly two.
+$allowedClaimants = @('hud_interaction_popup', 'hud_tag_prompt')
+# Comments stripped: this repository quotes code in comments constantly, and a
+# quoted example must not read as a call site.
+$claimantSource = [string]::Join("`n", ($lines | ForEach-Object { $_ -replace '--.*$', '' }))
+# Which argument names the claimant, per entry point. A real scan of the
+# argument list rather than a regex: the tag call site already nests
+# `Vector3Box.unbox(...)`, and one more helper around the position defeated the
+# pattern that was here before.
+$claimantArg = @{
+    'marker_plane_scope'         = 5
+    'marker_plane_scope_untimed' = 5
+    'marker_plane_scope_body'    = 7
+}
+function Get-LuaArguments {
+    param([string] $Text, [int] $Open)
+    $depth = 0
+    $args = @()
+    $current = ''
+    $inString = $false
+    for ($i = $Open; $i -lt $Text.Length; $i++) {
+        $c = $Text[$i]
+        if ($inString) {
+            $current += $c
+            if ($c -eq '"' -and $Text[$i - 1] -ne '\') { $inString = $false }
+            continue
+        }
+        if ($c -eq '"') { $inString = $true; $current += $c; continue }
+        if ($c -eq '(' -or $c -eq '{' -or $c -eq '[') {
+            $depth++
+            if ($depth -eq 1) { continue }
+            $current += $c
+            continue
+        }
+        if ($c -eq ')' -or $c -eq '}' -or $c -eq ']') {
+            $depth--
+            if ($depth -eq 0) { $args += $current.Trim(); return $args }
+            $current += $c
+            continue
+        }
+        if ($c -eq ',' -and $depth -eq 1) { $args += $current.Trim(); $current = ''; continue }
+        $current += $c
+    }
+    return $null
+}
+$claimantProblems = @()
+foreach ($entry in $claimantArg.GetEnumerator()) {
+    $needle = $entry.Key + '('
+    $from = 0
+    while (($at = $claimantSource.IndexOf($needle, $from)) -ge 0) {
+        $from = $at + $needle.Length
+        # `marker_plane_scope(` is a substring of nothing else, but guard the
+        # left edge so a longer identifier ending in the same name cannot match.
+        if ($at -gt 0 -and $claimantSource[$at - 1] -match '[A-Za-z0-9_]') { continue }
+        $parsed = Get-LuaArguments -Text $claimantSource -Open ($at + $entry.Key.Length)
+        if ($null -eq $parsed) { continue }
+        $index = $entry.Value
+        if ($parsed.Count -lt $index) {
+            $claimantProblems += ("{0} is called with {1} argument(s) and does not name its claimant. Every atlas scope must say which claimant it is for, or its draws pool into another claimant's measurement." -f $entry.Key, $parsed.Count)
+            continue
+        }
+        $claimant = $parsed[$index - 1]
+        if ($claimant -match '^"([^"]*)"$') {
+            if ($allowedClaimants -notcontains $Matches[1]) {
+                $claimantProblems += ("{0} passes the claimant '{1}'. The only literal claimants allowed are {2}: a world-marker claimant must be the loop's `marker_type` so each of Darktide's twenty templates is measured separately, and a HUD element's must be one of those two names so it cannot collide with a template called 'interaction'." -f
+                    $entry.Key, $Matches[1], ($allowedClaimants -join ' and '))
+            }
+        } elseif ($claimant -ne 'marker_type' -and $claimant -ne 'claimant') {
+            $claimantProblems += ("{0} passes the claimant expression '{1}', which is neither a whitelisted literal nor the marker type. A claimant the instrument cannot predict cannot be checked against a template name." -f $entry.Key, $claimant)
+        }
     }
 }
-if ($claimantOffenders.Count -gt 0) {
-    throw ("A HUD element claims a marker-atlas cell under the bare name(s) '{0}'. Darktide has world-marker templates called nameplate, objective and interaction, so a bare name shares a bucket with one of them and the extents instrument conflates two different things. Prefix it `hud_`." -f
-        ($claimantOffenders -join "', '"))
+# And the marker type must actually be BOUND by the loop. Changing the key back
+# to `_` leaves `marker_type` as an undeclared global -- nil -- and every one of
+# the twenty templates pools under "?" with the call site still reading right.
+if ($claimantSource -notmatch 'for\s+marker_type\s*,\s*markers\s+in\s+pairs\(self\._markers_by_type') {
+    $claimantProblems += "The world-marker loop no longer binds `marker_type`, so the claimant it passes is an undeclared global and every marker type pools into one bucket."
+}
+# The scope builder must NOT default the claimant. A default buries a call site
+# that forgot to name itself inside a real claimant's measurement, where "?"
+# would have said so.
+if ($claimantSource -match '(?<![A-Za-z0-9_])claimant\s*=\s*claimant\s+or') {
+    $claimantProblems += "The scope builder defaults the claimant. A scope that does not name itself must reach the instrument as nil and bucket under '?', which is the only tell that a new call site forgot."
+}
+if ($claimantSource -notmatch '(?<![A-Za-z0-9_])claimant\s*=\s*claimant\s*,') {
+    $claimantProblems += "The scope no longer carries its claimant at all."
+}
+# Every knob that changes WHAT is being measured must start the measurement
+# again. `drop` moves the origin each extent is taken from, and all of these
+# are used during a sizing session.
+foreach ($knob in @('drop', 'text', 'origin', 'surface', 'layer')) {
+    if ($claimantSource -notmatch ("forget_extents\(`"" + $knob + "`"\)")) {
+        $claimantProblems += ("The `dtvr_marker_plane {0}` command does not call forget_extents(`"{0}`"), so a maximum can span the change and describe a configuration that never existed." -f $knob)
+    }
+}
+if ($claimantProblems.Count -gt 0) {
+    throw ("The marker-atlas claimant rules are broken:`n  " + ($claimantProblems -join "`n  "))
 }
 
 Write-Output "lua_source_assertions=pass"

@@ -816,3 +816,55 @@ flagged.
 
 The review is the reason this is worth anything. Every one of those was in
 code that passed 278 tests and a test written specifically to guard it.
+
+### And what the review of the fixes found
+
+The fixes were sound. The guards for them were not, and the shape of the
+failure is worth remembering: **three of the four fixes lived in
+`darktidevr.lua` while every test that covered them loaded a different file.**
+Restoring any of the three — the marker type as claimant, the removed default,
+the command handler's reset — left all 278 tests green and the invariants
+passing. The tests were pointed one file away from the thing they were written
+for.
+
+The fourth was guarded, by a rule that the offender walks past: the `hud_`
+prefix is satisfied by `"hud_marker"`, which pools all twenty templates back
+into one bucket. A prefix rule cannot express "each marker type separately";
+only a whitelist can.
+
+So the invariant is now a real scan of each `marker_plane_scope` argument
+list rather than a regex, and it checks five things: the claimant is either
+the loop's `marker_type` or one of exactly two whitelisted HUD names; the call
+names a claimant at all; the loop still binds the key; the scope builder does
+not default it; and each of the five `dtvr_marker_plane` knobs calls
+`forget_extents`. `tools/lua/mutate-claimant-rules.py` puts nine mutations
+through it — every one the review demonstrated — and three legitimate edits,
+including the two the old regex got wrong: a call site quoting an example in
+a comment (a false alarm) and a position wrapped in one more helper call (a
+miss, and the tag site is already one level deep).
+
+Smaller things from the same review, all taken:
+
+- **`script_draw_bitmap_uv` was the fifth converter**, left out of a block
+  whose comment claimed every atlas converter was covered. It is the fill and
+  progress art on a marker. Routed now, with a mutation.
+- **Box-less text contributes zero width.** Only `script_draw_text` can
+  arrive without a size, and it is measured by its anchor alone — so a
+  claimant whose widest draw is box-less reads narrower than it is. Closing
+  that means asking the engine to measure text on a per-draw path, which is
+  not free. It is **counted** instead: `boxless=N` on the extents line. A run
+  saying `boxless=0` has nothing to buy, and one that does not says how much
+  the measurement is missing before anything is paid for it.
+- **The mirror case could have passed for the wrong reason.** A throwing
+  mirror converter measures nothing, which satisfies "the mirror was not
+  measured" exactly as well as the exclusion does. It now asserts
+  `mirror_errors == 0` as well.
+- **`text` and `origin` reset on a no-op**, because the setters return true
+  for the value they already hold, so re-confirming a setting threw the
+  measurement away. They compare now. **`surface` and `layer` did not reset at
+  all**; a rule applied to three knobs out of five is worth less than the
+  words it is written in.
+- **Not resetting `extent.at` was right**, and now says why in the source. It
+  is the last report's time, not a measurement: clearing it would push the
+  first report a second past the next draw and lose exactly the short-lived
+  claimant a reset exists to watch.
