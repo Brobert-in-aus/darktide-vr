@@ -155,6 +155,30 @@ samples[#samples + 1] = {0.16, 0, 0.6, 0}
 samples[#samples + 1] = {0.17, 0, 0.6, 0}
 local stopped = Skull.release_velocity(samples, 0.17)
 assert(stopped[2] > 1.5, 'the window still carries the throw, got ' .. stopped[2])
+-- The real shape of a throw: accelerate, peak, then decelerate into the
+-- release, because the hand is already slowing when the button comes up.
+-- Averaging the whole window over that reports about half the peak, which is
+-- what "still way too slow for how fast I'm throwing" was (user, worn).
+local shaped, at, y = {}, 0, 0
+for _, speed in ipairs({1, 3, 6, 9, 10, 9, 6, 3, 1, 0.5}) do
+    shaped[#shaped + 1] = {at, 0, y, 0}
+    at = at + 0.015
+    y = y + speed * 0.015
+end
+shaped[#shaped + 1] = {at, 0, y, 0}
+local peak = Skull.release_velocity(shaped, at)
+assert(peak[2] > 6, 'the throw carries the peak, not the average: got ' .. peak[2])
+assert(peak[2] <= 10.01, 'and does not exceed what the hand actually did: ' .. peak[2])
+-- The mean across the whole window is what it used to report; it must be
+-- clearly slower than what is reported now, or the change did nothing.
+local span = shaped[#shaped][1] - shaped[1][1]
+local mean = (shaped[#shaped][3] - shaped[1][3]) / span
+assert(peak[2] > mean * 1.3, 'the peak is meaningfully faster than the mean (' ..
+    peak[2] .. ' vs ' .. mean .. ')')
+-- A span too short to trust is not used to manufacture a speed.
+assert(Skull.THROW_MIN_SPAN_SECONDS > 0 and
+    Skull.THROW_MIN_SPAN_SECONDS < Skull.THROW_WINDOW_SECONDS, 'the minimum span is inside the window')
+
 -- Capped, so a tracking glitch cannot fling the drawn skull somewhere the real
 -- one never goes.
 local glitch = Skull.release_velocity({{0, 0, 0, 0}, {0.01, 0, 50, 0}}, 0.01)

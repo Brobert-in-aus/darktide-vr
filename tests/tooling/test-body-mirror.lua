@@ -187,4 +187,41 @@ assert(Mirror.TRACE_MOVED_M <= 0.001 and Mirror.TRACE_MOVED_DEG <= 0.25,
 local _, why = Mirror.trace_due({0}, Mirror.TRACE_MOVED_M * 2, 0)
 assert(why == 'moved', 'the line says why it was taken, got ' .. tostring(why))
 
-print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace')
+-- Which units the copy owns, and -- far more important -- which it does not.
+-- Disabling the REAL player's collision would drop them through the world and
+-- make them unhittable, which is a worse fault than the one this fixes, so the
+-- exclusion is asserted first and from several directions.
+local avatar = {'the real player'}
+local root = {'the copy'}
+local gun, gunSight, hat = {'gun'}, {'sight'}, {'hat'}
+local data = {slots = {
+  slot_secondary = {unit_3p = gun, attachments_by_unit_3p = {[gun] = {gunSight}}},
+  slot_gear_head = {unit_3p = hat},
+  -- A slot the profile left empty, and one whose unit IS the avatar: the
+  -- second is the shape that would end the player's collision.
+  slot_empty = {},
+  slot_bad = {unit_3p = avatar},
+}}
+local owned = Mirror.collider_units(root, data, avatar)
+for _, unit in ipairs(owned) do
+  if unit == avatar then throwIfAvatar = true end
+end
+if throwIfAvatar then error('the real player was listed for collider removal') end
+local function has(list, unit)
+  for _, entry in ipairs(list) do if entry == unit then return true end end
+  return false
+end
+if not has(owned, root) then error('the copy itself is not listed') end
+if not has(owned, gun) then error('a slot unit is not listed') end
+if not has(owned, gunSight) then error('an attachment is not listed') end
+if not has(owned, hat) then error('a second slot is not listed') end
+if #owned ~= 4 then error('exactly the four copy units, got ' .. #owned) end
+-- Reachable twice (a slot and its own attachment list) must appear once.
+local twice = Mirror.collider_units(root,
+  {slots = {a = {unit_3p = gun, attachments_by_unit_3p = {[gun] = {gun, gunSight}}}}}, avatar)
+if #twice ~= 3 then error('a unit reachable twice was listed twice, got ' .. #twice) end
+-- Nothing to do is not an error, and a nil avatar must not make the root nil.
+if #Mirror.collider_units(nil, nil, avatar) ~= 0 then error('no copy, no units') end
+if #Mirror.collider_units(root, nil, nil) ~= 1 then error('the copy is still listed without an avatar') end
+
+print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace colliders')

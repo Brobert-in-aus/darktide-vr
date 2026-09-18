@@ -362,6 +362,45 @@ function Mirror.yaw_step(now, before)
     return (now - before + 180) % 360 - 180
 end
 
+-- Which units a drawn copy owns, so their collision can be taken off them.
+--
+-- The copy is a full character: a root and one unit per equipment slot, plus
+-- each slot's attachments. It is spawned on top of the player -- the overlay
+-- mode's distance is zero -- and until 18 September 2026 it kept every actor
+-- the profile gave it.
+--
+-- That is why the gun stopped producing bullets. The player's own hitscan
+-- starts at their own position, and stock skips the ATTACKER's actors; the
+-- copy is a different unit, so nothing skipped it, and every shot terminated
+-- on it at distance zero. The log said so plainly once it was asked:
+-- `endpoint` equal to `origin`, `distance=0.0000`, and the same unit id
+-- reported `self=true` for one actor and `self=false` for another -- two Unit
+-- objects printing the same id, which is exactly what a copy looks like.
+--
+-- The avatar and the source are excluded HERE rather than at the call site,
+-- because the failure this could cause is far worse than the one it fixes:
+-- disabling the real player's collision would drop them through the world and
+-- make them unhittable. Pure, and tested for that above everything else.
+function Mirror.collider_units(root, data, avatar)
+    local units, seen = {}, {}
+    local function add(unit)
+        if unit == nil or unit == avatar then return end
+        -- Same unit reachable twice (a slot and its own attachment list).
+        for index = 1, #units do if units[index] == unit then return end end
+        if seen[unit] then return end
+        seen[unit] = true
+        units[#units + 1] = unit
+    end
+    add(root)
+    for _, slot in pairs(data and data.slots or {}) do
+        add(slot.unit_3p)
+        local attachments = slot.attachments_by_unit_3p and
+            slot.attachments_by_unit_3p[slot.unit_3p]
+        for _, attachment in ipairs(attachments or {}) do add(attachment) end
+    end
+    return units
+end
+
 -- The root of a copy turned half a turn about the vertical through pivot and
 -- stood distance ahead of it along heading (Stingray yaw): {x, y, z}, the
 -- height kept. Its yaw is the copy's plus pi. 3-arrays. Pure.
@@ -719,6 +758,29 @@ function Mirror.install(mod, presentation, options)
         end
         arm.error = Vector3.length(Unit.world_position(unit, arm.hand) - target)
     end
+    -- Take the collision off everything the copy owns. Mirrors what
+    -- darktidevr_body_proxy does for its own spawned units, which the mirror
+    -- never did -- see Mirror.collider_units for what that cost.
+    local function disable_colliders(root, data, avatar)
+        local disabled, actors = 0, 0
+        for _, unit in ipairs(Mirror.collider_units(root, data, avatar)) do
+            if Unit.alive(unit) then
+                local count = Unit.num_actors(unit)
+                for index = 1, count do
+                    local actor = Unit.actor(unit, index)
+                    -- Stock deployable/pickup loops also allow empty slots.
+                    if actor then
+                        Actor.set_collision_enabled(actor, false)
+                        Actor.set_scene_query_enabled(actor, false)
+                        actors = actors + 1
+                    end
+                end
+                disabled = disabled + 1
+            end
+        end
+        mod:info("DARKTIDEVR_BODY_MIRROR colliders=disabled units=%d actors=%d", disabled, actors)
+    end
+
     local function place(avatar, unit)
         local mode = Mirror.MODES[mode_name] or Mirror.MODES.mirror
         local rotation = Unit.world_rotation(avatar, 1)
@@ -788,6 +850,14 @@ function Mirror.install(mod, presentation, options)
                 end
             end
             table.sort(hidden)
+            -- Before the copy is ever posed on the player: a single frame of
+            -- it holding collision is a frame of shots stopping at range zero.
+            local ok_colliders, collider_error = pcall(disable_colliders, unit, data, avatar)
+            if not ok_colliders then
+                log_once("colliders", "colliders=failed error=%s",
+                    tostring(collider_error):sub(1, 120))
+            end
+            state.colliders_disabled = ok_colliders
             mod:info("DARKTIDEVR_BODY_MIRROR ready mode=%s nodes=%d avatar_nodes=%d same_layout=%s spawned_slots=%d hidden_slots=%s",
                 tostring(mode_name), state.count, Unit.num_scene_graph_items(avatar), tostring(state.same_layout), slots,
                 #hidden > 0 and table.concat(hidden, ",") or "none")

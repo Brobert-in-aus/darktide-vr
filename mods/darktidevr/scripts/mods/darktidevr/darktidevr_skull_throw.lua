@@ -237,7 +237,12 @@ end
 -- Capped, so a tracking glitch cannot fling the drawn skull off somewhere the
 -- real one never goes.
 Skull.THROW_WINDOW_SECONDS = 0.15
-Skull.THROW_MAX_SPEED = 12
+-- The shortest span a speed may be measured over. Below this it is tracker
+-- noise divided by a very small number.
+Skull.THROW_MIN_SPAN_SECONDS = 0.04
+-- Raised from 12: a hard throw is faster than that, and the cap was quietly
+-- doing some of the work the averaging was doing.
+Skull.THROW_MAX_SPEED = 18
 
 -- The velocity a release carries. `samples` is {t, x, y, z} entries, oldest
 -- first; `t` is the release time. Returns a world 3-array, zero when there is
@@ -257,11 +262,54 @@ function Skull.release_velocity(samples, t)
         oldest = sample
     end
     if not oldest or oldest == newest then return {0, 0, 0} end
-    local span = newest[1] - oldest[1]
-    if not (span > 0) then return {0, 0, 0} end
-    local v = {(newest[2] - oldest[2]) / span, (newest[3] - oldest[3]) / span,
-        (newest[4] - oldest[4]) / span}
-    local speed = math.sqrt(v[1] * v[1] + v[2] * v[2] + v[3] * v[3])
+    -- The FASTEST span in the window, not the whole window's average.
+    --
+    -- Averaging across the whole 150 ms was the first cut and it threw far too
+    -- softly (user, worn: "still way too slow for how fast I'm throwing"). A
+    -- throw accelerates, peaks, and then decelerates into the release -- the
+    -- hand is already slowing when the button comes up -- so the mean over the
+    -- window is roughly half the peak. What the skull should leave the hand
+    -- with is the peak.
+    --
+    -- Still a span rather than a frame pair: MIN_SPAN_SECONDS keeps it long
+    -- enough that tracker noise cannot manufacture a speed, which is the thing
+    -- the window existed to fix in the first place.
+    -- Between ANY pair inside the window, not only pairs ending at the
+    -- release. The peak of a throw is in the middle of the motion -- the hand
+    -- is already slowing by the time the button comes up -- so every span that
+    -- ends at the release drags the follow-through into its average. What the
+    -- skull should leave with is how fast the hand was going at its fastest.
+    -- About twenty samples, once per throw, so the pairs are free.
+    local best, speed = nil, 0
+    local first = 1
+    while first <= #samples and t - samples[first][1] > Skull.THROW_WINDOW_SECONDS do
+        first = first + 1
+    end
+    for i = first, #samples do
+        for j = i + 1, #samples do
+            local a, b = samples[i], samples[j]
+            if type(a) == "table" and type(b) == "table" and finite(a[1]) and finite(b[1]) then
+                local span = b[1] - a[1]
+                if span >= Skull.THROW_MIN_SPAN_SECONDS then
+                    local candidate = {(b[2] - a[2]) / span, (b[3] - a[3]) / span,
+                        (b[4] - a[4]) / span}
+                    local magnitude = math.sqrt(candidate[1] * candidate[1] +
+                        candidate[2] * candidate[2] + candidate[3] * candidate[3])
+                    if finite(magnitude) and magnitude > speed then best, speed = candidate, magnitude end
+                end
+            end
+        end
+    end
+    -- Nothing spanned the minimum: fall back to the whole window rather than
+    -- reporting a standstill, which is how a short flick would read otherwise.
+    if not best then
+        local span = newest[1] - oldest[1]
+        if not (span > 0) then return {0, 0, 0} end
+        best = {(newest[2] - oldest[2]) / span, (newest[3] - oldest[3]) / span,
+            (newest[4] - oldest[4]) / span}
+        speed = math.sqrt(best[1] * best[1] + best[2] * best[2] + best[3] * best[3])
+    end
+    local v = best
     if not finite(speed) or speed <= 0 then return {0, 0, 0} end
     if speed > Skull.THROW_MAX_SPEED then
         local k = Skull.THROW_MAX_SPEED / speed
