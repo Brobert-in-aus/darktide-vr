@@ -194,6 +194,31 @@ local function new(options)
 
     -- A cell for one marker this frame: its centre in target pixels, where the
     -- marker's anchor lands. nil when the atlas is unavailable or full.
+    -- What a claimant can be called in a log line. The hand displays name
+    -- their anchors and markers do not, so fall back to whatever the anchor
+    -- can be identified by; `anchor=?` told nobody which display went missing
+    -- in the one run where this fired (hook-arity-smoke-20260918). Pure.
+    function Atlas.claimant_name(anchor)
+        if type(anchor) ~= "table" then return "?" end
+        for _, field in ipairs({"key", "id", "name", "slot", "kind"}) do
+            local value = anchor[field]
+            if type(value) == "string" or type(value) == "number" then
+                return tostring(value)
+            end
+        end
+        -- A marker's anchor is a position: say where, which at least
+        -- distinguishes one claimant from another in the same frame.
+        local position = anchor.position
+        if type(position) == "table" and type(position.unbox) == "function" then
+            local ok, point = pcall(position.unbox, position)
+            if ok and point then return "at " .. tostring(point) end
+        end
+        if anchor.x and anchor.y then
+            return string.format("at %.1f,%.1f", anchor.x, anchor.y)
+        end
+        return "unnamed"
+    end
+
     function Atlas.claim(t, anchor)
         if not Atlas.begin_frame(t) then return nil, "atlas" end
         local index = #state.pending + 1
@@ -204,8 +229,9 @@ local function new(options)
             if not state.full_logged and state.api and state.api.log then
                 state.full_logged = true
                 state.api.log(string.format(
-                    "%s atlas_full cells=%d anchor=%s", TAG, COLUMNS * ROWS,
-                    tostring(anchor and anchor.key or "?")))
+                    "%s atlas_full cells=%d columns=%d rows=%d claimant=%s",
+                    TAG, COLUMNS * ROWS, COLUMNS, ROWS,
+                    Atlas.claimant_name(anchor)))
             end
             return nil, "atlas_full"
         end

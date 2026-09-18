@@ -164,4 +164,17 @@ assert(backwards.draw("game_world", frame_for) == 0 and backwards.state.resource
     "a stamp from the future is stale and idle at once, not fresh for ever")
 assert(backwards.ensure("game_world") and backwards.claim(now, {x = 0, y = 0, z = 0}),
     "and the next marker rebuilds it on the new clock")
+-- A full atlas has to say WHICH display went missing. The hand overlays name
+-- their anchors; a marker's anchor is a position, and the one run where this
+-- fired said `anchor=?` (hook-arity-smoke-20260918).
+assert(Atlas.claimant_name({key = "teammate_3"}) == "teammate_3", "a named anchor")
+assert(Atlas.claimant_name({id = 7}) == "7", "an id will do")
+assert(Atlas.claimant_name({slot = "slot_primary"}) == "slot_primary")
+assert(Atlas.claimant_name(nil) == "?" and Atlas.claimant_name("x") == "?")
+assert(Atlas.claimant_name({}) == "unnamed", "an anchor with nothing to say so")
+local boxed = {position = {unbox = function() return "v(1,2,3)" end}}
+assert(Atlas.claimant_name(boxed) == "at v(1,2,3)", "a marker says where it is")
+assert(Atlas.claimant_name({position = {unbox = function() error("gone") end}}) == "unnamed",
+    "an anchor whose position throws is still named, not an error")
+assert(Atlas.claimant_name({x = 12.34, y = 56.78}) == "at 12.3,56.8", "a plain point")
 print("marker_atlas.result=pass")
