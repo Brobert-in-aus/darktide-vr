@@ -90,9 +90,15 @@ Closed. The roll fallback holds.
 > "ADS is good, set the default zoom to 5% and remove the delay in ending ads
 > when moving your hand out of the zone."
 
-Two changes, both small and specific: default magnification to 5 per cent (the
-log shows it ran at `percent=3`), and no hysteresis or timer on leaving ADS --
-out of the zone should end it immediately.
+Two changes, both small and specific: default magnification to 5 per cent, and
+no hysteresis or timer on leaving ADS -- out of the zone should end it
+immediately. Both done.
+
+A correction to this entry: it said the log showed `percent=3`. The log shows
+`percent=12` throughout the session. That matters practically, because DMF
+stores the chosen value and a default only applies to a setting that was never
+set -- so the new default of 5 does nothing for this install, and the value has
+to be changed in the options by hand.
 
 ### 56. The ADS vignette
 
