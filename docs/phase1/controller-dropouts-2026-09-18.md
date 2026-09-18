@@ -1,111 +1,112 @@
 # Why the controllers keep dropping, 18 September 2026
 
-Pulled from the headset over adb (`192.168.8.100:5555`, Quest 3) after the
-worn session. **The answer is hardware, not software: the right controller's
-cell is browning out and rebooting the controller.** Nothing in the mod or the
-viewer is involved.
+Pulled from the headset over adb (`192.168.8.100:5555`, Quest 3).
 
-## The finding
+**The controllers are losing a quarter to two thirds of their radio packets at
+excellent signal strength, and only while the headset is being worn.** It is
+not the batteries, it is not range, it is not one controller, and the PC is not
+involved.
 
-```
-19:15:21 W/SyncBossInput [ruby (right) 5555144efd3a9ff0]: Reset reason: battery insert or brownout
-19:15:22 I/SyncBossInput [ruby (right) 5555144efd3a9ff0]: Battery: 1249mV (40%)
-19:15:22 I/SyncBossHAL   Controller 5555144efd3a9ff0 battery level changed: 0% -> 30%
-```
+## Correction: the first read of this was wrong
 
-Eight of those in the buffer, **all on the right controller, none on the
-left**. "Battery insert or brownout" is the controller's MCU reporting why it
-just restarted: either the cell was physically removed and replaced, or the
-supply rail collapsed. It was not being removed and replaced eight times.
+This document first said the right controller's cell was browning out, on the
+strength of eight `Reset reason: battery insert or brownout` lines. The user
+then said they had been **pulling the battery to reset the controller**, which
+is the other half of that reset reason, and the timing bears them out: every
+one of those resets lands about a second *after* a reconnect, which is a
+controller booting on a freshly inserted cell and saying so.
 
-Each one takes the radio down with it, and the headset sees exactly what the
-mod saw:
+The drops that happened *before* any of that — 19:14:43, 19:14:57, 19:15:04 —
+have **no reset line at all**. The controller did not reboot; the link died
+while the controller stayed up. That is a radio fault, not a power one.
 
-```
-09-18 19:15:13  DISCONNECT
-09-18 19:15:21  BROWNOUT RESET
-09-18 19:16:25  DISCONNECT
-09-18 19:16:42  BROWNOUT RESET
-09-18 19:16:54  DISCONNECT
-09-18 19:17:39  BROWNOUT RESET
-09-18 19:17:51  DISCONNECT
-09-18 19:18:46  BROWNOUT RESET
-09-18 19:19:01  DISCONNECT
-```
+The voltage does not support a flat battery either. 1249 mV is unremarkable for
+a NiMH rechargeable, which sits at 1.2–1.25 V for most of its discharge, and
+the controller's own gauge shows 2 of 4 dots.
 
-Roughly one a minute. The disconnect is logged a few seconds before the reset
-reason, because the reason is only reported once the controller has rebooted
-and re-established the link.
+## What the radio statistics say
 
-Downstream, `ControllerManagement` records the status ladder collapsing:
+Every disconnect logs the link's own counters. `RSSI` is signal strength in
+dBm, where anything better than about −50 is strong:
 
-| status / tracking | count |
-| --- | --- |
-| `CONNECTED_ACTIVE` / `NONE` | 108 |
-| `CONNECTED_ACTIVE` / `ORIENTATION` | 41 |
-| `CONNECTED_ACTIVE` / `POSITION` | 40 |
-| `SEARCHING` / `NONE` | 9 |
+| time | RSSI | rx | missed | loss | headset |
+| --- | --- | --- | --- | --- | --- |
+| 18:49:56 | −39 | 250004 | 1308 | **1%** | off |
+| 18:53:41 | −63 | 750867 | 15858 | **2%** | off |
+| 18:56:40 | −38 | 89447 | 300 | **0%** | off |
+| 19:14:43 | −34 | 133 | 253 | **66%** | worn |
+| 19:14:57 | −25 | 333 | 279 | **46%** | worn |
+| 19:15:04 | −28 | 66 | 63 | **49%** | worn |
+| 19:16:25 | −24 | 14107 | 6953 | **33%** | worn |
+| 19:16:54 | −23 | 1950 | 1424 | **42%** | worn |
+| 19:17:03 | −30 | 470 | 486 | **51%** | worn, **left controller** |
+| 19:17:51 | −24 | 2930 | 911 | **24%** | worn |
+| 19:19:01 | −41 | 4635 | 1622 | **26%** | worn |
 
-`POSITION` is full 6DoF, `ORIENTATION` is the IMU alone, `NONE` is nothing at
-all, and `SEARCHING` is the headset hunting for a controller that is no longer
-transmitting. Only a quarter of the samples are fully tracked.
+Two things fall straight out of that table.
 
-`tracking: NONE` on a `CONNECTED_ACTIVE` controller is precisely the mod's
-`DARKTIDEVR_CONTROLLER tracking_transition ... live=false flags=0`.
+**The signal is not weak — it is being corrupted.** The worst losses come at
+the *strongest* signal readings (−23, −24 dBm). A controller that is too far
+away or blocked by a body shows a weak RSSI and loss together. Strong signal
+with heavy loss is what collisions look like.
 
-## The state of both controllers
+**It starts when the headset goes on.** The only proximity event in the buffer
+before the collapse is `PROX_ON` at **19:14:32**, eleven seconds before the
+first bad disconnect. Every reading from the period the headset sat idle is
+1–2% loss over hundreds of thousands of packets; every reading from the period
+it was worn is 24% or worse.
 
-```
-Paired device: 5555144efd3a9ff0, Type:  Right, Model: RUBY, Firmware: 207.5.0,
-  Battery: 30%, Serial: 2G0YZJ3F9Z00SF, Status: Searching, TrackingStatus: NONE
-Paired device: 2f4c20989f8cae37, Type:   Left, Model: RUBY, Firmware: 207.5.0,
-  Battery: 30%, Serial: 2G0YYJ5F9Z037D, Status: Searching, TrackingStatus: NONE
-```
-
-Both read 30 per cent. **The left one is about to do the same thing**, and it
-has not been connected in the last 78 minutes of the buffer, so this window
-cannot show whether it already has.
-
-The measured 1249 mV is the number that matters rather than the percentage.
-These take a single AA, and a cell at about 1.25 V has very little left: it
-reads fine at rest and then sags below the brownout threshold the moment the
-radio transmits. That is why it fails in bursts, under use, rather than simply
-going dead.
+**Both controllers do it.** The left shows 51% loss at 19:17:03. So it is not a
+fault in one controller's radio.
 
 ## What was ruled out, and how
 
-- **Interference from the streaming link.** The controllers use 2.4 GHz, so
-  Virtual Desktop sharing that band would have been the obvious suspect. The
-  headset is on `TheVR` at **5240 MHz** — 5 GHz — so it is not competing with
-  them.
-- **A pending controller firmware update.** `PairedControllerInfo` shows
-  `update-required` 37 times, which looked like one. It is not: that string
-  only ever appears on the *disconnected* lines (`connected` lines read `mcnt`
-  instead), and both controllers report the same firmware, **207.5.0**. It is
-  the disconnected-state string, not a pending update.
-- **Anything in the mod or the viewer.** The reset is reported by the
-  controller's own firmware, through the headset's input HAL, about its own
-  power rail. The PC is not in that path.
+- **The batteries.** See the correction above. Both read 30% / 1249 mV, both
+  are on 207.5.0 firmware, and the left does this too without ever having been
+  reset.
+- **Range or body blocking.** RSSI −23 to −41 dBm throughout.
+- **Virtual Desktop and the PC.** VD does not appear in the log after
+  **14:56**. Through the whole bad window the foreground apps are the Quest's
+  own shell, the library panel and the guardian dialog. The streaming link was
+  not up, so the PC cannot be the source — **and this reproduces in the Quest's
+  own menus, with Darktide not running at all.**
+- **The 5 GHz streaming network.** `TheVR` is on 5240 MHz, so it does not share
+  a band with the controllers regardless.
+- **A pending controller firmware update.** `update-required` appears 37 times
+  but only ever on the *disconnected* lines; connected ones read `mcnt`, and
+  both controllers report the same 207.5.0.
 
-## What to do
+## What is left, and how to tell them apart
 
-1. **Put a fresh AA in the right controller.** That is the fix.
-2. **Do the left at the same time.** It reads the same 30 per cent and there
-   is no reason to wait for it to start doing this mid-mission.
-3. **If it comes back with a fresh cell**, it is the contacts rather than the
-   battery — the spring or the terminal. "Battery insert" is the other half of
-   that reset reason, and a cell losing contact for a millisecond looks
-   identical to a brownout from the inside.
+The controllers use a proprietary 2.4 GHz link. Something is talking over it,
+and it only matters when the headset is awake and worn. In rough order of how
+cheap they are to test:
+
+1. **Something in the room on 2.4 GHz.** Put the headset on in a different
+   room, well away from the router and the PC, and use the Quest's own menus
+   for a minute. If the controllers behave, it is environmental. The router's
+   2.4 GHz radio is the first suspect — `TheVR` is 5 GHz, but the same router
+   is almost certainly also broadcasting a 2.4 GHz network.
+2. **The headset itself, when its full stack is running.** If it is just as bad
+   in another room, it is headset-side — the cameras, display and compute all
+   start on don, and a desensitised receiver would look exactly like this.
+   Worth a Meta support conversation with these numbers, which are more than
+   most support paths ever get.
+3. **Bluetooth.** The adapter has been on for 25 hours and is 2.4 GHz. It was
+   also on throughout the healthy period, so it is not sufficient on its own —
+   but if something paired to it starts streaming when the headset wakes, that
+   would fit. Worth turning off for a test.
+
+Not worth chasing: the headset is on AC power and was for the healthy period
+too, so the charger and its cable do not correlate.
 
 ## What this does and does not explain
 
-It explains the dropouts, the `live=false flags=0` telemetry, and very likely
-the body and hand flicker reported as item 52 — a hand whose pose stops being
-reported for a second at a time is a hand that flickers.
+It explains the dropouts and the `live=false flags=0` telemetry, and very
+likely the hands and body flickering while running (item 52) — a hand whose
+pose stops arriving a third of the time is a hand that flickers.
 
-**It does not explain the gun that stopped firing.** That was ruled out on the
-user's own evidence: the trigger was reaching the game (sound and animation
-played), and melee on the same trigger kept working. A controller that has
-rebooted delivers nothing at all for a few seconds and then everything again;
-it does not deliver a working melee and a silent gun. Both faults are real and
-they are separate.
+**It does not explain the gun that stopped firing.** A controller losing
+packets delivers nothing for a moment and then everything again; it does not
+deliver working melee and a silent rifle on the same trigger. Both faults are
+real and they are separate.
