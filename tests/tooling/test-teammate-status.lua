@@ -62,4 +62,76 @@ assert(Status.anchor_key(answers_nothing, "unitF") == "teammate_unitF" and
 -- And a method reached only through the metatable still identifies the player.
 local inherited = setmetatable({}, {__index = {unique_id = function() return "uid-inherited" end}})
 assert(Status.anchor_key(inherited, "unitH") == "teammate_uid-inherited", "an inherited accessor is called")
+
+-- A display that used to switch itself off for the session. Both of these
+-- latched on the FIRST error, and the teammate nameplates had no `destroy` at all, so one transient nil -- a unit
+-- gone mid-draw, a level change caught at the wrong moment -- took the
+-- display out until the game was restarted. Three in a row is a broken
+-- display; one is a level change.
+local warnings = 0
+local stub_mod = {
+    get = function(self, key) return true end,
+    warning = function() warnings = warnings + 1 end,
+    info = function() end,
+    echo = function() end,
+}
+-- `attempts` is the probe: the real draw asks for the eye pose before it
+-- reaches for anything the test has no double for, so a bump means the
+-- display genuinely tried this frame and no bump means it has stopped.
+local attempts = 0
+local presentation = {mode = 1, hand_overlay = {},
+    eye_pose = function() attempts = attempts + 1; return {} end}
+local api = Status.install(stub_mod, presentation)
+-- Drives the real failure path rather than an early return: the body runs and
+-- reaches for something the test has no double for, which is exactly the
+-- shape of the transient faults this counts.
+local function fail_once() api.draw({}, {}) end
+fail_once()
+assert(warnings == 1, "the first failure is reported, not swallowed: " .. warnings)
+fail_once()
+assert(warnings == 2, "and the display is still trying after one failure")
+fail_once()
+assert(warnings == 3, "the third failure in a row is the one that stops it")
+fail_once()
+assert(warnings == 3, "after three in a row it stops calling, so nothing more is reported")
+-- The re-arm. This is the whole point: without it the display is gone for the
+-- session.
+assert(type(api.destroy) == "function", "a level load needs a destroy to re-arm the display")
+api.destroy()
+fail_once()
+assert(warnings == 4, "a level load forgives the count and the display tries again")
+
+-- A good frame clears the RUN but not the total. Without the run resetting, a
+-- display that fails every other frame -- which is what an intermittent nil
+-- looks like -- stops after three bad frames spread over a whole level, and a
+-- display that has already recovered is judged on failures it came back from.
+-- Warnings cannot see this: the gate gives the same count either way. What
+-- can is whether the display is still TRYING, which is what `attempts` says.
+api.destroy()
+warnings, attempts = 0, 0
+fail_once()
+fail_once()
+presentation.mode = 2       -- the draw returns early: a frame that did not fail
+api.draw({}, {})
+presentation.mode = 1
+assert(attempts == 2, "a good frame is not an attempt at the failing path")
+fail_once()
+fail_once()
+local before = attempts
+fail_once()
+assert(attempts == before + 1,
+    "two failures, a good frame, then two more: the run reset, so it is still trying")
+-- And the total still stops it, or an every-other-frame fault would warn for
+-- ever and never be judged broken.
+api.destroy()
+attempts = 0
+for _ = 1, 40 do
+    presentation.mode = 2; api.draw({}, {}); presentation.mode = 1
+    fail_once()
+end
+before = attempts
+fail_once()
+assert(before >= 20 and attempts == before,
+    "a fault that fails every other frame is stopped by the total, not the run: " ..
+    before .. " attempts")
 print('teammate_status=pass state_label angular_size bars clamps')

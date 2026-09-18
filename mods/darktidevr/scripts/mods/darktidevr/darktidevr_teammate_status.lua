@@ -82,6 +82,7 @@ end
 function Status.install(mod, presentation)
     local api = {}
     local failed, logged = false, false
+    local consecutive_failures, total_failures = 0, 0
     local function enabled() return mod.get and mod:get("vr_teammate_status") == true end
     api.enabled = enabled
     -- The team panel's teammate panels, hidden while the status floats above
@@ -160,12 +161,32 @@ function Status.install(mod, presentation)
             end
         end
     end
+    -- The module is installed once for the session and this is the only
+    -- place a failure count is forgiven, so a mission ending must not leave
+    -- one or two failures behind to be joined by an unrelated one next
+    -- mission. Matches ammo_readout, wrist_display and holster_counts.
+    function api.destroy()
+        consecutive_failures, total_failures, failed = 0, 0, false
+    end
+    -- Three in a row is a broken display. One is a level change: a teammate
+    -- unit going away mid-draw used to take the nameplates out for the rest
+    -- of the session, with no destroy anywhere able to re-arm them.
     function api.draw(world, local_unit)
         if failed then return end
         local ok, err = pcall(draw, world, local_unit)
-        if not ok then
-            failed = true
-            mod:warning("DARKTIDEVR_TEAMMATE_STATUS error=%s", tostring(err))
+        if ok then
+            consecutive_failures = 0
+            return
+        end
+        consecutive_failures = consecutive_failures + 1
+        total_failures = total_failures + 1
+        -- The total matters as well as the run: a fault that fails every
+        -- other frame for a whole level would reset the run for ever and
+        -- warn on every bad frame.
+        failed = consecutive_failures >= 3 or total_failures >= 20
+        if total_failures <= 3 or failed then
+            mod:warning("DARKTIDEVR_TEAMMATE_STATUS error=%s consecutive=%d total=%d stopped=%s",
+                tostring(err), consecutive_failures, total_failures, tostring(failed))
         end
     end
     return api

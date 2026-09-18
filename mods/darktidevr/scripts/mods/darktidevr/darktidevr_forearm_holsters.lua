@@ -243,16 +243,27 @@ function Forearm.install(mod, presentation)
     -- size, and posed every frame.
     local UIWeaponSpawner, UIUnitSpawner
     local previews, preview_world, failed = {}, nil, false
+    local consecutive_failures, total_failures = 0, 0
     local hovered_id
     local logged_boxes = {}
     local function destroy_preview(preview)
         if preview.spawner then pcall(preview.spawner.destroy, preview.spawner) end
         if preview.unit_spawner then pcall(preview.unit_spawner.destroy, preview.unit_spawner) end
     end
-    function api.destroy()
+    -- Letting go of the world's resources, without touching the failure
+    -- count: the update path does this after a bad frame and keeps counting.
+    local function teardown()
         for index, preview in pairs(previews) do destroy_preview(preview); previews[index] = nil end
         for _, zone in ipairs(zones) do zone.grab_radius = nil end
         preview_world, hovered_id = nil, nil
+    end
+    -- Called at every level load, and the only place the failure count is
+    -- forgiven: one transient nil during a mission end used to take the
+    -- previews out for the rest of the session with nothing able to re-arm
+    -- them. Matches ammo_readout, wrist_display and holster_counts.
+    function api.destroy()
+        teardown()
+        consecutive_failures, total_failures, failed = 0, 0, false
     end
     local function item_in(unit, slot)
         local loadout = ScriptUnit.has_extension(unit, "visual_loadout_system")
@@ -577,13 +588,27 @@ function Forearm.install(mod, presentation)
             end
         end
     end
+    -- Three in a row is a broken display; one is a level change. Teardown
+    -- rather than destroy() after a bad frame, because destroy() forgives the
+    -- very count this is about to be judged on -- calling it here would mean
+    -- the display never latches, however broken it is.
     function api.update_previews(world, unit, dt, t)
         if failed then return end
         local ok, err = pcall(update_previews, world, unit, dt, t)
-        if not ok then
-            failed = true
-            api.destroy()
-            mod:warning("DARKTIDEVR_FOREARM_HOLSTERS preview_error=%s", tostring(err))
+        if ok then
+            consecutive_failures = 0
+            return
+        end
+        consecutive_failures = consecutive_failures + 1
+        total_failures = total_failures + 1
+        teardown()
+        -- The total matters as well as the run: a fault that fails every
+        -- other frame for a whole level would reset the run for ever and
+        -- warn on every bad frame.
+        failed = consecutive_failures >= 3 or total_failures >= 20
+        if total_failures <= 3 or failed then
+            mod:warning("DARKTIDEVR_FOREARM_HOLSTERS preview_error=%s consecutive=%d total=%d stopped=%s",
+                tostring(err), consecutive_failures, total_failures, tostring(failed))
         end
     end
     return api

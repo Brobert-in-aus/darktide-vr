@@ -70,4 +70,37 @@ assert(Forearm.body_models_enabled({},active,{}) and not Forearm.body_models_ena
 -- Hidden while two-handing or aiming down sights.
 assert(Forearm.hidden_for_aim(true,false) and Forearm.hidden_for_aim(false,true) and Forearm.hidden_for_aim(true,true))
 assert(not Forearm.hidden_for_aim(false,false) and not Forearm.hidden_for_aim(nil,nil))
+
+-- A display that used to switch itself off for the session. Both of these
+-- latched on the FIRST error, and nothing cleared the latch, so one transient nil -- a unit
+-- gone mid-draw, a level change caught at the wrong moment -- took the
+-- display out until the game was restarted. Three in a row is a broken
+-- display; one is a level change.
+local warnings = 0
+local stub_mod = {
+    get = function(self, key) return true end,
+    warning = function() warnings = warnings + 1 end,
+    info = function() end,
+    echo = function() end,
+}
+local presentation = {mode = 1, holsters = {frame = {}}}
+local api = Forearm.install(stub_mod, presentation)
+-- Drives the real failure path rather than an early return: the body runs and
+-- reaches for something the test has no double for, which is exactly the
+-- shape of the transient faults this counts.
+local function fail_once() api.update_previews(nil, {}, 0.016, 1) end
+fail_once()
+assert(warnings == 1, "the first failure is reported, not swallowed: " .. warnings)
+fail_once()
+assert(warnings == 2, "and the display is still trying after one failure")
+fail_once()
+assert(warnings == 3, "the third failure in a row is the one that stops it")
+fail_once()
+assert(warnings == 3, "after three in a row it stops calling, so nothing more is reported")
+-- The re-arm. This is the whole point: without it the display is gone for the
+-- session.
+assert(type(api.destroy) == "function", "a level load needs a destroy to re-arm the display")
+api.destroy()
+fail_once()
+assert(warnings == 4, "a level load forgives the count and the display tries again")
 print('forearm_holsters=pass assignment centres layout fit hover stable_up billboard hidden_for_aim zone_override request empty')

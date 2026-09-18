@@ -16298,6 +16298,7 @@ mod.on_game_state_changed = function(status, state_name)
         if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
         if presentation.wrist_display then pcall(presentation.wrist_display.destroy) end
         if presentation.forearm_holsters then pcall(presentation.forearm_holsters.destroy) end
+        if presentation.teammate_status then pcall(presentation.teammate_status.destroy) end
         if presentation.rig_scan then pcall(presentation.rig_scan.destroy) end
         if presentation.body_mirror then pcall(presentation.body_mirror.destroy) end
         if presentation.pose_trace then presentation.pose_trace.flush() end
@@ -16346,6 +16347,7 @@ mod.on_disabled = function()
     if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
     if presentation.wrist_display then pcall(presentation.wrist_display.destroy) end
     if presentation.forearm_holsters then pcall(presentation.forearm_holsters.destroy) end
+    if presentation.teammate_status then pcall(presentation.teammate_status.destroy) end
     if presentation.rig_scan then pcall(presentation.rig_scan.destroy) end
     if presentation.body_mirror then pcall(presentation.body_mirror.destroy) end
     requested = false
@@ -16373,6 +16375,7 @@ mod.on_unload = function()
     if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
     if presentation.wrist_display then pcall(presentation.wrist_display.destroy) end
     if presentation.forearm_holsters then pcall(presentation.forearm_holsters.destroy) end
+    if presentation.teammate_status then pcall(presentation.teammate_status.destroy) end
     if presentation.rig_scan then pcall(presentation.rig_scan.destroy) end
     if presentation.body_mirror then pcall(presentation.body_mirror.destroy) end
     requested = false

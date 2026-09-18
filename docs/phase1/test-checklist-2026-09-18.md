@@ -222,6 +222,26 @@ depth or swimming with the head rather than staying on the world.
 If all three look as they did yesterday, this item is done. Nothing here
 needs a report unless something looks different.
 
+### 66. Two displays that used to stay gone (nothing to do, only to notice)
+
+The teammate nameplates and the forearm weapon previews used to switch
+themselves off permanently after a single error -- a teammate unit going away
+mid-frame, a level change caught at the wrong moment -- and stayed off until
+the game was restarted. The nameplates had no way back at all.
+
+They now stop only after three errors in a row (or twenty in a level), and a
+level load gives them another chance.
+
+There is nothing to test directly; the point is what should NOT happen:
+
+- If the teammate nameplates or the forearm previews vanish mid-mission,
+  they should be back after the next level load rather than gone for the
+  session.
+- Equally, they should not flicker or come and go within a mission -- that
+  would mean the count is being forgiven when it should not be.
+
+Worth mentioning only if one of those two things happens.
+
 ## Suggested order
 
 1. In the Psykhanium with a ranged weapon: 55 and 56 together (aim, hold,

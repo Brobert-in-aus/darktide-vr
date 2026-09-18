@@ -163,16 +163,27 @@ broken today; all are the shape that dropped `exclusive_stick` for a day.
   invariant with a mutation harness (`tools/lua/mutate-hook-arity.py`).
 **Size** an afternoon; each is small on its own.
 
-### A7. Presentation: displays that switch themselves off for the session
+### A7. Presentation: displays that switch themselves off for the session — DONE
 
-Seven modules latch `failed = true` on the first error and never clear it
-(`darktidevr_ammo_readout.lua:460`, `_wrist_display.lua:196`,
-`_holster_counts.lua:130`, `_teammate_status.lua:134`,
-`_forearm_holsters.lua:584`, `_crosshair_feedback.lua:126`,
-`_melee_preview_display.lua:99`); only `weapon_charge_display` re-arms.
-One transient nil at a level change kills that display for every mission
-afterwards. Re-arm on `destroy()` and latch on three consecutive failures.
-**Size** an hour. **Risk** low.
+The list of seven was out of date by the time it was read. `ammo_readout`,
+`wrist_display` and `holster_counts` already counted failures and re-armed;
+`crosshair_feedback` and `weapon_charge_display` clear their latch when their
+source HUD element is destroyed, and `melee_preview_display` clears it when
+the option is toggled. **Two genuinely latched for the session**:
+
+- `teammate_status` stopped on the FIRST error and had **no `destroy` at
+  all**, so there was no path back short of restarting the game. It now
+  counts, and the three level-load teardown sites in `darktidevr.lua` call
+  its new `destroy`.
+- `forearm_holsters` stopped on the first error too. It has a `destroy` that
+  a level load already calls, so only the count had to be forgiven there --
+  and the bad-frame path had to stop going through `destroy`, which would
+  forgive the very count it is about to be judged on and latch nothing, ever.
+
+Both follow `ammo_readout`'s shape: three consecutive failures, or twenty in
+a level, and a good frame clears the run but not the total. Guarded by
+`tools/lua/mutate-display-rearm.py` -- six mutations, including both original
+first-error latches, all caught.
 
 ### A8. Presentation: smaller, all no-launch
 
