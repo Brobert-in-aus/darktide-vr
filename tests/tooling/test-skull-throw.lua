@@ -145,4 +145,11 @@ assert(Skull.release_velocity({{0, 0, 0, 0}, {0.01, 0, 1, 0}}, 0 / 0)[2] == 0, '
 local gapped = {{0, 0, 0, 0}, {0.9, 0, 1, 0}, {0.95, 0, 1.5, 0}, {1.0, 0, 2, 0}}
 assert(math.abs(Skull.release_velocity(gapped, 1.0)[2] - 10) < 1e-6,
     'measured across the window that is there, not back to the stale sample')
+-- One error used to switch the whole module off for the session, so a bug in
+-- the purely cosmetic bounce cost the side mirroring and the hold pose too
+-- (worn, 18 September). Three strikes, and a level load re-arms.
+assert(Skull.MAX_CONSECUTIVE_FAILURES and Skull.MAX_CONSECUTIVE_FAILURES > 1,
+  'one error does not stand the module down, got ' .. tostring(Skull.MAX_CONSECUTIVE_FAILURES))
+assert(Skull.MAX_CONSECUTIVE_FAILURES <= 10, 'but a run of them still does')
+
 print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed stock_offset lead fed_offset')

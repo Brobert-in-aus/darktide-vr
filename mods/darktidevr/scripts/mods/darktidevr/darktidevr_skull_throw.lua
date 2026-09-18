@@ -152,6 +152,10 @@ end
 -- Velocity into the surface only -- a glancing pass that is already leaving
 -- must not be flipped back into it, which is what makes a resting object
 -- jitter. 3-arrays. Pure.
+-- How many consecutive errors stand the module down. One used to, which is how
+-- a bug in the cosmetic bounce also cost the skull side mirroring and the hold
+-- pose for a whole session (worn, 18 September).
+Skull.MAX_CONSECUTIVE_FAILURES = 3
 Skull.RESTITUTION = 0.35
 Skull.FRICTION = 0.7
 function Skull.bounce(velocity, normal, restitution)
@@ -624,23 +628,54 @@ function Skull.install(mod, presentation)
         local dz = stepped[3] - from[3]
         local travelled = math.sqrt(dx * dx + dy * dy + dz * dz)
         if not finite(travelled) or travelled < 1e-4 then return stepped, next_velocity, false end
-        local ok, hits, count = pcall(PhysicsWorld.raycast, physics_world,
+        -- `closest` returns five values in this order, which is not the
+        -- table-of-hits shape the `all` mode returns:
+        --     result, hit_position, hit_distance, normal, actor
+        -- The first cut read it as a hit list and compared the POSITION
+        -- against a number -- "attempt to compare userdata with number" -- and
+        -- that error did not just lose the bounce. It propagated to the
+        -- caller's pcall, which sets `failed`, and `failed` turns this whole
+        -- module into a passthrough for the rest of the session: the throw
+        -- glitched mid-flight AND the skulls went back to their stock sides,
+        -- because the side mirroring is fed by the same module (worn, 18
+        -- September). Verified against stock: beast_of_nurgle.lua:198,
+        -- bt_beast_of_nurgle_consume_action.lua:528.
+        local ok, result, point, _, normal = pcall(PhysicsWorld.raycast, physics_world,
             Vector3(from[1], from[2], from[3]),
             Vector3(dx / travelled, dy / travelled, dz / travelled),
             travelled, "closest", "types", "statics",
             "collision_filter", "filter_player_character_shooting_raycast")
-        if not ok or not hits or (count or 0) < 1 then return stepped, next_velocity, false end
-        local hit = hits[1] or hits
-        local point = hit and (hit.position or hit[1])
-        local normal = hit and (hit.normal or hit[2])
-        if not point or not normal then return stepped, next_velocity, false end
+        if not ok or not result or not point or not normal then
+            return stepped, next_velocity, false
+        end
         local n = array(normal)
-        local bounced = Skull.bounce(next_velocity, n, Skull.RESTITUTION)
         local p = array(point)
+        if not n or not p then return stepped, next_velocity, false end
+        local bounced = Skull.bounce(next_velocity, n, Skull.RESTITUTION)
         -- Off the surface by a hair, or the next sweep starts inside it and
         -- the skull sticks.
         return {p[1] + n[1] * 0.02, p[2] + n[2] * 0.02, p[3] + n[3] * 0.02},
             bounced, true
+    end
+
+    -- The sweep is cosmetic and must never be able to take the module with it.
+    --
+    -- The caller's pcall sets `failed` on any error, and `failed` is permanent
+    -- for the session -- so a bug in a bounce cost the player their skull side
+    -- mirroring and their throw animation until they restarted. Nothing about
+    -- drawing an arc is worth that, so this swallows its own failures and
+    -- degrades to the unswept step.
+    local sweep_failures = 0
+    local function swept_step(extension, from, velocity, dt)
+        local ok, position, next_velocity, bounced =
+            pcall(sweep_free_flight, extension, from, velocity, dt)
+        if ok then return position, next_velocity, bounced end
+        sweep_failures = sweep_failures + 1
+        if sweep_failures == 1 then
+            mod:info("DARKTIDEVR_SKULL_THROW sweep_unavailable=%s", tostring(position):sub(1, 140))
+        end
+        local stepped, stepped_velocity = Skull.step(from, velocity, dt)
+        return stepped, stepped_velocity, false
     end
 
     local function place(extension, skull, record, drawn, axis, angle)
@@ -916,7 +951,7 @@ function Skull.install(mod, presentation)
         end
         local bounced
         throw.free_position, throw.free_velocity, bounced =
-            sweep_free_flight(extension, throw.free_position, throw.free_velocity, dt)
+            swept_step(extension, throw.free_position, throw.free_velocity, dt)
         if bounced and not throw.bounce_logged then
             throw.bounce_logged = true
             mod:info("DARKTIDEVR_SKULL_THROW bounced elapsed_s=%.3f speed=%.2f", elapsed,
@@ -929,7 +964,34 @@ function Skull.install(mod, presentation)
             throw.tumble_axis, throw.tumble_angle)
     end
 
-    local failed = false
+    -- One error used to switch this module off for the rest of the session,
+    -- and that is how a bug in a purely cosmetic bounce cost a player their
+    -- skull side mirroring as well as their throw (worn, 18 September). The
+    -- mirroring and the hold pose are the parts people actually rely on; the
+    -- drawn flight is decoration.
+    --
+    -- So: three strikes rather than one, and a level load gives it another
+    -- chance -- the same shape as the re-armed displays, which were switched
+    -- off permanently by a single error until 18 September for the same
+    -- reason. A run of errors still stands the module down, because a module
+    -- erroring every frame is worse than one that is off.
+    local failures, failed = 0, false
+    local function note_failure()
+        failures = failures + 1
+        if failures >= Skull.MAX_CONSECUTIVE_FAILURES then
+            failed = true
+            mod:warning("DARKTIDEVR_SKULL_THROW stood_down after=%d consecutive errors", failures)
+        end
+    end
+    local function note_success()
+        failures = 0
+    end
+    -- A level load re-arms it: whatever the errors were about is gone with the
+    -- world they happened in.
+    function api.rearm()
+        if failed then mod:info("DARKTIDEVR_SKULL_THROW rearmed=level_load") end
+        failures, failed = 0, false
+    end
     local function hook_class(class)
         if not class or logged[class] then return end
         logged[class] = true
@@ -959,7 +1021,7 @@ function Skull.install(mod, presentation)
                     -- Taken back at once: the stock update then runs unfed.
                     pcall(unfeed, undo)
                     undo = {tables = {}}
-                    failed = true
+                    note_failure()
                     mod:warning("DARKTIDEVR_SKULL_THROW feed_error=%s", tostring(feed_err))
                 end
             end
@@ -971,9 +1033,11 @@ function Skull.install(mod, presentation)
             if failed then pcall(unplace_all); return end
             local ok_after, after_err = pcall(after_movement, self, unit, record, thrower, following, name, t)
             if not ok_after then
-                failed = true
+                note_failure()
                 pcall(unplace_all)
                 mod:warning("DARKTIDEVR_SKULL_THROW error=%s", tostring(after_err))
+            else
+                note_success()
             end
         end)
     end
@@ -984,6 +1048,11 @@ function Skull.install(mod, presentation)
 
     function api.destroy()
         pcall(unplace_all)
+        -- The teardown between levels is also the re-arm: whatever the errors
+        -- were about went with the world they happened in, and standing the
+        -- module down for the rest of the SESSION costs the side mirroring and
+        -- the hold pose, which are the parts people rely on.
+        api.rearm()
         pending = nil; throw = nil; heading_state = nil; shared = nil; shared_t = nil; held_until = nil
     end
     return api
