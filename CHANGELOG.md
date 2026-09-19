@@ -4,7 +4,7 @@ All notable user-facing changes to Darktide VR. Versions follow
 `major.minor.patch` with a pre-release suffix while the mod is in alpha; the
 runtime package records the exact source revision alongside the version.
 
-## Unreleased
+## 0.3.0-alpha.1 (19 September 2026)
 
 Since 0.2.0-alpha.1. Everything called experimental is off until you turn it
 on in the mod's settings; the rest applies to everyone.
@@ -33,8 +33,8 @@ on in the mod's settings; the rest applies to everyone.
   The hand buzzes faintly while it is open.
 - **Weapon charge display.** A melee weapon's special charges as a count, as
   the HUD's bars, or neither, drawn beside the weapon.
-- **Aim zoom.** The world comes 12 per cent closer while you aim down the
-  sights, eased in and out; 0 to 30 per cent, or 0 to turn it off.
+- **Aim zoom.** The world comes a little closer while you aim down the
+  sights, eased in and out: 5 per cent by default, 0 to 30, 0 to turn it off.
 
 ### New shortcut
 
@@ -72,6 +72,11 @@ on in the mod's settings; the rest applies to everyone.
   than stepping at the game's fixed update rate; anything drawn on the
   body, cloth and lenses included, stops wobbling with them.
 
+- The item radial stays open while you hold its control with a gun out, and
+  reaching for an interaction works again while a weapon is wielded.
+- The push-to-talk zone at your mouth is a third smaller, so it no longer
+  opens with a hand merely near your face.
+
 ### Known issues
 
 - Cloth on the full body can jiggle.
@@ -80,10 +85,6 @@ on in the mod's settings; the rest applies to everyone.
 - The F8 mirror's legs are not mirrored left for right.
 - A skull thrown away from its target arrives a moment after the real
   attack begins there.
-- The item radial stays open while you hold its control with a gun out, and
-  reaching for an interaction works again while a weapon is wielded.
-- The push-to-talk zone at your mouth is a third smaller, so it no longer
-  opens with a hand merely near your face.
 
 ### Built, tried and withdrawn
 

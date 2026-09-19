@@ -1,5 +1,5 @@
-# Nexus Mods page text (12 September 2026; the feature list and the draft
-# notes below updated 18 September, for the release after 0.2.0-alpha.1)
+# Nexus Mods page text (12 September 2026; the feature list and the notes
+# below updated 19 September for 0.3.0-alpha.1)
 
 Paste-ready sections for the Nexus page. Keep the claims in step with
 USER-GUIDE.md; anything not listed under "What works" has not been checked
@@ -35,7 +35,8 @@ like any other Darktide mod and is launched through Steam as usual.
 - Experimental: seated keyboard and mouse play (see below); two-hand gun
   support with a virtual stock; holsters above the gun hand's forearm;
   ammo, health and teammate status in the world; controller vibration; your
-  character's own body under you, with its arms solved to your controllers;
+  character's own body under you, its legs on the game's animation and its
+  arms solved to your controllers;
   grabbing and throwing the flamethrower servo skull; an item radial at your
   hand; push to talk by bringing a hand to your mouth; a melee weapon's
   charges at the hand; and a small zoom while you aim down the sights.
@@ -105,12 +106,11 @@ the Psykhanium and part of a mission.
 - Optional: Custom HUD (continued), for HUD layout editing (tested with
   2.1.6; the original Custom HUD is untested).
 
-## Changelog post: the next release (draft, not published)
+## Changelog post: 0.3.0-alpha.1 (19 September 2026)
 
-Written 18 September and brought up to date on 19 September from what has
-actually changed since 0.2.0-alpha.1. Keep it in step with the Unreleased
-section of `CHANGELOG.md`, which carries the same text in full; this is the
-shortened form for the page.
+Written 18 September and brought up to date on 19 September from what
+changed since 0.2.0-alpha.1. `CHANGELOG.md`'s 0.3.0-alpha.1 section carries
+the same text in full; this is the shortened form for the page.
 
 **New, each experimental and off until you turn it on:** your character's
 full body under you, scaled from your calibration, its legs running the
