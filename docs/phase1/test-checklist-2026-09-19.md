@@ -1143,6 +1143,29 @@ it properly rather than sneak it in.
 
 ---
 
+### 1ag. Worn at 19:10 ("no change"): the held layout spun about the parts' mean, so the root's turning swung the skull
+
+The 19:10 log's `DARKTIDEVR_SKULL_GRAB_DRAWN` rows carried the unit's world
+box (`Unit.box`) against the placed centre and the root. Neither distance
+held: 0.035 to 0.234 m from the centre, 0.086 to 0.311 m from the root. A
+mesh on the root would keep a constant root distance, so the mesh is on the
+children this module moves, and what moved it off the centre is the layout.
+
+The placement laid each part at its rest offset in the root's frame and spun
+the set about the parts' mean, which puts the set's centre at the drawn
+point plus the root's rotation times the mean rest offset. The game keeps
+turning the root while the skull is held, and that term swings the skull
+around the drawn point by up to twice the mean offset. The grab now asks
+for the pivot at the drawn point (`Skull.GRAB_PIVOT`), so each part is the
+drawn point plus the wanted rotation times its rest offset and nothing of
+the root's rotation is left (`Skull.rigid_part`, tested; the test's source
+scan requires the grab's call and the placement's branch).
+
+The probe row now ends `in_hand=x,y,z parts_mean_m=`: the box centre in the
+hand joint's frame, and the mean rest offset. Locked to the palm is three
+`in_hand` numbers that do not move while held; `parts_mean_m` is the swing
+the old pivot left in. Not worn. The flight's tumble keeps the mean pivot.
+
 ## 2. The torso turning faster than your head
 
 This one is arithmetic rather than a theory, which is a change from the last

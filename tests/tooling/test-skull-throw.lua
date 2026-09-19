@@ -169,4 +169,32 @@ do
   assert(Skull.GRAB_HOLD_MIN < Skull.GRAB_RADIUS + 0.05 and Skull.GRAB_HOLD_MAX > Skull.GRAB_HOLD_MIN, 'the held distance brackets the skull')
 end
 
-print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed stock_offset lead fed_offset axis_angle')
+-- The held layout (19:10 worn run, "no change": the unit's world box held
+-- its distance to neither the placed centre nor the root, so the mesh is on
+-- the children and the layout was wrong). A rigid part is the drawn point
+-- plus the part's rest offset spun by the wanted delta, and nothing else:
+-- two parts that differ in rest offset keep their separation under any
+-- spin, and a part with no rest offset sits on the drawn point whatever
+-- the spin. The placement's grab call has to ask for that pivot, and the
+-- placement has to honour it, or the parts spin about their mean and the
+-- root's turning swings them (the source scan below).
+do
+  local quarter = function(v) return {-v[2], v[1], v[3]} end
+  local a = Skull.rigid_part({1, 2, 3}, {0.1, 0, 0}, quarter)
+  local b = Skull.rigid_part({1, 2, 3}, {0, 0.1, 0}, quarter)
+  near(a[1], 1, 'x spun to y') near(a[2], 2.1, 'the offset is spun') near(a[3], 3, 'z untouched')
+  local sep = math.sqrt((a[1] - b[1]) ^ 2 + (a[2] - b[2]) ^ 2 + (a[3] - b[3]) ^ 2)
+  near(sep, math.sqrt(0.02), 'the parts keep their separation under the spin')
+  local o = Skull.rigid_part({1, 2, 3}, {0, 0, 0}, quarter)
+  near(o[1], 1) near(o[2], 2) near(o[3], 3, 'a part with no offset is the drawn point')
+  local u = Skull.rigid_part({1, 2, 3}, {0.1, 0, 0}, nil)
+  near(u[1], 1.1, 'no spin, the rest offset as is')
+  assert(Skull.GRAB_PIVOT ~= nil, 'the held pivot is named')
+  local source = assert(io.open(arg[1], 'rb')):read('*a')
+  local grab_call = source:find('or nil, angle, Skull%.GRAB_PIVOT%)', 1)
+  assert(grab_call, 'the grab places its parts with the drawn-point pivot')
+  assert(source:find('pivot_mode == Skull%.GRAB_PIVOT then%s+pivot = local_offset', 1),
+    'the placement spins about the drawn point when asked')
+end
+
+print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed stock_offset lead fed_offset axis_angle rigid_part')

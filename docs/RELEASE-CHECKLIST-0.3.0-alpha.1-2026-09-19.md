@@ -66,8 +66,11 @@ checklist:
   unconfirmed since the camera fix; the rest was confirmed at 17:40.
 - The servo skulls do not flicker (`d_skull_rel_eye_m` near zero).
   Confirmed at 15:50.
-- The flamer skull grab: hand on its side, turning with the hand, throw
-  still works (`grabbed offset_m` logged). Not worn yet.
+- The flamer skull grab: locked to the palm where grabbed, turning with the
+  hand, throw still works (`DARKTIDEVR_SKULL_GRAB_DRAWN ... in_hand=` holds
+  three constant numbers while held). Worn "no change" at 19:10 on the
+  probe build; the held layout's pivot changed after (test-checklist 1ag),
+  not worn.
 - Cloth on the body: still jiggles as of 17:15. Either it settled with the
   smooth anchor and the calibrated camera, or it ships as a known issue.
 

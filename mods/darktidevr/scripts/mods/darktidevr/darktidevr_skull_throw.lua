@@ -40,6 +40,27 @@ Skull.GRAB_HOLD_MIN, Skull.GRAB_HOLD_MAX = 0.10, 0.16
 -- The grip: the skull's centre this far along the fingers from the wrist,
 -- on the palm side at GRAB_RADIUS.
 Skull.GRAB_PALM_FORWARD = 0.06
+-- THE HELD LAYOUT SPINS ABOUT THE DRAWN POINT, NOT THE PARTS' MEAN (19:10
+-- worn run, "no change", with the unit's world box 3.5 to 23 cm from the
+-- placed centre and 9 to 31 cm from the root -- on neither, so on the
+-- children, laid out wrong). The placement puts each part at its rest
+-- offset in the ROOT's frame and spins the set about the parts' mean, so
+-- the set's centre lands at the drawn point plus the root's rotation times
+-- the mean rest offset; the game keeps turning the root while it is held,
+-- and that term swings the skull around the drawn point. With the pivot at
+-- the drawn point every part is drawn point plus the WANTED rotation times
+-- its rest offset: nothing of the root's rotation is left in the layout.
+Skull.GRAB_PIVOT = "drawn"
+
+-- Where a part goes for a rigid placement, in the root's frame: the drawn
+-- point (already in the root's frame) plus the part's rest offset spun by
+-- the delta that takes the root's rotation to the wanted one. `rotate` is
+-- the caller's rotation of a 3-vector. Pure; the flight keeps its mean
+-- pivot, this is the held one.
+function Skull.rigid_part(drawn_local, base, rotate)
+    local spun = rotate and rotate(base) or base
+    return {drawn_local[1] + spun[1], drawn_local[2] + spun[2], drawn_local[3] + spun[3]}
+end
 
 -- A rotation's axis (3-array, unit) and angle from quaternion elements, for
 -- the placement's world axis and angle; nil axis and zero angle for the
@@ -737,7 +758,7 @@ function Skull.install(mod, presentation)
         if Vector3.length(lag) > 0.5 then return nil end
         return {Vector3.x(lag), Vector3.y(lag), Vector3.z(lag)}
     end
-    local function place(extension, skull, record, drawn, axis, angle)
+    local function place(extension, skull, record, drawn, axis, angle, pivot_mode)
         record.nodes = record.nodes or child_nodes(skull)
         record.base, record.written = record.base or {}, record.written or {}
         local root_pose = Unit.world_pose(skull, 1)
@@ -756,9 +777,15 @@ function Skull.install(mod, presentation)
                 if not spun then rotation = nil end
             end
         end
-        -- The centre to spin about: the mean of where the parts are going.
+        -- The centre to spin about: the mean of where the parts are going
+        -- for the flight; for the grab (Skull.GRAB_PIVOT) the drawn point
+        -- itself, which makes each part drawn + wanted * rest offset, the
+        -- same as Skull.rigid_part, with none of the root's rotation left
+        -- in the layout.
         local pivot, counted = Vector3(0, 0, 0), 0
-        if rotation then
+        if rotation and pivot_mode == Skull.GRAB_PIVOT then
+            pivot = local_offset
+        elseif rotation then
             for _, node in ipairs(record.nodes) do
                 local base = record.base[node]
                 if base then pivot = pivot + base:unbox() + local_offset; counted = counted + 1 end
@@ -1135,7 +1162,7 @@ function Skull.install(mod, presentation)
                     local x, y, z, w = Quaternion.to_elements(delta)
                     local axis, angle = Skull.axis_angle(x, y, z, w)
                     place(extension, skull, record.bridge_nodes, {Vector3.x(centre), Vector3.y(centre), Vector3.z(centre)},
-                        axis and Vector3(axis[1], axis[2], axis[3]) or nil, angle)
+                        axis and Vector3(axis[1], axis[2], axis[3]) or nil, angle, Skull.GRAB_PIVOT)
                     grabbed = true
                     -- THE GRAB PROBE (18:40 worn run, "nope, still wrong"
                     -- after the wrist origin; the captured grip still lies
@@ -1190,15 +1217,32 @@ function Skull.install(mod, presentation)
                             -- that keeps its distance to the placed centre
                             -- is a mesh on the children; one that keeps its
                             -- distance to the root is a mesh on the root.
+                            -- (19:10 worn run: the box centre held neither
+                            -- distance -- 3.5 to 23 cm from the centre, 9 to
+                            -- 31 cm from the root -- so it is on the children
+                            -- and the layout was the fault; Skull.GRAB_PIVOT.)
+                            -- THE LOCK ITSELF: the box centre in the hand
+                            -- joint's frame. Locked to the palm means these
+                            -- three numbers do not move while held, whatever
+                            -- the hand does. parts_mean_m is the rest layout's
+                            -- mean offset, the swing the old pivot left in.
                             local box_text = "na"
                             local ok_ubox, ubox_pose, ubox_half = pcall(Unit.box, skull)
                             if ok_ubox and ubox_pose then
                                 local b = Matrix4x4.translation(ubox_pose)
-                                box_text = string.format("%.3f,%.3f,%.3f to_centre=%.3f to_root=%.3f half=%.2f,%.2f,%.2f", Vector3.x(b), Vector3.y(b), Vector3.z(b),
+                                local in_hand = Matrix4x4.transform(Matrix4x4.inverse(hand_pose), b)
+                                box_text = string.format("%.3f,%.3f,%.3f to_centre=%.3f to_root=%.3f half=%.2f,%.2f,%.2f in_hand=%.3f,%.3f,%.3f", Vector3.x(b), Vector3.y(b), Vector3.z(b),
                                     Vector3.distance(b, centre), Vector3.distance(b, root),
-                                    ubox_half and Vector3.x(ubox_half) or -1, ubox_half and Vector3.y(ubox_half) or -1, ubox_half and Vector3.z(ubox_half) or -1)
+                                    ubox_half and Vector3.x(ubox_half) or -1, ubox_half and Vector3.y(ubox_half) or -1, ubox_half and Vector3.z(ubox_half) or -1,
+                                    Vector3.x(in_hand), Vector3.y(in_hand), Vector3.z(in_hand))
                             end
-                            mod:info("DARKTIDEVR_SKULL_GRAB_DRAWN gear=%s meshes=%s unit_box=%s", gear_text, table.concat(meshes, " "), box_text)
+                            local mean, counted = Vector3(0, 0, 0), 0
+                            for _, node in ipairs(record.bridge_nodes.nodes or {}) do
+                                local base = record.bridge_nodes.base and record.bridge_nodes.base[node]
+                                if base then mean = mean + base:unbox(); counted = counted + 1 end
+                            end
+                            mod:info("DARKTIDEVR_SKULL_GRAB_DRAWN gear=%s meshes=%s unit_box=%s parts_mean_m=%.3f", gear_text, table.concat(meshes, " "), box_text,
+                                counted > 0 and Vector3.length(mean / counted) or -1)
                         end)
                     end
                 else
