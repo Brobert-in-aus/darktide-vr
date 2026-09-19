@@ -884,19 +884,19 @@ function Mirror.install(mod, presentation, options)
         end)
         if not ok then
             state.machine = nil
-            -- The fallback keeps the spawner's own machine RUNNING and the
-            -- render boundary restores every joint over it (state.restore_all):
-            -- the gait has the legs, and the skin is refreshed every frame
-            -- by an animation update the copy has not had since its machine
-            -- was disabled at ready. That is the test of the one thing the
-            -- measurements cannot see -- 9,196 render checks with no drift,
-            -- every placed quantity smooth, and the drawn body still
-            -- alternating -- which is the skinning.
-            state.restore_all = true
+            -- The machine was enabled above for the attempt; it goes off
+            -- again, and the gait has the legs. The 13:20 worn run decided
+            -- what a running machine does to this copy: with the spawner's
+            -- idle left running and the whole solved pose written back at
+            -- the render boundary, the drawn body stood in the idle, still,
+            -- with no hand tracking, while the scene graph held the solve
+            -- (17,369 render checks, no drift). Joint poses written after
+            -- the world update do not reach the skin of a unit whose
+            -- machine is running; they must go in before it (see
+            -- api.run_scheduled).
+            pcall(Unit.disable_animation_state_machine, state.unit)
             log_once("machine_" .. tostring(wielded_template and wielded_template.name), "animated_legs=failed error=%s",
                 tostring(err):sub(1, 220))
-        else
-            state.restore_all = nil
         end
         return ok
     end
@@ -964,20 +964,13 @@ function Mirror.install(mod, presentation, options)
         if state.render_check.stamp == state.checked_stamp then skip("already_checked"); return end
         state.checked_stamp = state.render_check.stamp
         local unit = state.unit
-        -- ANIMATED LEGS: the engine's animation update has run since this
-        -- module's update and written every joint of the copy. The legs
-        -- are its; everything else goes back to the solve, and the drift
-        -- compare below then measures what is left after that. Once, per
-        -- frame.
-        if (state.machine or state.restore_all) and state.solved and state.solved_stamp == state.render_check.stamp and
-                state.restored_stamp ~= state.render_check.stamp then
-            state.restored_stamp = state.render_check.stamp
-            local ok = pcall(function()
-                for index, box in pairs(state.solved) do Unit.set_local_pose(unit, index, box:unbox()) end
-                World.update_unit(world, unit)
-            end)
-            if not ok then log_once("restore", "animated_legs=restore_failed") end
-        end
+        -- Nothing is written here any more. Until 13:20 on 19 September the
+        -- animated-legs mode put its solved joints back over the machine's
+        -- at this boundary; the worn run showed the drawn body ignoring
+        -- them (it stood in the idle while these reads held the solve), so
+        -- a write here cannot reach the skin, and this is a read-only check
+        -- of what the engine's own world update did to the copy since the
+        -- module posed it before that update.
         local root = array(Unit.world_position(unit, 1))
         local hand = array(Unit.world_position(unit, Unit.node(unit, "j_righthand")))
         local d_root = Mirror.step_m(root, state.render_check.root) or 0
@@ -1558,19 +1551,20 @@ function Mirror.install(mod, presentation, options)
             -- snapshot and restore), and the machine if a weapon is known.
             -- The machine is not enabled on the copy until it is assigned:
             -- until then the spawner's disabled idle stays frozen.
-            state.machine, state.leg_indices, state.restore_all = nil, nil, nil
+            state.machine, state.leg_indices = nil, nil
             if Mirror.MODES[mode_name].animated_legs and state.legs then
                 local roots = {[state.legs.left.hip] = true, [state.legs.right.hip] = true}
                 state.leg_indices = Mirror.leg_indices(state.count,
                     function(index) return Unit.scene_graph_parent(unit, index) end, roots)
-                -- The machine is enabled again from here on whatever
-                -- happens: the gameplay one if it can be set, the spawner's
-                -- portrait idle otherwise, with every joint restored at the
-                -- render boundary in either case.
-                pcall(Unit.enable_animation_state_machine, unit)
-                if not assign_machine() then state.restore_all = true end
-                mod:info("DARKTIDEVR_BODY_MIRROR animated_legs=ready machine=%s restore_all=%s leg_joints=%d",
-                    tostring(state.machine), tostring(state.restore_all == true),
+                -- The gameplay machine if it can be set (assign_machine
+                -- enables the machine for the attempt and disables it again
+                -- when the engine refuses); the gait otherwise. Nothing is
+                -- restored at the render boundary any more: the 13:20 worn
+                -- run showed that joints written after the world update are
+                -- not drawn over a running machine.
+                assign_machine()
+                mod:info("DARKTIDEVR_BODY_MIRROR animated_legs=ready machine=%s leg_joints=%d",
+                    tostring(state.machine),
                     (function() local n = 0; for _ in pairs(state.leg_indices) do n = n + 1 end; return n end)())
             end
             -- Deferred: see hide_near_eye. The scale eases over about a
@@ -1869,23 +1863,6 @@ function Mirror.install(mod, presentation, options)
             -- which increments after this point.
             state.render_check.stamp = (state.render_check.stamp or 0) + 1
         end
-        -- ANIMATED LEGS: the solved pose of every joint that is not a leg
-        -- (the root and the hips included), boxed, so the render boundary
-        -- can put it back over what the copy's state machine writes after
-        -- this update. The legs are the machine's. Boxes are reused.
-        if (state.machine and state.leg_indices) or state.restore_all then
-            state.solved = state.solved or {}
-            -- Every joint in the fallback; every joint but the legs when the
-            -- gameplay machine has them.
-            local keep = (state.machine and state.leg_indices) or {}
-            for index = 1, state.count do
-                if not keep[index] then
-                    local pose = Unit.local_pose(unit, index)
-                    if state.solved[index] then state.solved[index]:store(pose) else state.solved[index] = Matrix4x4Box(pose) end
-                end
-            end
-            state.solved_stamp = state.render_check and state.render_check.stamp
-        end
         if Mirror.MODES[mode_name].reflect then
             -- Posed on the player; now turned about them and stood ahead.
             local root = Unit.local_position(unit, 1)
@@ -2144,6 +2121,42 @@ function Mirror.install(mod, presentation, options)
         -- After the overlay, whose final wrist poses the reflection's arms
         -- are solved to this frame.
         if reflection then reflection.update(world, avatar, dt, t) end
+    end
+    -- WHEN THE COPY IS POSED (19 September, from the 13:20 worn run). The
+    -- frame, from the game's own source (state_game.lua, world_manager.lua,
+    -- script_world.lua): the gameplay update, then the world update
+    -- (World.update_animations, then World.update_scene), then the
+    -- extensions' post_update -- where the hands, the weapon and this copy
+    -- were all placed -- then the render. The weapon is a rigid unit and
+    -- the gloves of the hands-only mode move only their unit's root; both
+    -- are steady. This copy has its joints written every frame, and the
+    -- drawn body alternated between two positions while the scene graph
+    -- (17,369 render checks) never did. The 13:20 run pinned the stage:
+    -- with a machine running on the copy and the solve written after the
+    -- world update, in post_update and again at the render boundary, the
+    -- drawn body stood in the machine's idle. Joint writes after the world
+    -- update do not reach the skin that frame; the engine's own animation
+    -- and scene update is what carries joints to the skin, and the game
+    -- writes its own procedural joints before it (the scripted flying
+    -- extension's update, not its post_update). So the copy is posed BEFORE
+    -- the world update now: post_update only records the frame's inputs
+    -- (schedule), and the world manager's update hook runs the pose from
+    -- them (run_scheduled) ahead of World.update_animations. The inputs are
+    -- the previous post_update's -- the avatar's root, the recorded wrist
+    -- poses -- one frame old, which the camera's own anchor (the avatar's
+    -- root as it stands in the gameplay update) shares. Observable: the
+    -- worn report and a recording; the probe and render check keep running.
+    local scheduled = {}
+    function api.schedule(world, avatar, dt, t)
+        scheduled.world, scheduled.avatar, scheduled.dt, scheduled.t = world, avatar, dt, t
+        scheduled.pending = true
+    end
+    function api.run_scheduled(dt, t)
+        if not scheduled.pending then return false end
+        scheduled.pending = false
+        api.update(scheduled.world, scheduled.avatar,
+            type(dt) == "number" and dt or scheduled.dt, type(t) == "number" and t or scheduled.t)
+        return true
     end
     return api
 end

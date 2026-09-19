@@ -626,6 +626,116 @@ same frame or a frame late, which no log line can.
 twenty-degree knee and the zero toe constant in: "no change" is a report
 on the gait as it now stands, and the recording covers it too.
 
+## Worn, 13:20: the body stood in the idle, and that named the stage
+
+The run on 88269cc, with the recording asked for in item 1l. The user:
+"My character model was broken this run - no hand tracking and was
+completely still, but the mirror model still moved." Then: "hands do
+flicker, it's only weapons that don't", and "the hands flicker even though
+the gloves in hand-only mode didn't flicker (though they did when first
+implemented)".
+
+The log:
+
+```
+animated_legs=failed error=...had_machine=true set:AnimationStateMachine `#ID[178cfbef0b6a177a]` does not exist blend:AnimationStateMachine `#ID[178cfbef0b6a177a]` does not exist
+animated_legs=ready machine=nil restore_all=true leg_joints=24
+prerender calls=183600 checks=17369 drifted=0 skipped=no_copy=27379,other_world=138851
+```
+
+Both engine calls refused the gameplay machine on a unit that had one
+(`had_machine=true`), so the fallback ran: the spawner's portrait idle
+left running on the copy, and the whole solved pose written back over it
+at the render boundary. The render check read the solve at that boundary
+17,369 times with no drift. And the user saw the idle: a still body with
+no hand tracking. **The scene graph held the solve and the skin showed the
+machine.** That is a measurement of the one stage Lua could not read:
+joint poses written after the world update, in post_update and again at
+the render boundary, do not reach the drawn skin of a unit whose machine
+is running.
+
+The reflection (the second copy, the mirror toggled at 03:20:11 UTC),
+which has no animated-legs mode and so no running machine, moved.
+
+### The frame, from the game's source
+
+`state_game.lua`: `StateGame.update` runs the gameplay state machine
+(`self._sm:update`) and then `Managers.world:update`; `StateGame.post_update`
+runs `self._sm:post_update`, which is where `GameplayStateRun.post_update`
+calls `Managers.state.extension:post_update()`; then `StateGame.render`.
+`world_manager.lua`: `WorldManager.update` calls `ScriptWorld.update` on
+every world, which is `World.update_animations` and then
+`World.update_scene` (`script_world.lua`). So the order each frame is:
+gameplay update, animation update, scene update, extension post_update,
+render.
+
+The hands, the weapon and this copy were all placed in
+`PlayerUnitLocomotionExtension.post_update`: after the animation and
+scene update. The weapon is a rigid unit; the gloves of the hands-only
+mode move only their unit's root (`place_rigid_hand` in the body proxy
+sets the root's position and rotation so the hand joint lands on the
+target); both are steady. The copy has its joints written every frame,
+and only the copy alternates. The game's own procedural joint writes on an
+animated unit (`scripted_flying_animation_extension.lua`,
+`Unit.set_local_rotation` on a named node) are made in the extension's
+`update`, before the world update, never in `post_update`.
+
+### The change: posed before the world update
+
+`darktidevr.lua`: the locomotion post_update hook now records the frame's
+inputs (`body_mirror.schedule(world, avatar, dt, t)`), and a hook on
+`WorldManager.update` runs the pose (`body_mirror.run_scheduled(dt, t)`)
+before `World.update_animations` and `World.update_scene`. The copy's
+joints therefore travel to the skin the same way every animated unit's
+do. The inputs are the previous post_update's: the avatar's root and the
+recorded wrist poses, one frame old. The camera's own anchor is the
+avatar's root as it stands in the gameplay update, so the copy and the
+view share that timeline; the wrist poses are one tracking sample behind
+the weapon's, which at a metre a second is about 9 mm.
+
+The machine experiment is withdrawn: `assign_machine` disables the machine
+again when the engine refuses it, nothing is restored at the render
+boundary, and the render check is a read-only compare of what the world
+update did to the copy since it was posed. The animated-legs design as
+written (gameplay clips on the legs, the solve restored over the rest at
+the render boundary) cannot work: the restore is not drawn. If the legs
+are to have the game's clips, the upper body has to be written between
+the animation update and the scene update, which is what
+`World.update_animations_with_callback` exists for; the game does not use
+it, and its semantics are not known from source.
+
+### The recording, measured
+
+Two headset recordings (13:20:40 and 13:21:00 local, 30 fps, 1920×1080).
+The reflection's horizontal position was tracked frame to frame against
+the background by phase correlation of column sums, on a crop centred on
+the red mask of its coat:
+
+| segment | reflection minus background, residual vs 5-frame median |
+|---|---|
+| walking toward it, frames 15–80 | mean 0.09 px, p90 0.17 px, max 1.8 px |
+| standing, frames 150–240 | mean 0.32 px, p90 0.86 px |
+| second recording, frames 40–120 | mean 0.39 px, p90 0.88 px |
+
+A one-frame lag alternating at 113 Hz while walking at 2 m/s is 17 mm; at
+the reflection's distance in those frames that is about 3 px of 960. The
+residual is a tenth of that. But the walking in both recordings is toward
+the reflection, which moves it vertically and in scale, not sideways, so
+this measurement is not sensitive to the alternation and decides nothing
+about it. A recording of a sideways pass would.
+
+### What the probe's eye column is
+
+`d_eye_m` alternates between 0 and about 39 mm on moving frames (5,203 of
+9,432 moving frames under 2 mm, 4,172 over 20 mm, 46% of consecutive
+pairs a 0/step pair). It is `presentation.eye_pose`, the tracked eye as
+last stored, anchored to the body anchor; the store happens at the
+tracking sample rate, not per frame. The rendered camera's position is
+`body_camera_anchor`, which is the avatar's root plus a fixed local eye
+offset, and the avatar's root is interpolated by the game every frame
+(`d_avatar_m` smooth). The column measures the sample cadence, not the
+camera, and is not the flicker.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows

@@ -12517,7 +12517,10 @@ mod:hook_safe(
             presentation.rig_scan.update(self._world, player_unit, dt, t)
         end
         if presentation.body_mirror then
-            presentation.frame_profile.section("draw.body_mirror", presentation.body_mirror.update, self._world, player_unit, dt, t)
+            -- Recorded here, posed before the next world update (the
+            -- WorldManager.update hook below): joints written after the
+            -- world update do not reach the drawn skin (13:20, 19 September).
+            presentation.body_mirror.schedule(self._world, player_unit, dt, t)
         end
         if presentation.pose_trace then
             presentation.pose_trace.sample(player_unit, t)
@@ -14935,13 +14938,28 @@ end
 -- Level stories can animate the menu camera after UIWorldSpawner.update. Copy
 -- the final primary pose at the last reliable boundary before the world is
 -- submitted, so the duplicate cannot lag or remain at its creation pose.
+-- The body copy is posed here, before World.update_animations and
+-- World.update_scene run for the frame (WorldManager.update is what calls
+-- ScriptWorld.update on every world). Its inputs were recorded in the
+-- locomotion extension's post_update. The engine's own animation and scene
+-- update is the path that carries joint poses to the drawn skin: written
+-- after it, in post_update, the copy's joints reached the skin on some
+-- frames and not others (the alternation reported all day), and over a
+-- running machine they never did (13:20, 19 September). The weapon and the
+-- rigid gloves move only a unit root and never had the problem.
+mod:hook(require("scripts/foundation/managers/world/world_manager"), "update", function(func, self, dt, t)
+    if presentation.body_mirror and presentation.body_mirror.run_scheduled then
+        presentation.frame_profile.section("pre.body_mirror", presentation.body_mirror.run_scheduled, dt, t)
+    end
+    return func(self, dt, t)
+end)
+
 mod:hook(ScriptWorld, "render", function(func, world, ...)
     if presentation.render_world_census then presentation.render_world_census.observe(world) end
     if presentation.hud_panel then presentation.hud_panel.observe_render(world) end
     -- The drawn body at the render boundary, after the engine's own world
-    -- update: in the animated-legs mode it puts its solved upper body back
-    -- over what the copy's own state machine wrote, and in every mode it
-    -- checks whether anything moved the copy since its update
+    -- update: a read-only check of whether anything moved the copy since it
+    -- was posed before that update
     -- (darktidevr_body_mirror, 19 September). At the top of the hook, for
     -- every world: the 12:22 worn run had it inside the native-capture
     -- branch below, which this configuration never takes, so zero checks

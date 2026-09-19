@@ -410,6 +410,47 @@ any `animated_legs=failed` line from the log, which say which of the two
 paths ran; whether the legs walk from the game's cycles if the machine
 took; and the float.
 
+### 1m. Worn at 13:20: the still body named the stage; the copy is now posed before the world update
+
+Your report: the character model was still with no hand tracking while
+the reflection moved; the hands flicker and only the weapons do not; the
+gloves of the hands-only mode do not flicker now though they did at first.
+
+The log for that run: both engine calls refused the gameplay machine
+(`had_machine=true ... does not exist`), so the experiment ran: the
+spawner's idle left running on the copy and the whole solved pose written
+back at the render boundary. The render check read the solve there 17,369
+times with no drift, and you saw the idle. The scene graph held the solve
+and the skin showed the machine. That is the measurement that was
+missing: joint poses written after the world update do not reach the
+drawn skin.
+
+The frame, from the game's source: gameplay update, then the world update
+(animations, then scene), then the extensions' post_update, then render.
+The hands, the weapon and the copy were all placed in post_update. The
+weapon is rigid and the gloves move only their unit's root; the copy has
+its joints written, and the copy is the one that alternates. The game
+writes its own procedural joints before the world update, never after.
+
+**The change.** The copy is posed before the world update now: post_update
+records the frame's inputs and a hook on the world manager's update poses
+the copy from them ahead of the animation and scene update, so its joints
+reach the skin the way every animated unit's do. The inputs are one frame
+old (the avatar's root, the recorded wrist poses), which the camera's own
+anchor shares; the copy's hands trail the weapon by one tracking sample,
+about 9 mm at a metre a second. The machine experiment is withdrawn: the
+machine is disabled again when the engine refuses it, nothing is restored
+at the render boundary.
+
+**What decides it.** Your report of the body while walking, and the log:
+`animated_legs=ready machine=nil leg_joints=24` (the gait), the
+`prerender calls=... checks=... drifted=...` line (now a read-only check
+of what the world update did to the copy after it was posed; drift there
+would be new information), and the probe as before. If you record again,
+walk **sideways** past the reflection: both recordings walked toward it,
+and forward motion moves it in scale, not across the floor plates, so
+those recordings could not show an alternation either way.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not
