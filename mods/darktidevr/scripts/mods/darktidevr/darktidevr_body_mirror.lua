@@ -725,6 +725,14 @@ function Mirror.install(mod, presentation, options)
     -- error); api.destroy also takes the reflection's down.
     local destroy_own
     local logged = {}
+    -- Forward declarations. The api functions defined above the helpers
+    -- (assign_machine, check_before_render) close over these; without the
+    -- declaration a call resolved to a nil GLOBAL, and at ready on 19
+    -- September (12:52) that took the whole module down for the session:
+    -- the copy was destroyed and the worn run looked at the headless stock
+    -- fallback instead. test-body-mirror.lua refuses a helper used above
+    -- its declaration now.
+    local log_once, array, vector
     local mirror_toggled = false
     -- Polled like the other modules' test flags: a failed open on the main
     -- thread every frame is where these modules' spikes came from
@@ -949,7 +957,7 @@ function Mirror.install(mod, presentation, options)
         destroy_own()
         if reflection then reflection.destroy() end
     end
-    local function log_once(key, format, ...)
+    function log_once(key, format, ...)
         if logged[key] then return end
         logged[key] = true
         mod:info("DARKTIDEVR_BODY_MIRROR " .. format, ...)
@@ -958,8 +966,8 @@ function Mirror.install(mod, presentation, options)
         local x, y, z, w = Quaternion.to_elements(rotation)
         return Quaternion.from_elements(-x, -y, -z, w)
     end
-    local function array(v) return {Vector3.x(v), Vector3.y(v), Vector3.z(v)} end
-    local function vector(a) return Vector3(a[1], a[2], a[3]) end
+    function array(v) return {Vector3.x(v), Vector3.y(v), Vector3.z(v)} end
+    function vector(a) return Vector3(a[1], a[2], a[3]) end
     local function set_world_rotation(unit, index, rotation)
         local parent = Unit.scene_graph_parent(unit, index)
         local parent_rotation = parent and Unit.world_rotation(unit, parent) or Quaternion.identity()

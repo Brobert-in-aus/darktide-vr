@@ -307,6 +307,31 @@ line `animated_legs=live machine=...` says the machine took; any
 `animated_legs=failed` or `=waiting` line says why the gait is running
 instead.
 
+### 1j. The 12:52 session tested nothing of this: my code threw at ready
+
+Your report: *"body is too short & too crouched by default, and hand
+animations are gone again, but the flickering is fixed."* All three are
+right, and all three describe the hidden model's headless fallback with
+the old upper-body proxy, not the copy. The log:
+
+```
+DARKTIDEVR_BODY_MIRROR failed=...:855: attempt to call global 'log_once' (a nil value)
+```
+
+The machine-assignment code I placed above the helper it calls resolved
+that helper to a nil global, threw on the copy's first ready frame, and
+the module shut itself down for the session and destroyed the copy. What
+you were looking at was the stock avatar at its own scale in its combat
+stance, with no finger capture, and it does not flicker, which is
+consistent with everything measured so far. The animated legs, the render
+check and the toe height were never exercised.
+
+Fixed by declaring the helpers before the functions that use them, and a
+guard in the mirror test now fails on any helper called above its
+declaration; it fails on the module that shipped at 12:52 by name and
+line. The flag is still set, so the same launch as before tests item 1i
+for real. Sorry for the wasted sitting.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

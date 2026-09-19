@@ -522,6 +522,36 @@ and the machine's idle stance is the character's, staggered, under a square
 torso. The base model contributes nothing of its pose; the guard's rule on
 its joints stands, and the one new read of it is its animation variables.
 
+## Worn, 12:52: the module threw at ready, and the session looked at the fallback
+
+*"body is too short & too crouched by default, and hand animations are
+gone again, but the flickering is fixed."* Right on all three, and all
+three describe the stock avatar's headless fallback with the upper-body
+proxy, not the copy:
+
+```
+DARKTIDEVR_BODY_MIRROR failed=[string "..."]:855: attempt to call global 'log_once' (a nil value)
+```
+
+Inside `install` the api functions and the helpers are locals of one
+scope in source order. The animated-legs block was placed above the
+`local function log_once` line, so its call resolved to a nil global and
+threw on the copy's first ready frame; the module's failure path shut it
+down for the session and destroyed the copy. The same ordering silenced
+`check_before_render`, which calls `array` from the same position. Nothing
+of the animated legs, the moved check or the toe height was exercised, and
+the steadiness observed is the stock avatar's, consistent with every
+measurement so far. The "flicker fixed" finding is void.
+
+Fixed with forward declarations of `log_once`, `array` and `vector` at the
+top of `install`, the later definitions turned into assignments. The
+mirror test now walks twelve helper names and refuses any whose first
+call precedes its declaration; on the module that shipped at 12:52 it
+fails at `log_once is called at line 833 before its declaration at line
+952`, and on a mutation that removes the forward declaration at 841
+before 960. An unattended check would have caught this before the sitting:
+the copy's ready frame is reachable without a headset.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows

@@ -455,6 +455,36 @@ assert(next(Mirror.leg_indices(nil, nil, nil)) == nil, 'bad input, no legs')
 -- A cycle in the lookup cannot hang it.
 assert(next(Mirror.leg_indices(3, function(i) return i end, {[9] = true})) == nil, 'a self-parent terminates')
 
+-- HELPERS ARE DECLARED BEFORE THEY ARE USED. Inside `install` the api
+-- functions and the helpers are locals of one scope, in source order; a
+-- helper called from a function defined above its `local function` line
+-- resolves to a nil GLOBAL and throws when that function first runs. On
+-- 19 September (12:52) that took the module down at ready and the worn
+-- session looked at the stock fallback instead of the copy. For each
+-- helper, the first line that calls it must come after a line that
+-- declares it (`local name` or `local name,` or `local function name`).
+local function first_line_matching(text, pattern)
+  local at = text:find(pattern)
+  if not at then return nil end
+  return select(2, text:sub(1, at):gsub('\n', '')) + 1
+end
+for _, helper in ipairs({'log_once', 'array', 'vector', 'inverse', 'set_world_rotation', 'aim_joint',
+    'apply_arm_scales', 'destroy_own', 'body_proxy', 'smooth_offset', 'shifted', 'assign_machine'}) do
+  local declared = first_line_matching(source, '\n%s*local%s+' .. helper .. '[%s,=]') or
+    first_line_matching(source, '\n%s*local%s+function%s+' .. helper .. '%(') or
+    first_line_matching(source, '\n%s*local%s+[%w_,%s]*,%s*' .. helper .. '[%s,=]')
+  -- The first CALL: the name followed by "(", not preceded by "function ".
+  local used
+  for pos, line in (('\n' .. source):gmatch('()([^\n]*)')) do
+    if line:find('%f[%w_]' .. helper .. '%(') and not line:find('function%s+' .. helper .. '%(') then
+      used = select(2, ('\n' .. source):sub(1, pos):gsub('\n', '')); break
+    end
+  end
+  assert(declared, helper .. ' is never declared')
+  assert(used, helper .. ' is never called')
+  assert(declared < used, helper .. ' is called at line ' .. used .. ' before its declaration at line ' .. declared)
+end
+
 -- The copy is posed by its own named joints. It draws when it has them all,
 -- whatever the avatar's rig looks like.
 local full = {}
