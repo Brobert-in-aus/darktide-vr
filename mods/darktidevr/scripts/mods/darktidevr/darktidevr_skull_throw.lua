@@ -1080,11 +1080,23 @@ function Skull.install(mod, presentation)
                         -- game keeps turning it toward its heading, which
                         -- was the weird rotation when the turn was applied
                         -- on top of it).
-                        record.grab = {zero = QuaternionBox(hand_rotation), base = QuaternionBox(Unit.world_rotation(skull, 1))}
+                        -- LOCKED WHERE IT IS (user, 18:10: "When I hit grab,
+                        -- the skull should be locked in place relative to
+                        -- the palm of the hand wherever it is"). The
+                        -- skull's centre at the grab, taken in the hand's
+                        -- frame with no rescaling, and its world rotation at
+                        -- the grab, are the grip; both ride the hand from
+                        -- then on. The centre is the skull's root (the drawn
+                        -- parts sit on it while it follows).
+                        local centre_now = Unit.world_position(skull, 1)
+                        local in_hand = Quaternion.rotate(Quaternion.inverse(hand_rotation), centre_now - hand)
+                        record.grab = {offset = Vector3Box(in_hand), zero = QuaternionBox(hand_rotation),
+                            base = QuaternionBox(Unit.world_rotation(skull, 1))}
                         record.bridge_nodes.freeze_base = true
-                        mod:info("DARKTIDEVR_SKULL_THROW grabbed palm_m=%.2f forward_m=%.2f", Skull.GRAB_RADIUS, Skull.GRAB_PALM_FORWARD)
+                        mod:info("DARKTIDEVR_SKULL_THROW grabbed offset_in_hand_m=%.3f,%.3f,%.3f distance_m=%.3f",
+                            Vector3.x(in_hand), Vector3.y(in_hand), Vector3.z(in_hand), Vector3.length(in_hand))
                     end
-                    local centre = hand - Quaternion.up(hand_rotation) * Skull.GRAB_RADIUS + Quaternion.forward(hand_rotation) * Skull.GRAB_PALM_FORWARD
+                    local centre = hand + Quaternion.rotate(hand_rotation, record.grab.offset:unbox())
                     local wanted = Quaternion.multiply(Quaternion.multiply(hand_rotation, Quaternion.inverse(record.grab.zero:unbox())), record.grab.base:unbox())
                     local delta = Quaternion.multiply(wanted, Quaternion.inverse(Unit.world_rotation(skull, 1)))
                     local x, y, z, w = Quaternion.to_elements(delta)
