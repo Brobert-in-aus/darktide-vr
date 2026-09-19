@@ -1068,10 +1068,23 @@ function Skull.install(mod, presentation)
                 -- are what the hand holds. Released, the grab is dropped
                 -- and the throw or the bridge takes over.
                 local grabbed = false
-                if thrower and held(t) and hand_track.position and hand_track.rotation then
-                    local hand = hand_track.pose_position and hand_track.pose_position:unbox() or
-                        Vector3(hand_track.position[1], hand_track.position[2], hand_track.position[3])
-                    local hand_rotation = hand_track.rotation:unbox()
+                -- THE HAND IS THE AVATAR'S HAND JOINT (user, 18:45: "how do
+                -- held items, weapons etc get their location matched to the
+                -- hand?"). A wielded weapon is linked by the game to the
+                -- character's hand joint, and the mod writes the tracked
+                -- wrist pose onto the hidden avatar's joint every frame
+                -- (sync_equipment_hand_pose): position and rotation from
+                -- one node. The grab uses that joint's world pose, the frame
+                -- the weapon rides, in place of the controller grip point
+                -- and the proxy's wrist rotation it mixed before.
+                local owner = local_player_unit()
+                local side = presentation.weapon_hand_roles and presentation.weapon_hand_roles.physical("support")
+                local hand_node = owner and side and Unit.alive(owner) and Unit.has_node(owner, "j_" .. side .. "hand") and
+                    Unit.node(owner, "j_" .. side .. "hand") or nil
+                if thrower and held(t) and hand_node then
+                    local hand_pose = Unit.world_pose(owner, hand_node)
+                    local hand = Matrix4x4.translation(hand_pose)
+                    local hand_rotation = Matrix4x4.rotation(hand_pose)
                     if not record.grab then
                         -- THE GRIP IS DEFINED, NOT CAPTURED (17:55 worn run:
                         -- "isn't grabbed in the right place and isn't fixed
@@ -1140,6 +1153,8 @@ function Skull.install(mod, presentation)
                             Vector3.x(centre), Vector3.y(centre), Vector3.z(centre), Vector3.x(root), Vector3.y(root), Vector3.z(root),
                             math.deg(angle or 0), axis and string.format("%.2f,%.2f,%.2f", axis[1], axis[2], axis[3]) or "none",
                             hand_track.position and Vector3.distance(hand, Vector3(hand_track.position[1], hand_track.position[2], hand_track.position[3])) or -1)
+                        -- (grip_to_wrist_m is now the controller grip point's
+                        -- distance from the avatar's hand joint.)
                     end
                 else
                     record.grab = nil
