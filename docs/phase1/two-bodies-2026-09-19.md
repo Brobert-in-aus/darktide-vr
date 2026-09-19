@@ -1192,6 +1192,38 @@ way (`mirrored_local_rotation`: the component along the flipped axis
 kept, the other two negated). The head keeps the look default.
 `hand_mirror flip=.. dots=.. trusted=..` at ready. Not worn.
 
+## Worn, 15:50: three flips, the head levelled, the weapon relinked
+
+On 51a0f4b. The user: skulls fixed; weapon still on the wrong hand;
+hands upside down; the mirror's head present but looking down.
+
+```
+hand_mirror flip=nil dots=x:-0.94 y:-0.77 z:-0.72 trusted=false
+height instance=overlay camera_eye_root_z=1.773 copy_eye_root_z=1.687 eye_gap_m=0.086 neck_root_z=1.542 root_world_z=0.417 avatar_root_world_z=0.417 neck_offset_z=0.000
+```
+
+- The rig's left hand is the reflected right hand with all three axes
+  reversed, a proper mapping (D = -I). `state.hand_mirror` is now the
+  per-axis sign table, trusted when every dot is at least 0.5 and an odd
+  number are negative; `reflected_rotation` takes the y and z signs on
+  the reflected forward and up, `mirrored_local_rotation` conjugates by
+  D (the vector part takes -s per axis; with D = -I the rotation is
+  unchanged), and `mirrored_local_position` takes s per axis.
+- The head constant is built from the rest head turned level about its
+  right axis; `head_follow captured rest_head_pitch_deg=..` logs the
+  pitch removed.
+- The weapon: after `wield_slot`, two frames later the wielded slot's
+  `unit_3p` has its pose measured relative to `j_righthand`
+  (`world_pose(weapon) * inverse(world_pose(right hand))`), is unlinked
+  (`World.unlink_unit`), linked to `j_lefthand` (`World.link_unit`), and
+  given the mirrored local position and rotation. Inside the wield
+  pcall; logs once on failure. First use of the link calls in the mod.
+- The reflection printed no `height` line in this run (only the overlay
+  did), so the 13 cm is still unmeasured; both instances are tagged and
+  the next reflection run will print it.
+
+Not worn.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows

@@ -1243,14 +1243,23 @@ function Mirror.install(mod, presentation, options)
                 y = Vector3.dot(reflect(Quaternion.forward(rr)), Quaternion.forward(rl)),
                 z = Vector3.dot(reflect(Quaternion.up(rr)), Quaternion.up(rl)),
             }
-            local flips, trusted = {}, true
+            -- The 15:26 worn run read dots x:-0.94 y:-0.77 z:-0.72: all
+            -- three reversed. Three flips are as proper a mapping as one
+            -- (an odd number of them is), and the rest pose is only as
+            -- symmetric as the spawner's idle, so the rule is the sign of
+            -- each dot, trusted when each is at least 0.5 in size and an
+            -- odd number are negative. The signs are kept per axis.
+            local negatives, trusted = 0, true
+            local signs = {}
             for axis, d in pairs(dots) do
-                if math.abs(d) < 0.8 then trusted = false end
-                if d < 0 then flips[#flips + 1] = axis end
+                if math.abs(d) < 0.5 then trusted = false end
+                signs[axis] = d < 0 and -1 or 1
+                if d < 0 then negatives = negatives + 1 end
             end
-            state.hand_mirror = trusted and #flips == 1 and flips[1] or nil
-            mod:info("DARKTIDEVR_BODY_MIRROR hand_mirror flip=%s dots=x:%.2f y:%.2f z:%.2f trusted=%s",
-                tostring(state.hand_mirror), dots.x, dots.y, dots.z, tostring(trusted))
+            state.hand_mirror = trusted and negatives % 2 == 1 and signs or nil
+            mod:info("DARKTIDEVR_BODY_MIRROR hand_mirror signs=%s dots=x:%.2f y:%.2f z:%.2f trusted=%s",
+                state.hand_mirror and string.format("x:%d y:%d z:%d", signs.x, signs.y, signs.z) or "none",
+                dots.x, dots.y, dots.z, tostring(trusted))
         end
     end
     -- THE REST POSE MADE NEUTRAL, AND THE CALIBRATION APPLIED TO IT (19
@@ -1874,24 +1883,29 @@ function Mirror.install(mod, presentation, options)
         -- a hand, the rig says which axis its other hand flips
         -- (state.hand_mirror, measured at ready from the rest pose): x is
         -- the look default, y flips the forward, z flips the up.
-        local function reflected_rotation(q, flip)
+        local function reflected_rotation(q, signs)
             if not mirror or not q then return q end
             local f, u = Quaternion.forward(q), Quaternion.up(q)
             local rf = Mirror.reflect_dir(mirror, {Vector3.x(f), Vector3.y(f), Vector3.z(f)})
             local ru = Mirror.reflect_dir(mirror, {Vector3.x(u), Vector3.y(u), Vector3.z(u)})
-            local sf, su = 1, 1
-            if flip == "y" then sf = -1 elseif flip == "z" then su = -1 end
+            -- The rig's signs (x right, y forward, z up); the right axis is
+            -- derived by look and comes out right when the count is odd.
+            local sf, su = signs and signs.y or 1, signs and signs.z or 1
             return Quaternion.look(Vector3(sf * rf[1], sf * rf[2], sf * rf[3]), Vector3(su * ru[1], su * ru[2], su * ru[3]))
         end
-        -- A local rotation carried from one side's joint to the other side's:
-        -- the mirror image of a rotation keeps the component along the
-        -- flipped axis and negates the other two.
-        local function mirrored_local_rotation(q, flip)
+        -- A local rotation carried from one side's joint to the other side's,
+        -- conjugated by the rig's sign map D (det -1): the vector part takes
+        -- -s per axis, so one flip keeps that component and negates the
+        -- other two, and three flips (D = -I) leave the rotation as it is.
+        local function mirrored_local_rotation(q, signs)
+            if not signs then return q end
             local x, y, z, w = Quaternion.to_elements(q)
-            if flip == "x" then return Quaternion.from_elements(x, -y, -z, w)
-            elseif flip == "y" then return Quaternion.from_elements(-x, y, -z, w)
-            elseif flip == "z" then return Quaternion.from_elements(-x, -y, z, w) end
-            return q
+            return Quaternion.from_elements(-signs.x * x, -signs.y * y, -signs.z * z, w)
+        end
+        -- A local position carried the same way: each component takes its sign.
+        local function mirrored_local_position(p, signs)
+            if not signs then return p end
+            return Vector3(signs.x * Vector3.x(p), signs.y * Vector3.y(p), signs.z * Vector3.z(p))
         end
         place(avatar, unit, mirror)
         World.update_unit(world, unit)
@@ -2210,12 +2224,20 @@ function Mirror.install(mod, presentation, options)
                     local body_yaw = frame and type(frame.yaw) == "number" and frame.yaw or eye_yaw
                     if math.abs(math.atan2(math.sin(eye_yaw - body_yaw), math.cos(eye_yaw - body_yaw))) < math.rad(20) then
                         -- H such that head = yaw(eye) * H at capture: the
-                        -- head's rest frame relative to a yaw-only eye
-                        -- frame. (The 15:10 worn run's "head below my head
-                        -- and a little squished into the torso" was a
-                        -- stray factor here that pitched the head down.)
-                        state.head_follow = QuaternionBox(Quaternion.multiply(inverse(Quaternion(Vector3.up(), eye_yaw)),
-                            Unit.world_rotation(unit, head)))
+                        -- head's rest frame, LEVELLED, relative to a yaw-
+                        -- only eye frame. The rest head is the spawner's
+                        -- idle's, which looks down; carried as it was, the
+                        -- mirror looked down with it (15:26 worn run). Its
+                        -- forward axis is turned level about its right axis
+                        -- first, and the pitch it had is logged.
+                        local rest = Unit.world_rotation(unit, head)
+                        local forward = Quaternion.forward(rest)
+                        local rest_pitch = math.atan2(Vector3.z(forward), math.sqrt(Vector3.x(forward) ^ 2 + Vector3.y(forward) ^ 2))
+                        local level = Quaternion.multiply(Quaternion(Quaternion.right(rest), -rest_pitch), rest)
+                        state.head_follow = QuaternionBox(Quaternion.multiply(inverse(Quaternion(Vector3.up(), eye_yaw)), level))
+                        state.head_rest_pitch = rest_pitch
+                        mod:info("DARKTIDEVR_BODY_MIRROR head_follow captured rest_head_pitch_deg=%.1f eye_pitch_deg=%.1f",
+                            math.deg(rest_pitch), math.deg(math.asin(math.max(-1, math.min(1, Vector3.z(Quaternion.forward(eye_rotation)))))))
                     end
                 end
                 if state.head_follow then
@@ -2263,7 +2285,42 @@ function Mirror.install(mod, presentation, options)
                     state.wielded_slot = slot
                     state.profile_spawner:set_visibility(true)
                     state.profile_spawner:wield_slot(slot)
+                    -- The weapon's own flow answers the wield event by
+                    -- linking it to the right hand; two frames later it is
+                    -- moved to the other hand (below).
+                    state.weapon_relink = {slot = slot, frames = 2}
                     mod:info("DARKTIDEVR_BODY_MIRROR reflection_wield slot=%s", tostring(slot))
+                end
+                -- THE WEAPON IN THE OTHER HAND (15:50: "weapon still on the
+                -- wrong hand (fix that this time)"). The wielded weapon's
+                -- pose relative to the right hand joint is measured, the
+                -- weapon is unlinked and linked to the left hand joint, and
+                -- the pose is carried across with the rig's sign map, as the
+                -- fingers are. Attachments on the weapon follow it.
+                local relink = mirror and state.weapon_relink
+                if relink then
+                    relink.frames = relink.frames - 1
+                    if relink.frames <= 0 then
+                        state.weapon_relink = nil
+                        local slot_data = state.data and state.data.slots and state.data.slots[relink.slot]
+                        local weapon = slot_data and slot_data.unit_3p
+                        if weapon and Unit.alive(weapon) and Unit.has_node(unit, "j_righthand") and Unit.has_node(unit, "j_lefthand") then
+                            local right, left = Unit.node(unit, "j_righthand"), Unit.node(unit, "j_lefthand")
+                            local in_right = Matrix4x4.multiply(Unit.world_pose(weapon, 1), Matrix4x4.inverse(Unit.world_pose(unit, right)))
+                            local local_position = Matrix4x4.translation(in_right)
+                            local local_rotation = Matrix4x4.rotation(in_right)
+                            World.unlink_unit(world, weapon)
+                            World.link_unit(world, weapon, 1, unit, left)
+                            Unit.set_local_position(weapon, 1, mirrored_local_position(local_position, state.hand_mirror))
+                            Unit.set_local_rotation(weapon, 1, mirrored_local_rotation(local_rotation, state.hand_mirror))
+                            World.update_unit_and_children(world, unit)
+                            mod:info("DARKTIDEVR_BODY_MIRROR reflection_weapon moved_to=j_lefthand slot=%s offset_m=%.3f,%.3f,%.3f signs=%s",
+                                tostring(relink.slot), Vector3.x(local_position), Vector3.y(local_position), Vector3.z(local_position),
+                                state.hand_mirror and string.format("%d,%d,%d", state.hand_mirror.x, state.hand_mirror.y, state.hand_mirror.z) or "none")
+                        else
+                            log_once("relink", "reflection_weapon=no_unit slot=%s", tostring(relink.slot))
+                        end
+                    end
                 end
             end)
             if not ok_wield then log_once("wield", "reflection_wield=failed") end

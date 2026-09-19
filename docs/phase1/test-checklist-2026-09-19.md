@@ -829,6 +829,40 @@ which they are, the root's world height, the avatar's, and the neck
 follow's vertical offset, so the next log says where the 13 cm come
 from rather than me guessing.
 
+### 1w. Worn at 15:50: skulls fixed; the rig flips all three hand axes; the head levelled; the weapon moved to the other hand
+
+Your report: skulls fixed; the weapon still in the wrong hand; the
+mirror's hands upside-down; the mirror's head present but looking down.
+
+The log: `hand_mirror flip=nil dots=x:-0.94 y:-0.77 z:-0.72 trusted=false`.
+The rig's other hand reverses all three reflected axes, not one, and my
+rule only accepted a single flip, so the mirror fell back to the
+look default and you saw upside-down hands again. Three flips are as
+proper a mapping as one (any odd number is), so the signs are now
+taken per axis, trusted when each dot is at least 0.5 in size and an
+odd number are negative, and applied to the hands' rotations, to the
+finger rotations carried across (with all three flipped they carry
+unchanged) and to the weapon's offset. The line reads `hand_mirror
+signs=x:-1 y:-1 z:-1` now.
+
+**The head.** The captured constant carried the rest head's own pitch,
+which is the spawner's idle looking down; the reflection looked down
+with it. At capture the rest head is turned level about its right axis
+first, and `head_follow captured rest_head_pitch_deg=... eye_pitch_deg=...`
+says how far down it was.
+
+**The weapon.** The wield event is answered by the weapon's own flow,
+which links it to the right hand. Two frames after a wield, the
+reflection measures the weapon's pose relative to its right hand
+joint, unlinks it, links it to the left hand joint, and sets the pose
+carried across by the rig's sign map. `reflection_weapon
+moved_to=j_lefthand ...` logs it; a failure logs once and leaves the
+weapon where the flow put it. The engine's link calls are not used
+anywhere else in the mod yet, so this is the first run of them here.
+
+The skull-against-eye number was 3.0 cm a frame on this run's log,
+with the old lag still in the build you ran; the fix for it is in.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not
