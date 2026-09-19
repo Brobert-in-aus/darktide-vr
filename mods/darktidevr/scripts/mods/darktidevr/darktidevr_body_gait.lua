@@ -52,14 +52,22 @@ Gait.TURN_TRIGGER = math.rad(40)
 -- velocity.
 Gait.LEAD_S = 0.25
 -- Swing duration at rest, its shortening per metre per second of speed, and
--- the clamp (design step 6).
-Gait.DURATION_S, Gait.DURATION_PER_MPS = 0.35, 0.03
-Gait.MIN_DURATION_S, Gait.MAX_DURATION_S = 0.18, 0.40
+-- the clamp (design step 6, the shortening steepened for a run: at 5 m/s a
+-- swing is 0.15 s).
+Gait.DURATION_S, Gait.DURATION_PER_MPS = 0.35, 0.04
+Gait.MIN_DURATION_S, Gait.MAX_DURATION_S = 0.15, 0.40
 -- Lift at the middle of a full step, and the step length that earns it; a
 -- shorter step lifts in proportion.
 Gait.ARC_M, Gait.ARC_FULL_AT_M = 0.08, 0.30
 -- No single step longer than this: the leg cannot reach it.
-Gait.MAX_STEP_M = 0.80
+Gait.MAX_STEP_M = 1.00
+-- A RUN. One foot at a time is a walk; above RUN_MPS the next step may
+-- begin once the foot in the air is past OVERLAP of its swing, so both are
+-- briefly off the ground, as in a real run. Without this the feet cannot
+-- keep up: at 4 m/s a foot stepping every other swing has to cover nearly
+-- two metres, which the reach cap refuses, and the legs trail behind at
+-- full stretch -- the 10:51 worn run's "no run animation/leg movement".
+Gait.RUN_MPS, Gait.OVERLAP = 1.5, 0.5
 -- Root velocity smoothing time constant, and the speed the lead is capped
 -- at: a sprint is under this, and a spike above it is not a speed.
 Gait.VELOCITY_TAU_S = 0.10
@@ -148,7 +156,8 @@ function Gait.update(state, root, yaw, ground_z, t, dt, scale, ground_at)
     if speed > Gait.LEAD_MAX_MPS then
         lead_x, lead_y = lead_x * Gait.LEAD_MAX_MPS / speed, lead_y * Gait.LEAD_MAX_MPS / speed
     end
-    local out, swinging_side = {}, nil
+    -- Which feet are in the air this frame, and how far through their swing.
+    local out, in_air = {}, {}
     -- Advance any swing, land it when done.
     for _, side in ipairs(Gait.SIDES) do
         local foot = state.feet[side]
@@ -158,11 +167,16 @@ function Gait.update(state, root, yaw, ground_z, t, dt, scale, ground_at)
         end
         local swing = foot.swing
         if swing then
-            local p = (t - swing.t0) / swing.duration
+            -- Progress accumulates at the CURRENT speed's rate, so a swing
+            -- that began at a walk quickens when the body breaks into a run
+            -- rather than dawdling on a duration fixed at take-off (which
+            -- left the first foot of a sprint a metre behind).
+            local p = swing.p + ((finite(dt) and dt > 0) and dt or 0) / Gait.duration(speed)
+            swing.p = p
             if p >= 1 then
                 foot.planted, foot.yaw, foot.swing = swing.to, swing.to_yaw, nil
             else
-                swinging_side = side
+                in_air[side] = p
                 local e = Gait.ease(p)
                 out[side] = {position = {swing.from[1] + (swing.to[1] - swing.from[1]) * e,
                     swing.from[2] + (swing.to[2] - swing.from[2]) * e,
@@ -173,14 +187,21 @@ function Gait.update(state, root, yaw, ground_z, t, dt, scale, ground_at)
         foot.ideal = ideal
     end
     -- Start a step: the farther foot, if either is out of place and no foot
-    -- is mid-air.
-    if not swinging_side then
+    -- is mid-air -- or, at a run, the foot in the air is past OVERLAP.
+    local airborne, all_past = 0, true
+    for _, p in pairs(in_air) do
+        airborne = airborne + 1
+        if p < Gait.OVERLAP then all_past = false end
+    end
+    local may_start = airborne == 0 or (speed > Gait.RUN_MPS and airborne == 1 and all_past)
+    if may_start then
         local best, best_error = nil, -1
         for _, side in ipairs(Gait.SIDES) do
             local foot = state.feet[side]
             local error = planar_distance(foot.ideal, foot.planted)
             local turned = math.abs(wrap(yaw - foot.yaw)) > Gait.TURN_TRIGGER
-            if (error > Gait.STEP_TRIGGER_M or turned) and error > best_error then
+            -- Never the foot already in the air.
+            if not in_air[side] and (error > Gait.STEP_TRIGGER_M or turned) and error > best_error then
                 best, best_error = side, error
             end
         end
@@ -199,7 +220,7 @@ function Gait.update(state, root, yaw, ground_z, t, dt, scale, ground_at)
             -- step lands on it.
             to[3] = ground_of(to)
             foot.swing = {from = {foot.planted[1], foot.planted[2], foot.planted[3]}, to = to, to_yaw = yaw,
-                t0 = t, duration = Gait.duration(speed), length = length}
+                p = 0, length = length}
             out[best] = {position = {foot.planted[1], foot.planted[2], foot.planted[3]}, yaw = yaw,
                 swinging = true, progress = 0, stepped = true}
         end

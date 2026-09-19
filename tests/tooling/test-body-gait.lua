@@ -97,6 +97,37 @@ assert(landing.out.left.position[2] > ideal_at_start[2] + 0.1, 'the step did not
 assert(math.abs(Gait.duration(0) - Gait.DURATION_S) < 1e-9 and Gait.duration(10) == Gait.MIN_DURATION_S)
 assert(Gait.duration(2) < Gait.duration(0), 'faster is not quicker')
 
+-- A run: 4 m/s for three seconds. The feet keep up (no drawn foot ever
+-- farther from its ideal than a step can cover), both may be in the air
+-- but never the same foot twice, each swing lands before that foot steps
+-- again, and there are more steps per second than at a walk.
+state = Gait.new(rest)
+-- A sprint start: 0 to 4 m/s over half a second, then 4 m/s.
+frames = run(state, function(t)
+    local y = t < 0.5 and 4 * t * t or 1 + 4 * (t - 0.5)
+    return {0, y, 1}, 0, t > 3
+end)
+local run_steps, run_worst, both_in_air = 0, 0, false
+for i, f in ipairs(frames) do
+    if f.out.left.swinging and f.out.right.swinging then both_in_air = true end
+    for _, side in ipairs({'left', 'right'}) do
+        if f.out[side].stepped then
+            run_steps = run_steps + 1
+            -- A foot may land and step again in one frame; it may not
+            -- abandon a swing. If it was in the air last frame it must
+            -- have been within a frame of landing.
+            local before = i > 1 and frames[i - 1].out[side] or nil
+            assert(not before or not before.swinging or before.progress == nil or
+                before.progress >= 1 - DT / Gait.MIN_DURATION_S, side .. ' stepped again while in the air at frame ' .. i)
+        end
+        run_worst = math.max(run_worst, dist(f.out[side].position, Gait.ideal(f.root, f.yaw, rest[side], 0, 1)))
+    end
+end
+assert(run_worst < Gait.MAX_STEP_M, 'at a run a foot was left ' .. run_worst .. ' m behind')
+assert(both_in_air, 'a run should have a flight phase')
+-- Over the same three seconds, more steps than the walk took.
+assert(run_steps > steps.left + steps.right, 'a run should step more often than a walk: ' .. run_steps .. ' vs ' .. (steps.left + steps.right))
+
 -- A swing lifts in the middle and lands exactly on its target.
 state = Gait.new(rest)
 run(state, function(t) return {0, 0, 1}, 0, t > 0.3 end)

@@ -62,10 +62,18 @@ assert(not Mirror.MODES.mirror.hand_rig,'mirror stands apart from the player')
 -- the character going through its animation rather than the person in front of
 -- it. Everything that shapes the overlay shapes the reflection, except the
 -- three flags that are about being inside a body rather than looking at one.
-for _,flag in ipairs({'solve_arms','follow_neck','scale_to_neck','clavicles',
-        'body_yaw','protract','stretch'}) do
+for _,flag in ipairs({'solve_arms','follow_neck','clavicles',
+        'body_yaw','protract','stretch','gait','arm_length'}) do
     assert(Mirror.MODES.mirror[flag],'the mirror reflects the solved body: '..flag)
     assert(Mirror.MODES.overlay[flag],'and the overlay is where that solve is defined: '..flag)
+end
+-- No live mode scales the body to the neck: the scale is the game's own
+-- character height for the profile, which the calibration sets, and the
+-- height beyond the settable range goes into the bones (user, 19 September).
+for _,name in ipairs({'overlay','mirror','reflection'}) do
+    assert(not Mirror.MODES[name].scale_to_neck,'no scaling to the neck: '..name)
+    assert(type(Mirror.MODES[name].arm_length)=='table' and Mirror.MODES[name].arm_length.min<1 and
+        Mirror.MODES[name].arm_length.max>1,'the arm bones take the calibrated lengths: '..name)
 end
 assert(not Mirror.MODES.mirror.hide_head,'a mirror without a face is useless')
 assert(not Mirror.MODES.mirror.near_eye,'nothing is near the eye three metres away')
@@ -80,7 +88,7 @@ off=Mirror.neck_offset({0,0,1.45},{0,0,1.20})
 assert(near(off[3],-0.25),'lowers for a crouch')
 off,len=Mirror.neck_offset({0,0,0},{0,0,2},true)
 assert(near(off[3],Mirror.NECK_FOLLOW_MAX) and near(len,2),'capped')
-assert(Mirror.MODES.overlay.scale_to_neck and not Mirror.MODES.overlayfollow.scale_to_neck and Mirror.MODES.overlayfollow.follow_neck)
+assert(not Mirror.MODES.overlay.scale_to_neck and not Mirror.MODES.overlayfollow.scale_to_neck and Mirror.MODES.overlayfollow.follow_neck)
 assert(Mirror.parse_mode('overlayfollow')=='overlayfollow')
 assert(near(Mirror.scale_ratio(nil,1.5,1.8,0),1.2),'first frame takes the target')
 assert(Mirror.scale_ratio(nil,1.5,1.2,0)==1,'never shrinks: a crouch lowers instead')
@@ -109,7 +117,11 @@ do
     assert(near(taken,1))
     assert(Mirror.MODES.overlayspine.spine_bend and not Mirror.MODES.overlay.spine_bend)
     assert(near(Mirror.MODES.overlayreach.clavicle_max,math.rad(45)) and Mirror.MODES.overlay.clavicle_max==nil,'reach A/B cap')
-    assert(Mirror.MODES.overlayarmlength.arm_length and not Mirror.MODES.overlay.arm_length,'arm length A/B mode')
+    -- The calibrated arm lengths are the default now (user, 19 September),
+    -- with a clamp that is a sanity bound rather than the A/B mode's fit.
+    assert(Mirror.MODES.overlayarmlength.arm_length and Mirror.MODES.overlay.arm_length,'arm length everywhere')
+    assert(Mirror.MODES.overlay.arm_length.min<Mirror.MODES.overlayarmlength.arm_length.min and
+        Mirror.MODES.overlay.arm_length.max>Mirror.MODES.overlayarmlength.arm_length.max,'the default clamp is the looser one')
     -- Protraction: none below 0.9 of arm length, 8 % of it by 1.1.
     assert(Mirror.protraction(0.5,0.6)==0,'well within reach')
     assert(near(Mirror.protraction(0.6,0.6),0.5*0.08*0.6),'halfway up the ramp at 1.0 of arm length')
@@ -148,7 +160,7 @@ assert(math.abs(y - 1.0) < 1e-3, 'and it arrives')
 -- The mirror key's copy: posed by the overlay's pipeline, never the hand
 -- rig, its head shown; then turned about the player and stood ahead.
 local reflection = assert(Mirror.MODES.reflection)
-assert(reflection.reflect and reflection.solve_arms and reflection.follow_neck and reflection.scale_to_neck and
+assert(reflection.reflect and reflection.solve_arms and reflection.follow_neck and not reflection.scale_to_neck and
     reflection.clavicles and reflection.body_yaw and not reflection.hand_rig and not reflection.hide_head and
     not reflection.near_eye and reflection.distance == 0)
 -- Heading 0 faces +y. A root 10 cm behind the pivot ends 10 cm beyond it,
@@ -401,6 +413,27 @@ for _, pattern in ipairs(forbidden) do
 end
 assert(source:find('Unit%.world_position%(avatar, 1%)'), 'the root position is the one allowed read, and it is used')
 
+-- Height beyond the settable range goes into the vertical bones as a
+-- stretch factor: none within a centimetre, the exact ratio that makes the
+-- floor-to-neck chain reach the calibrated height otherwise, clamped, and 1
+-- for anything unusable.
+near(Mirror.height_stretch(1.62, 1.62, 1.40), 1, 1e-12, 'no residual, no stretch')
+near(Mirror.height_stretch(1.625, 1.62, 1.40), 1, 1e-12, 'half a centimetre is noise')
+near(Mirror.height_stretch(1.70, 1.62, 1.40), (1.40 + 0.08) / 1.40, 1e-12, 'eight centimetres taller lengthens the chain by eight')
+near(Mirror.height_stretch(1.50, 1.62, 1.40), (1.40 - 0.12) / 1.40, 1e-12, 'twelve shorter compresses it by twelve')
+assert(Mirror.height_stretch(2.60, 1.62, 1.40) == Mirror.STRETCH_MAX, 'clamped above')
+assert(Mirror.height_stretch(0.90, 1.62, 1.40) == Mirror.STRETCH_MIN, 'clamped below')
+assert(Mirror.height_stretch(nil, 1.62, 1.40) == 1 and Mirror.height_stretch(1.7, nil, 1.4) == 1 and
+  Mirror.height_stretch(1.7, 1.62, 0) == 1 and Mirror.height_stretch(0 / 0, 1.62, 1.4) == 1, 'unusable input stretches nothing')
+-- The hips stand at the ankle's height plus the legs, knee slightly soft,
+-- and the legs stretched by the factor; a straight leg is never the
+-- answer, and a missing length is no answer.
+local hips = Mirror.standing_hips_height(0.10, 0.45, 0.42, 1)
+assert(hips and hips < 0.10 + 0.45 + 0.42 and hips > 0.10 + 0.42 + 0.45 * 0.98, 'hips just under the straight leg')
+near(Mirror.standing_hips_height(0.10, 0.45, 0.42, 1.1) - 0.10, (hips - 0.10) * 1.1, 1e-12, 'the legs take the stretch, the ankle does not')
+assert(Mirror.standing_hips_height(0.10, 0, 0.42, 1) == nil and Mirror.standing_hips_height(nil, 0.45, 0.42, 1) == nil)
+near(Mirror.standing_hips_height(0.10, 0.45, 0.42, nil), hips, 1e-12, 'no factor is one')
+
 -- The copy is posed by its own named joints. It draws when it has them all,
 -- whatever the avatar's rig looks like.
 local full = {}
@@ -412,4 +445,4 @@ end
 assert(not Mirror.has_solve_joints(nil), 'no lookup, no rig')
 assert(not Mirror.has_solve_joints(function() return nil end), 'a lookup answering nil is not true')
 
-print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace colliders torso_yaw draws_body turn_leak step_m solve_joints separation')
+print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace colliders torso_yaw draws_body turn_leak step_m solve_joints separation height_stretch standing_hips')

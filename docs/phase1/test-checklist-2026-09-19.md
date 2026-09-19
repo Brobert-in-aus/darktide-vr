@@ -156,6 +156,33 @@ floor a raycast finds under them, so walk up the Psykhanium's steps and
 along its ramps and say whether each foot lands on the step it is over and
 whether a foot ever floats or sinks.
 
+### 1e. Worn at 10:51: too large, turned right, no leg movement
+
+All three were in the log. The frozen spawn frame was a staggered combat
+stance (left foot 18 cm forward, torso turned right): the turned neutral.
+Its neck sat low, so the scale-to-neck ran to its 1.3 cap to reach your
+head: the size. And the gait ran, at up to 4.8 m/s, but one foot at a time
+could not keep up with a run, so the legs trailed at full stretch.
+
+Your rule, applied: the copy's scale is the game's own character height for
+your profile, which the calibration sets, fixed for the session, and
+nothing in game scales it again. Height beyond the settable range goes into
+the leg, spine and neck bones as a stretch along the bone; the arm bones
+take the calibrated arm lengths. The rest pose is made neutral at ready:
+torso squared to the root and stood upright, hips at standing height for
+the legs' own lengths, feet symmetric. The gait has a run now: above
+1.5 m/s the next foot leaves once the first is halfway, swings re-time
+themselves as you accelerate, and the reach cap is a metre.
+
+**Test**: stand and look down and at the mirror (size and squareness),
+then look at your hands at full reach (arm length), then walk, then sprint.
+
+**Report**: whether the body is your size, whether it stands square with
+you when you are neutral, whether your arms reach where your hands are,
+and whether the legs run when you run. If the size is still off, the line
+`DARKTIDEVR_BODY_MIRROR rest scale=... character_eye_m=... calibrated_eye_m=...
+stretch=...` has every number that decided it.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

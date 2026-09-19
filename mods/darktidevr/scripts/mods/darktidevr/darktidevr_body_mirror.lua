@@ -91,15 +91,19 @@ Mirror.MODES = {
     -- only then turns it about them and stands it ahead.
     mirror = {distance = Mirror.MIRROR_DISTANCE, facing = true, hide_head = false,
         solve_arms = true, follow_neck = true,
-        scale_to_neck = true, clavicles = true, body_yaw = true,
-        protract = true, stretch = true, gait = true},
+        clavicles = true, body_yaw = true,
+        protract = true, stretch = true, gait = true, arm_length = {min = 0.6, max = 1.6}},
     overlaycopy = {distance = 0, facing = false, hide_head = true, solve_arms = false, hand_rig = true},
     overlayarms = {distance = 0, facing = false, hide_head = true, solve_arms = true, hand_rig = true},
     overlayfollow = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hand_rig = true,
         follow_neck = true},
+    -- arm_length: the arm bones stretched or compressed to the calibrated
+    -- upper-arm and forearm lengths, on their own bones (user, 19
+    -- September: "simply stretch/compress only the arm bones as needed").
+    -- The clamp is a sanity bound, not a fit.
     overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hand_rig = true,
-        follow_neck = true, scale_to_neck = true, clavicles = true, body_yaw = true,
-        protract = true, stretch = true, gait = true},
+        follow_neck = true, clavicles = true, body_yaw = true,
+        protract = true, stretch = true, gait = true, arm_length = {min = 0.6, max = 1.6}},
     -- Milestone 3, spine (step 3): "overlay" with the spine bent so the neck
     -- reaches the body frame's neck, instead of moving the whole copy there;
     -- the root stays over the avatar's feet.
@@ -153,8 +157,8 @@ Mirror.MODES = {
     -- never the hand rig: it runs beside the overlay, in its own instance of
     -- this module.
     reflection = {distance = 0, facing = false, hide_head = false, solve_arms = true, follow_neck = true,
-        scale_to_neck = true, clavicles = true, body_yaw = true, protract = true, stretch = true, reflect = true,
-        gait = true},
+        clavicles = true, body_yaw = true, protract = true, stretch = true, reflect = true,
+        gait = true, arm_length = {min = 0.6, max = 1.6}},
     -- "overlay" without the clavicle swing, for A/B (milestone 3).
     overlaystock = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true},
@@ -319,6 +323,39 @@ function Mirror.chain_fractions(chain)
         fractions[i] = remaining > 0 and chain[i][2] / remaining or 0
     end
     return fractions
+end
+
+-- HEIGHT BEYOND THE SETTABLE RANGE (19 September). The copy's scale is the
+-- game's own character height for the profile, which the calibration sets
+-- within the player-facing range. A player whose calibrated eye height lies
+-- outside that range has the difference put into the bones that carry
+-- height -- legs, spine, neck -- as a stretch along each bone, never a
+-- uniform scale. This is the factor: the ratio of the chain from floor to
+-- neck as it should be (as it is, plus the residual) to the chain as it is.
+-- residual = calibrated eye height - the character's eye height at its
+-- scale; chain = the copy's floor-to-neck height at that scale. Under a
+-- centimetre of residual is 1, and the factor is clamped so a bad
+-- calibration cannot draw a stick figure. Pure.
+Mirror.STRETCH_MIN, Mirror.STRETCH_MAX, Mirror.STRETCH_DEAD_M = 0.80, 1.25, 0.01
+function Mirror.height_stretch(calibrated_eye, character_eye, chain)
+    if type(calibrated_eye) ~= "number" or type(character_eye) ~= "number" or type(chain) ~= "number" then return 1 end
+    if calibrated_eye ~= calibrated_eye or character_eye ~= character_eye or chain ~= chain then return 1 end
+    if not (chain > 0.2) or not (calibrated_eye > 0.2) or not (character_eye > 0.2) then return 1 end
+    local residual = calibrated_eye - character_eye
+    if math.abs(residual) < Mirror.STRETCH_DEAD_M then return 1 end
+    return math.max(Mirror.STRETCH_MIN, math.min(Mirror.STRETCH_MAX, (chain + residual) / chain))
+end
+
+-- Where the hips sit above the floor when the legs stand: the ankle's own
+-- height, plus the lower and upper leg (stretched by k) with the knee
+-- softened by KNEE_REST_BEND, so the leg solve always has a little bend to
+-- work from and never starts locked straight. Pure.
+Mirror.KNEE_REST_BEND = math.rad(8)
+function Mirror.standing_hips_height(ankle_z, upper, lower, k)
+    if type(ankle_z) ~= "number" or type(upper) ~= "number" or type(lower) ~= "number" then return nil end
+    if not (upper > 0) or not (lower > 0) or ankle_z ~= ankle_z then return nil end
+    local stretch = (type(k) == "number" and k > 0) and k or 1
+    return ankle_z + (lower + upper * math.cos(Mirror.KNEE_REST_BEND)) * stretch
 end
 
 -- Where the copy's j_neck goes. The body frame's neck (7 cm behind and 8 cm
@@ -866,6 +903,131 @@ function Mirror.install(mod, presentation, options)
             end
         end
     end
+    -- THE REST POSE MADE NEUTRAL, AND THE CALIBRATION APPLIED TO IT (19
+    -- September). The spawner's first frame is whatever its idle was doing:
+    -- the 10:51 worn run froze a crouched combat stance, left foot 18 cm
+    -- forward, torso turned right, and everything the copy draws starts
+    -- from that frame -- "body is way too large, doesn't sit square". So
+    -- at ready, in this order:
+    --   1. the legs are measured (bone lengths, the ankle's height off the
+    --      floor and its distance to the side) before anything moves;
+    --   2. the height beyond the settable range, if any, is stretched into
+    --      the leg and spine bones along their own axes (Mirror.height_stretch);
+    --   3. the torso is turned square to the root and stood upright, by one
+    --      rotation of the hips that takes the shoulder line to the root's
+    --      right and the hips-to-neck axis to vertical;
+    --   4. the hips are put at standing height for the legs' own lengths
+    --      (Mirror.standing_hips_height);
+    --   5. every joint moved is boxed back into state.rest, so each frame
+    --      starts from the neutral pose, not the frozen stance.
+    -- The feet's ideal places are then symmetric: hip-width either side,
+    -- neither forward. The copy's SCALE is the game's own character height
+    -- for the profile (PlayerHeight, the number the avatar gets), fixed for
+    -- the session; nothing here scales the unit. Returns the leg
+    -- measurements for the gait, or nil with a reason.
+    local function prepare_rest(world, unit, profile)
+        local function node(name) return Unit.has_node(unit, name) and Unit.node(unit, name) or nil end
+        local hips, neck = node("j_hips"), node("j_neck")
+        local left_shoulder, right_shoulder = node("j_leftarm"), node("j_rightarm")
+        if not (hips and neck and left_shoulder and right_shoulder) then return nil, "torso_joints_missing" end
+        local root_inverse = Matrix4x4.inverse(Unit.world_pose(unit, 1))
+        local function root_local(position) return Matrix4x4.transform(root_inverse, position) end
+        -- 1. The legs as spawned.
+        local legs = {}
+        for _, side in ipairs({"left", "right"}) do
+            local hip, knee, ankle = node("j_" .. side .. "upleg"), node("j_" .. side .. "leg"), node("j_" .. side .. "foot")
+            if not (hip and knee and ankle) then return nil, "leg_joints_missing" end
+            local ankle_local = root_local(Unit.world_position(unit, ankle))
+            legs[side] = {side = side, hip = hip, knee = knee, ankle = ankle,
+                upper = Vector3.length(Unit.world_position(unit, knee) - Unit.world_position(unit, hip)),
+                lower = Vector3.length(Unit.world_position(unit, ankle) - Unit.world_position(unit, knee)),
+                ankle_x = Vector3.x(ankle_local), ankle_z = Vector3.z(ankle_local)}
+        end
+        local upper = (legs.left.upper + legs.right.upper) / 2
+        local lower = (legs.left.lower + legs.right.lower) / 2
+        local ankle_z = (legs.left.ankle_z + legs.right.ankle_z) / 2
+        local width = (math.abs(legs.left.ankle_x) + math.abs(legs.right.ankle_x)) / 2
+        -- The scale the game gives this profile, and the eye height it
+        -- stands at; the calibration's standing eye height beside it.
+        local scale, character_eye, calibrated_eye = 1, nil, nil
+        local ok_scale = pcall(function()
+            local Breeds = require("scripts/settings/breed/breeds")
+            local PlayerHeight = require("scripts/utilities/player_height")
+            local breed = profile and profile.archetype and Breeds[profile.archetype.breed]
+            if breed then
+                scale = PlayerHeight.player_character_third_person_scale(breed, profile, nil) or 1
+                character_eye = breed.heights and tonumber(breed.heights.default) and
+                    tonumber(breed.heights.default) * scale or nil
+            end
+            local result = mod.darktidevr_calibration and mod.darktidevr_calibration.result or
+                (mod.get and mod:get("vr_calibration_v1"))
+            calibrated_eye = result and not result.seated and tonumber(result.floor_eye_height) or nil
+        end)
+        if not ok_scale or not (scale > 0.1) then scale = 1 end
+        -- 2. The chain from floor to neck at that scale, and the stretch.
+        local chain = Vector3.z(root_local(Unit.world_position(unit, neck)))
+        local k = Mirror.height_stretch(calibrated_eye, character_eye, chain * scale)
+        local moved = {}
+        local function stretch(index)
+            if index and k ~= 1 then
+                Unit.set_local_position(unit, index, Unit.local_position(unit, index) * k)
+                moved[#moved + 1] = index
+            end
+        end
+        for _, name in ipairs({"j_spine", "j_spine1", "j_spine2", "j_neck"}) do stretch(node(name)) end
+        for _, leg in pairs(legs) do stretch(leg.knee); stretch(leg.ankle) end
+        World.update_unit(world, unit)
+        -- 3. Square and upright: the shoulder line to the root's right, the
+        -- hips-to-neck axis to vertical, in one rotation of the hips.
+        local root_rotation = Unit.world_rotation(unit, 1)
+        local hips_w = Unit.world_position(unit, hips)
+        local up_now = Unit.world_position(unit, neck) - hips_w
+        local right_now = Unit.world_position(unit, right_shoulder) - Unit.world_position(unit, left_shoulder)
+        local yaw_fix = 0
+        if Vector3.length(up_now) > 1e-4 and Vector3.length(right_now) > 1e-4 then
+            up_now = Vector3.normalize(up_now)
+            right_now = right_now - up_now * Vector3.dot(right_now, up_now)
+            if Vector3.length(right_now) > 1e-4 then
+                right_now = Vector3.normalize(right_now)
+                local q_now = Quaternion.look(Vector3.cross(up_now, right_now), up_now)
+                local q_want = Quaternion.look(Quaternion.forward(root_rotation), Vector3.up())
+                yaw_fix = math.deg(math.atan2(Vector3.y(right_now) * Vector3.x(Quaternion.right(root_rotation)) -
+                    Vector3.x(right_now) * Vector3.y(Quaternion.right(root_rotation)),
+                    Vector3.dot(right_now, Quaternion.right(root_rotation))))
+                set_world_rotation(unit, hips, Quaternion.multiply(Quaternion.multiply(q_want, inverse(q_now)),
+                    Unit.world_rotation(unit, hips)))
+                World.update_unit(world, unit)
+                moved[#moved + 1] = hips
+            end
+        end
+        -- 4. The hips at standing height for these legs.
+        local standing = Mirror.standing_hips_height(ankle_z, upper, lower, k)
+        local hips_z_before = Vector3.z(root_local(Unit.world_position(unit, hips)))
+        if standing then
+            local parent = Unit.scene_graph_parent(unit, hips)
+            local parent_rotation = parent and Unit.world_rotation(unit, parent) or root_rotation
+            Unit.set_local_position(unit, hips, Unit.local_position(unit, hips) +
+                Quaternion.rotate(inverse(parent_rotation), Vector3(0, 0, standing - hips_z_before)))
+            World.update_unit(world, unit)
+            moved[#moved + 1] = hips
+        end
+        -- 5. Boxed back as the rest pose.
+        for _, index in ipairs(moved) do state.rest[index] = Matrix4x4Box(Unit.local_pose(unit, index)) end
+        -- The foot's rest rotation about the root, from the squared pose.
+        local root_rotation_inverse = inverse(Unit.world_rotation(unit, 1))
+        for _, leg in pairs(legs) do
+            leg.rest_foot_rotation = QuaternionBox(Quaternion.multiply(root_rotation_inverse,
+                Unit.world_rotation(unit, leg.ankle)))
+        end
+        mod:info("DARKTIDEVR_BODY_MIRROR rest scale=%.4f character_eye_m=%s calibrated_eye_m=%s chain_m=%.3f stretch=%.4f " ..
+            "torso_yaw_fix_deg=%.1f hips_z_m=%.3f->%.3f upper_m=%.3f lower_m=%.3f ankle_z_m=%.3f width_m=%.3f",
+            scale, character_eye and string.format("%.3f", character_eye) or "none",
+            calibrated_eye and string.format("%.3f", calibrated_eye) or "none", chain, k, yaw_fix,
+            hips_z_before, standing or hips_z_before, upper, lower, ankle_z, width)
+        return {legs = legs, scale = scale, stretch = k,
+            offsets = {left = {-width, 0, 0}, right = {width, 0, 0}},
+            ankle_height = {left = ankle_z, right = ankle_z}}
+    end
     local function solve_arm(world, avatar, unit, arm)
         -- The final visible wrist pose (tracked, gun-aligned or on the support
         -- grip), whatever the mode: the gloves record it when they draw the
@@ -1002,7 +1164,8 @@ function Mirror.install(mod, presentation, options)
         Unit.set_local_position(unit, 1, position)
         Unit.set_local_rotation(unit, 1, mode.facing and
             Quaternion.multiply(rotation, Quaternion(Vector3.up(), math.pi)) or rotation)
-        Unit.set_local_scale(unit, 1, Vector3(1, 1, 1))
+        local s = state.scale or 1
+        Unit.set_local_scale(unit, 1, Vector3(s, s, s))
     end
     local function spawn(world, avatar)
         local UIProfileSpawner = require("scripts/managers/ui/ui_profile_spawner")
@@ -1021,7 +1184,8 @@ function Mirror.install(mod, presentation, options)
         local rotation = Unit.world_rotation(avatar, 1)
         profile_spawner:spawn_profile(profile, Unit.world_position(avatar, 1) + Quaternion.forward(rotation) * Mirror.MODES[mode_name].distance,
             rotation, nil, nil, nil, nil, nil, false, false, nil, true)
-        state = {world = world, avatar = avatar, unit_spawner = unit_spawner, profile_spawner = profile_spawner, frames = 0}
+        state = {world = world, avatar = avatar, unit_spawner = unit_spawner, profile_spawner = profile_spawner, frames = 0,
+            profile = profile}
         mod:info("DARKTIDEVR_BODY_MIRROR spawn mode=%s kept_slots=%d ignored_slots=%d", tostring(mode_name), kept, ignored)
     end
     local function update(world, avatar, dt, t)
@@ -1058,37 +1222,22 @@ function Mirror.install(mod, presentation, options)
             for index = 2, state.count do
                 state.rest[index] = Matrix4x4Box(Unit.local_pose(unit, index))
             end
-            -- THE LEGS. Measured from the copy's own rig at rest: each
-            -- ankle's place in the root's frame (hip-width to the side, a
-            -- little forward or back, and its height off the floor) and the
-            -- foot's rest rotation about the root, so the gait can put the
-            -- feet down flat and turned to the heading. The rest offsets are
-            -- at scale 1; the gait scales them with the copy.
-            state.legs, state.gait = nil, nil
-            local Gait = mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_body_gait")
-            local legs, offsets = {}, {}
-            local root_inverse = Matrix4x4.inverse(Unit.world_pose(unit, 1))
-            local root_rotation_inverse = inverse(Unit.world_rotation(unit, 1))
-            for _, side in ipairs(Gait.SIDES) do
-                local names = {"j_" .. side .. "upleg", "j_" .. side .. "leg", "j_" .. side .. "foot"}
-                if Unit.has_node(unit, names[1]) and Unit.has_node(unit, names[2]) and Unit.has_node(unit, names[3]) then
-                    local leg = {side = side, hip = Unit.node(unit, names[1]), knee = Unit.node(unit, names[2]),
-                        ankle = Unit.node(unit, names[3])}
-                    offsets[side] = array(Matrix4x4.transform(root_inverse, Unit.world_position(unit, leg.ankle)))
-                    leg.rest_foot_rotation = QuaternionBox(Quaternion.multiply(root_rotation_inverse,
-                        Unit.world_rotation(unit, leg.ankle)))
-                    legs[side] = leg
-                end
-            end
-            if legs.left and legs.right then
-                state.legs, state.gait_module = legs, Gait
-                state.gait = Gait.new({left = {offsets.left[1], offsets.left[2], 0},
-                    right = {offsets.right[1], offsets.right[2], 0}})
-                state.ankle_height = {left = offsets.left[3], right = offsets.right[3]}
+            -- The rest pose made neutral and the calibration applied (see
+            -- prepare_rest); the legs and the gait from what it measured.
+            -- The offsets are at scale 1; the gait scales them with the copy.
+            state.legs, state.gait, state.scale = nil, nil, 1
+            local ok_rest, rest, why = pcall(prepare_rest, world, unit, state.profile)
+            if ok_rest and rest then
+                local Gait = mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_body_gait")
+                state.scale = rest.scale
+                state.legs, state.gait_module = rest.legs, Gait
+                state.gait = Gait.new(rest.offsets)
+                state.ankle_height = rest.ankle_height
                 mod:info("DARKTIDEVR_BODY_MIRROR gait=ready left=%.3f,%.3f,%.3f right=%.3f,%.3f,%.3f",
-                    offsets.left[1], offsets.left[2], offsets.left[3], offsets.right[1], offsets.right[2], offsets.right[3])
+                    rest.offsets.left[1], rest.offsets.left[2], rest.ankle_height.left,
+                    rest.offsets.right[1], rest.offsets.right[2], rest.ankle_height.right)
             else
-                log_once("legs", "gait=skipped reason=leg_joints_missing")
+                log_once("rest", "rest=raw gait=skipped reason=%s", tostring(ok_rest and why or rest):sub(1, 160))
             end
             -- Deferred: see hide_near_eye. The scale eases over about a
             -- second, so the scan waits for it to settle and for a camera.
@@ -1193,13 +1342,15 @@ function Mirror.install(mod, presentation, options)
         end
         local neck_target = frame and Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale)
         if Mirror.MODES[mode_name].follow_neck and Unit.has_node(unit, "j_neck") then
-            if neck_target and Mirror.MODES[mode_name].scale_to_neck then
-                local base = Unit.world_position(unit, 1)
-                local neck_height = Vector3.z(Unit.world_position(unit, Unit.node(unit, "j_neck"))) - Vector3.z(base)
-                state.scale_ratio = Mirror.scale_ratio(state.scale_ratio, neck_height, neck_target[3] - Vector3.z(base), dt)
-                Unit.set_local_scale(unit, 1, Vector3(state.scale_ratio, state.scale_ratio, state.scale_ratio))
-                World.update_unit(world, unit)
-            end
+            -- NO SCALING TO THE NECK any more (19 September). The copy's
+            -- scale is the game's own character height for this profile,
+            -- which the calibration sets, applied once at ready (state.scale)
+            -- and never changed: "calibration should set the character
+            -- height too, so there should be no need to ever do any further
+            -- scaling". The `scale_to_neck` mode flag is inert. What chased
+            -- the head to the 1.3 cap in the 10:51 worn run was a rest pose
+            -- frozen in a crouched combat stance, fixed at ready below, not a
+            -- body that needed to be bigger.
             if neck_target and not Mirror.MODES[mode_name].spine_bend then
                 local offset, length = Mirror.neck_offset(array(Unit.world_position(unit, Unit.node(unit, "j_neck"))), neck_target)
                 Unit.set_local_position(unit, 1, Unit.local_position(unit, 1) + vector(offset))
@@ -1279,7 +1430,7 @@ function Mirror.install(mod, presentation, options)
             local Gait = state.gait_module
             local heading = state.yaw or Quaternion.yaw(Unit.world_rotation(unit, 1))
             local ground = Vector3.z(Unit.world_position(avatar, 1))
-            local scale = state.scale_ratio or 1
+            local scale = state.scale or 1
             -- The floor where a foot is put down, by raycast: from a metre
             -- above the simulated floor to 0.6 m below it, statics only,
             -- with the filter the game grounds its own hand IK with
@@ -1325,6 +1476,9 @@ function Mirror.install(mod, presentation, options)
                         set_world_rotation(unit, leg.ankle, Quaternion.multiply(
                             Quaternion(Vector3.up(), foot.yaw), leg.rest_foot_rotation:unbox()))
                         World.update_unit(world, unit)
+                        leg.error = Vector3.length(Unit.world_position(unit, leg.ankle) - target)
+                    else
+                        leg.error = nil
                     end
                 end
                 state.gait_feet = feet
@@ -1343,8 +1497,9 @@ function Mirror.install(mod, presentation, options)
             Unit.set_local_rotation(unit, 1, Quaternion.multiply(Quaternion(Vector3.up(), math.pi), Unit.local_rotation(unit, 1)))
             World.update_unit(world, unit)
         end
-        if state.near_eye_pending and (state.scale_ratio == nil or
-                (state.last_scale_ratio and math.abs(state.scale_ratio - state.last_scale_ratio) < 0.002)) then
+        -- The scale is fixed, so nothing waits for it to settle; the scan
+        -- still waits a frame for the camera.
+        if state.near_eye_pending and state.frames > 0 then
             state.near_eye_pending = nil
             hide_near_eye(unit, state.data)
         end
@@ -1480,7 +1635,7 @@ function Mirror.install(mod, presentation, options)
                     root_world[1], root_world[2], root_world[3],
                     root_step and string.format("%.5f", root_step) or "na",
                     state.neck_distance and string.format("%.4f", state.neck_distance) or "na",
-                    state.scale_ratio or 1, why,
+                    state.scale or 1, why,
                     heading and tostring(heading.branch) or "na",
                     heading and heading.visual_yaw and string.format("%.2f", math.deg(heading.visual_yaw)) or "na",
                     heading and heading.head_yaw and string.format("%.2f", math.deg(heading.head_yaw)) or "na",
@@ -1504,12 +1659,11 @@ function Mirror.install(mod, presentation, options)
                 log_once("trace", "trace=unavailable")
             end
         end
-        state.last_scale_ratio = state.scale_ratio
         state.frames = state.frames + 1
         if state.frames == 1 or state.frames % 900 == 0 then
             if state.neck_offset then
-                mod:info("DARKTIDEVR_BODY_MIRROR neck_follow offset_m=%.3f,%.3f,%.3f distance_m=%.3f scale_ratio=%.3f",
-                    state.neck_offset[1], state.neck_offset[2], state.neck_offset[3], state.neck_distance, state.scale_ratio or 1)
+                mod:info("DARKTIDEVR_BODY_MIRROR neck_follow offset_m=%.3f,%.3f,%.3f distance_m=%.3f scale=%.4f",
+                    state.neck_offset[1], state.neck_offset[2], state.neck_offset[3], state.neck_distance, state.scale or 1)
             end
             if state.spine_neck then
                 mod:info("DARKTIDEVR_BODY_MIRROR spine neck_gap_m=%.3f->%.3f", state.spine_neck[1], state.spine_neck[2])
@@ -1541,9 +1695,14 @@ function Mirror.install(mod, presentation, options)
                 tostring(mode_name), state.frames, stretch)
             local feet = state.gait_feet
             if feet then
-                mod:info("DARKTIDEVR_BODY_MIRROR gait speed_mps=%.3f ground_hits=%d left=%s right=%s left_foot=%.3f,%.3f,%.3f right_foot=%.3f,%.3f,%.3f",
+                local function err(side)
+                    local leg = state.legs and state.legs[side]
+                    return leg and leg.error and string.format("%.3f", leg.error) or "na"
+                end
+                mod:info("DARKTIDEVR_BODY_MIRROR gait speed_mps=%.3f ground_hits=%d left=%s right=%s ankle_error_m=%s/%s left_foot=%.3f,%.3f,%.3f right_foot=%.3f,%.3f,%.3f",
                     feet.speed or 0, state.ground_hits or 0,
                     feet.left.swinging and "swinging" or "planted", feet.right.swinging and "swinging" or "planted",
+                    err("left"), err("right"),
                     feet.left.position[1], feet.left.position[2], feet.left.position[3],
                     feet.right.position[1], feet.right.position[2], feet.right.position[3])
             end

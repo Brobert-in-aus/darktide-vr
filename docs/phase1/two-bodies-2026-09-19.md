@@ -241,13 +241,74 @@ in the sights, and the legs stand still while you walk. The last is the
 cost of the rule until a gait is written, and it is the user's call, made
 in those words.
 
+## Worn, 10:51: too large, turned right, no leg movement -- and the rule for scale
+
+The report on `a8d474a`: *"body is way too large, doesn't sit square
+(neutral position is slightly turned to the right), no run animation/leg
+movement."* The log has all three:
+
+```
+DARKTIDEVR_BODY_MIRROR gait=ready left=-0.156,0.182,0.103 right=0.141,-0.192,0.100
+DARKTIDEVR_BODY_MIRROR neck_follow ... scale_ratio=1.300
+DARKTIDEVR_BODY_MIRROR gait speed_mps=4.824 ...
+```
+
+The rest ankle offsets say the frozen spawn frame was a staggered combat
+stance, left foot 18 cm forward and right foot 19 cm back: the turned
+neutral. Its neck sat low, so the scale-to-neck ran to its 1.3 cap to reach
+the head: the size. And the gait ran, at up to 4.8 m/s, but one foot at a
+time with a 0.8 m reach cap cannot keep up with a run: at 4 m/s a foot
+stepping every other swing has to cover nearly two metres, so the legs
+trailed at full stretch: no leg movement.
+
+**The rule, from the user, applied in full.** Scale should be as close to 1
+as possible and come from the calibration, not from anything measured in
+game; the calibration sets the character's height, which is a player-facing
+setting, so no further scaling is ever needed; the neck is correct relative
+to the head when the calibration is, so it never needs to lift; height
+beyond the settable range is stretched or compressed vertically into the
+bones that carry it, and arm length is stretched or compressed into the arm
+bones only.
+
+So, at ready (`prepare_rest`):
+
+1. The legs are measured as spawned: bone lengths, the ankle's height off
+   the floor and its distance to the side.
+2. The copy's scale is the game's own character height for the profile,
+   from `PlayerHeight.player_character_third_person_scale`, the number the
+   avatar and every UI character get. Fixed for the session. The
+   scale-to-neck is gone; `Mirror.scale_ratio` remains only for its test.
+3. The height beyond the settable range, if any: the calibrated standing
+   eye height against the character's eye height at that scale. The
+   difference, past a centimetre, becomes one factor on the floor-to-neck
+   chain (`Mirror.height_stretch`, clamped 0.80-1.25) and is applied along
+   the bones of the spine, neck and legs: each bone's local offset scaled,
+   which lengthens it in its own direction. Never a uniform scale.
+4. The torso is turned square to the root and stood upright, by one
+   rotation of the hips that takes the shoulder line to the root's right
+   and the hips-to-neck axis to vertical.
+5. The hips are put at standing height for these legs
+   (`Mirror.standing_hips_height`: ankle height plus the stretched legs with
+   the knee softened by 8 degrees).
+6. Every joint moved is boxed back as the rest pose; the feet's ideal
+   places are made symmetric, hip-width either side, neither forward.
+
+The arms: `arm_length` is on in every live mode with a loose clamp
+(0.6-1.6), so `solve_arm` sets the upper-arm and forearm bones to the
+calibrated lengths from the arm-length calibration, on those bones only.
+
+The gait's run cadence is in gait-2026-09-19.md.
+
 ## Limits
 
-- The legs do not walk. That is by instruction until a procedural gait
-  exists (design step 6), not an oversight.
-- The rest pose is the spawner's first frame, which the design notes may be
-  an idle frame rather than the bind pose. It is stable, which is what the
-  solve needs; whether it reads as a good standing pose is a worn question.
+- The rest pose is now the spawner's first frame made neutral by rule:
+  square, upright, hips at standing height. The spine's own curve from that
+  frame is kept. Whether it reads as a good standing pose is a worn
+  question; `DARKTIDEVR_BODY_MIRROR rest ...` logs every number it used.
+- A player outside the settable height range gets the stretch, which is
+  correct in height and untested in proportion.
+- The torso squaring uses the shoulder line; a rest frame with one
+  shoulder shrugged would be squared to the shrug.
 - The flicker is not fixed. It is instrumented; the next worn log names the
   stepping quantity, and the fix follows the 16 and 17 September pattern for
   whichever it is.
