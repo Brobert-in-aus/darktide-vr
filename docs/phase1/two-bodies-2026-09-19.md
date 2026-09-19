@@ -419,6 +419,55 @@ The restore source, `user_settings.vr.config`, dated 14 September, has no
 entry for the key at all. Set back to true in the live file with the game
 closed, and the backup refreshed from it with the old copy kept beside.
 
+## Worn, 12:07: the root is smooth and the flicker stays; feet a little high
+
+On `d447f61`: *"Flicker persists, hands are aligned and curl now. Body is
+a little too high, feet are floating off the ground slightly."* The probe,
+13,293 samples with `anchor_lag_m`:
+
+```
+cols:   avatar  neck_target  eye    unit   lag
+smooth: 0.914   0.912        0.278  0.904  0.548
+```
+
+The copy's root now moves as smoothly as the avatar's, the raw eye still
+steps and the lag alternates as it should, so the root is no longer what
+alternates. The trace's yaw columns are flat (steps of a hundredth of a
+degree). Whatever alternates does so after the point where the probe reads
+the copy, or in a joint the probe does not watch. So the copy now records
+its root and right hand at the end of its update and reads them again in
+the `ScriptWorld.render` hook, the last Lua boundary before the frame is
+drawn and after the engine's own world update
+(`api.check_before_render`). A drift there is a writer this module cannot
+see, and it is logged with the frame it happened on, plus a summary every
+600 checks so a clean result is written down too.
+
+**The feet.** Over the session the avatar root, the copy root and the
+raycast floor share the same median height within six millimetres, so the
+ground is right. The ankle height was the spawn frame's ankle above the
+root, 0.101 m, with the feet wherever the idle had them; the sole sits
+below the ankle by an amount the rig knows through its toe joint
+(`j_*toebase`, the ball of the foot). The ankle's height is now ankle
+minus toe plus 1.5 cm, and the hips' standing height, built on the same
+number, comes down with it.
+
+**Industry practice, as asked.** VRIK calibrates height by having the
+player stand straight and comparing the head target's height with the
+avatar's head bone, and offers scaling the mesh to the player or the
+player to the mesh, with arm-length calibration beside it; this mod does
+the former through the game's own character-height setting and the
+latter through the arm bones. For the feet VRIK anchors the toes to the
+footsteps rather than the ankle, so the avatar can rise on its toes and
+the headset has more room before a side-step is forced; this pass moves
+the anchor's height to the toe's measure and leaves toe anchoring proper
+for the gait. For locomotion VRIK calls its procedural stepping legacy,
+"not responsive enough" and inclined "to fall behind the camera when
+moving fast", and uses an eight-direction walk and run blend tree whose
+foot placements a full-body solve then adapts to the terrain. Those cycles
+are authored animation, which the separation rule keeps off this body
+unless they are the mod's own; the procedural gait here is the legacy
+approach with the run overlap added to keep it from falling behind.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows

@@ -245,6 +245,36 @@ then grab the gun with your off-hand.
 fingers curl on the grip, and whether two-handing works. The probe's
 `anchor_lag_m` column shows the lag being taken up either way.
 
+### 1h. Worn at 12:07: the root is smooth, the flicker stays, feet a little high
+
+**Flicker.** The probe says the copy's root now moves as smoothly as your
+avatar's, so the root is no longer what alternates. Whatever does, does it
+after the copy is posed or in a joint the probe does not watch. The copy
+now reads its own root and right hand again at the last point before the
+frame is drawn and logs any drift since its update, with a summary line
+every 600 frames so a clean result is on record too.
+
+**Feet and height.** The floor is right: the avatar's root, the copy's
+root and the raycast floor agree within six millimetres over the session.
+The ankle height came from the spawn frame's foot, and the sole sits below
+the ankle by more than that; the height is now taken from the rig's toe
+joint, and the hips' standing height comes down with it.
+
+**Industry practice.** VRIK's height calibration is the head target
+against the head bone standing straight, scaling one to the other, which
+is what the game's own character-height setting does here. For the feet
+it anchors the toes rather than the ankles; the toe measure above is the
+first half of that. For locomotion it calls procedural stepping legacy and
+uses authored walk and run cycles adapted to the terrain by the solve;
+those are animation, which your rule keeps off this body unless they are
+ours. The gait here is the legacy approach with the run overlap.
+
+**Test**: walk and strafe as before; stand and look at your feet.
+
+**Report**: whether the flicker is unchanged, and whether the feet now sit
+on the floor. The log's `prerender_drift` and `prerender checks=` lines
+carry the answer to the first either way.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

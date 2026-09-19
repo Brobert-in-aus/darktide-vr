@@ -14962,6 +14962,11 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
         if presentation.body_proxy then
             presentation.body_proxy.check_rigid_hands_before_render()
         end
+        -- The drawn body's own pre-render check: whether anything moved it
+        -- after its update (darktidevr_body_mirror, 19 September).
+        if presentation.body_mirror and presentation.body_mirror.check_before_render then
+            pcall(presentation.body_mirror.check_before_render, world)
+        end
         presentation.update_performance_pass_trace()
         local primary = ScriptWorld.viewport(world, primary_viewport_name)
         local right = ScriptWorld.viewport(world, right_viewport_name)

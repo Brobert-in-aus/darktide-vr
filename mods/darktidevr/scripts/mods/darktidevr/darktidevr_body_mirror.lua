@@ -351,6 +351,9 @@ end
 -- softened by KNEE_REST_BEND, so the leg solve always has a little bend to
 -- work from and never starts locked straight. Pure.
 Mirror.KNEE_REST_BEND = math.rad(8)
+-- How far the ball of the foot (j_*toebase) sits above the sole on a
+-- standing foot: the ankle's height above the floor is measured from it.
+Mirror.TOE_ABOVE_SOLE_M = 0.015
 function Mirror.standing_hips_height(ankle_z, upper, lower, k)
     if type(ankle_z) ~= "number" or type(upper) ~= "number" or type(lower) ~= "number" then return nil end
     if not (upper > 0) or not (lower > 0) or ankle_z ~= ankle_z then return nil end
@@ -780,6 +783,40 @@ function Mirror.install(mod, presentation, options)
         return Mirror.draws_body(mode_name, has_unit, drawable)
     end
 
+    -- THE PRE-RENDER CHECK (19 September). Called from the ScriptWorld.render
+    -- hook, the last Lua boundary before the frame is drawn and after the
+    -- engine's own world update: reads the copy's root and right hand again
+    -- and compares them with what this module left at the end of its own
+    -- update. A drift here is a writer this module cannot see -- the engine
+    -- re-applying a frozen animation frame, something moving the unit after
+    -- the post-update -- and the flicker the probe could not find would be
+    -- one. Logs the first 200 drifts of a millimetre or more with the frame
+    -- they happened on, and a summary every 600 checks either way, so a
+    -- clean result is also written down.
+    local checks, drifts, drift_lines = 0, 0, 0
+    function api.check_before_render(world)
+        if not state or not state.unit or not state.render_check or world ~= state.world then return end
+        if not Unit.alive(state.unit) or state.render_check.frame ~= state.frames then return end
+        local unit = state.unit
+        local root = array(Unit.world_position(unit, 1))
+        local hand = array(Unit.world_position(unit, Unit.node(unit, "j_righthand")))
+        local d_root = Mirror.step_m(root, state.render_check.root) or 0
+        local d_hand = Mirror.step_m(hand, state.render_check.hand) or 0
+        checks = checks + 1
+        if d_root >= 0.001 or d_hand >= 0.001 then
+            drifts = drifts + 1
+            if drift_lines < 200 then
+                drift_lines = drift_lines + 1
+                mod:info("DARKTIDEVR_BODY_MIRROR prerender_drift frame=%d root_m=%.4f hand_m=%.4f root=%.3f,%.3f,%.3f was=%.3f,%.3f,%.3f",
+                    state.frames, d_root, d_hand, root[1], root[2], root[3],
+                    state.render_check.root[1], state.render_check.root[2], state.render_check.root[3])
+            end
+        end
+        if checks % 600 == 0 then
+            mod:info("DARKTIDEVR_BODY_MIRROR prerender checks=%d drifted=%d", checks, drifts)
+        end
+    end
+
     function api.drawn_units()
         local units = {}
         if not state then return units end
@@ -941,10 +978,29 @@ function Mirror.install(mod, presentation, options)
             local hip, knee, ankle = node("j_" .. side .. "upleg"), node("j_" .. side .. "leg"), node("j_" .. side .. "foot")
             if not (hip and knee and ankle) then return nil, "leg_joints_missing" end
             local ankle_local = root_local(Unit.world_position(unit, ankle))
+            -- The ankle's height above the SOLE, from the rig itself: the
+            -- toe joint (j_*toebase, the ball of the foot) sits a known
+            -- little above the sole, so ankle minus toe plus that is the
+            -- ankle's height with the foot flat on the floor. The spawn
+            -- frame's ankle height above the root was 0.101 m with the
+            -- feet wherever the idle had them, and the worn run on it had
+            -- "feet floating off the ground slightly" and the body "a
+            -- little too high" by the same few centimetres, since the hips'
+            -- standing height is built on this number too. VRIK anchors the
+            -- toes to the footsteps for the same reason.
+            local toe = node("j_" .. side .. "toebase")
+            local ankle_above_sole = Vector3.z(ankle_local)
+            local toe_z = nil
+            if toe then
+                toe_z = Vector3.z(root_local(Unit.world_position(unit, toe)))
+                local from_toe = Vector3.z(ankle_local) - toe_z + Mirror.TOE_ABOVE_SOLE_M
+                if from_toe > 0.02 and from_toe < 0.25 then ankle_above_sole = from_toe end
+            end
             legs[side] = {side = side, hip = hip, knee = knee, ankle = ankle,
                 upper = Vector3.length(Unit.world_position(unit, knee) - Unit.world_position(unit, hip)),
                 lower = Vector3.length(Unit.world_position(unit, ankle) - Unit.world_position(unit, knee)),
-                ankle_x = Vector3.x(ankle_local), ankle_z = Vector3.z(ankle_local)}
+                ankle_x = Vector3.x(ankle_local), ankle_z = ankle_above_sole,
+                spawn_ankle_z = Vector3.z(ankle_local), toe_z = toe_z}
         end
         local upper = (legs.left.upper + legs.right.upper) / 2
         local lower = (legs.left.lower + legs.right.lower) / 2
@@ -1039,11 +1095,13 @@ function Mirror.install(mod, presentation, options)
             leg.rest_foot_rotation = QuaternionBox(Quaternion.multiply(root_rotation_inverse,
                 Unit.world_rotation(unit, leg.ankle)))
         end
-        mod:info("DARKTIDEVR_BODY_MIRROR rest scale=%.4f character_eye_m=%s calibrated_eye_m=%s chain_m=%.3f stretch=%.4f " ..
-            "torso_yaw_fix_deg=%.1f hips_z_m=%.3f->%.3f upper_m=%.3f lower_m=%.3f ankle_z_m=%.3f width_m=%.3f",
+        mod:info("DARKTIDEVR_BODY_MIRROR rest scale=%.4f character_eye_m=%s camera_eye_m=%s chain_m=%.3f stretch=%.4f " ..
+            "torso_yaw_fix_deg=%.1f hips_z_m=%.3f->%.3f upper_m=%.3f lower_m=%.3f ankle_z_m=%.3f spawn_ankle_z_m=%.3f toe_z_m=%s width_m=%.3f",
             scale, character_eye and string.format("%.3f", character_eye) or "none",
-            calibrated_eye and string.format("%.3f", calibrated_eye) or "none", chain, k, yaw_fix,
-            hips_z_before, standing or hips_z_before, upper, lower, ankle_z, width)
+            camera_eye and string.format("%.3f", camera_eye) or "none", chain, k, yaw_fix,
+            hips_z_before, standing or hips_z_before, upper, lower, ankle_z,
+            (legs.left.spawn_ankle_z + legs.right.spawn_ankle_z) / 2,
+            legs.left.toe_z and string.format("%.3f", legs.left.toe_z) or "none", width)
         return {legs = legs, scale = scale, stretch = k,
             offsets = {left = {-width, 0, 0}, right = {width, 0, 0}},
             ankle_height = {left = ankle_z, right = ankle_z}}
@@ -1575,6 +1633,19 @@ function Mirror.install(mod, presentation, options)
         -- copy's own hand joints, held per weapon (BodyProxy.pose_rig_fingers).
         if state.hand_rig and body_proxy() and body_proxy().pose_rig_fingers then
             if body_proxy().pose_rig_fingers() then World.update_unit(world, unit) end
+        end
+        -- What the copy looks like when this update is done, for the
+        -- pre-render check (api.check_before_render): the root and the
+        -- right hand. The probe (12:07) showed the root as smooth as the
+        -- avatar's after the smooth-timeline shift and the flicker stayed,
+        -- so whatever alternates does so after this point or in a joint the
+        -- probe does not watch; the check reads the same two points again
+        -- at the render boundary, after the engine's own world update.
+        if not Mirror.MODES[mode_name].reflect and Unit.has_node(unit, "j_righthand") then
+            state.render_check = state.render_check or {}
+            state.render_check.root = array(Unit.world_position(unit, 1))
+            state.render_check.hand = array(Unit.world_position(unit, Unit.node(unit, "j_righthand")))
+            state.render_check.frame = state.frames
         end
         if Mirror.MODES[mode_name].reflect then
             -- Posed on the player; now turned about them and stood ahead.
