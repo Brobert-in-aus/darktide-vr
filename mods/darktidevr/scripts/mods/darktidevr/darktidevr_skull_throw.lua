@@ -578,9 +578,18 @@ function Skull.install(mod, presentation)
             -- proxy), for the grab: the skull turns with the hand.
             local proxy = presentation.body_proxy
             if proxy and proxy.hand_pose then
-                local _, rotation = proxy.hand_pose(side)
+                local pose_position, rotation = proxy.hand_pose(side)
                 if rotation then
                     if hand_track.rotation then hand_track.rotation:store(rotation) else hand_track.rotation = QuaternionBox(rotation) end
+                end
+                -- The wrist's own position too: the grab uses the wrist for
+                -- both its origin and its rotation (18:30 worn run: with the
+                -- controller's grip point as the origin and the wrist's
+                -- rotation, the captured grip lay along the forearm axis and
+                -- a palm-over roll swung the skull a hand's width, not over
+                -- the hand). The grip point still feeds the throw's samples.
+                if pose_position then
+                    if hand_track.pose_position then hand_track.pose_position:store(pose_position) else hand_track.pose_position = Vector3Box(pose_position) end
                 end
             end
         end
@@ -1059,7 +1068,8 @@ function Skull.install(mod, presentation)
                 -- and the throw or the bridge takes over.
                 local grabbed = false
                 if thrower and held(t) and hand_track.position and hand_track.rotation then
-                    local hand = Vector3(hand_track.position[1], hand_track.position[2], hand_track.position[3])
+                    local hand = hand_track.pose_position and hand_track.pose_position:unbox() or
+                        Vector3(hand_track.position[1], hand_track.position[2], hand_track.position[3])
                     local hand_rotation = hand_track.rotation:unbox()
                     if not record.grab then
                         -- THE GRIP IS DEFINED, NOT CAPTURED (17:55 worn run:
