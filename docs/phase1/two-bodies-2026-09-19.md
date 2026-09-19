@@ -299,8 +299,71 @@ calibrated lengths from the arm-length calibration, on those bones only.
 
 The gait's run cadence is in gait-2026-09-19.md.
 
+## Worn, 11:14: far too small, wrists into forearms, and the flicker named
+
+On `1361146`: *"model is far too small now. Also, with my hands close to
+me the wrist moves down into the forearm, and when I reach out the hands
+disconnect from the forearm and float away from it."* Then: *"The t-pose
+calibration was 100% done correctly"*, and *"the body is flickering, and
+the hands, which are part of the body, not the weapon though."*
+
+```
+DARKTIDEVR_BODY_MIRROR rest scale=1.0691 character_eye_m=1.896 calibrated_eye_m=1.723
+    chain_m=1.411 stretch=0.8856 torso_yaw_fix_deg=-13.8 hips_z_m=0.872->0.897
+DARKTIDEVR_BODY_MIRROR arm_length source=span span_m=1.559 reach_m=0.518 upper_m=0.290 lower_m=0.228
+DARKTIDEVR_BODY_MIRROR arm side=right world_upper_m=0.2899 world_lower_m=0.2277
+```
+
+**Too small.** The residual was taken between the player's real standing
+eye height (1.723 m) and the avatar's in-world eye height (1.896 m), and
+the copy was compressed by 11 % toward a head the camera was not at: this
+mod anchors the tracked eye to the avatar's eye, so the camera stands at
+the avatar's height, and at the game's scale alone the copy already
+matches it (the squared rest pose's chain, 1.411 m at scale 1, puts the
+neck where the avatar's is). The residual is now between the camera's
+height above the floor and the game's eye height for the profile; they
+agree, so it is 1, and it appears only if the camera is ever put elsewhere.
+The dead zone is 3 cm.
+
+**Wrists and floating hands.** The T-pose was right and the arm lengths
+were applied exactly (the world bone lengths in the log are the calibrated
+ones). What was wrong is how a changed bone length reached the skin: the
+child joint was moved along the bone and the mesh, skinned to the joint it
+hangs from, kept its authored length. A forearm bone shortened to 0.228 m
+under a 0.294 m forearm mesh overhangs the wrist when the arm is bent; the
+reach stretch moved the hand joint past the mesh's end. Bone lengths now
+change through the joints' scales, uniformly, with the inverse on the
+child: the upper arm carries its factor, the forearm the ratio of the two,
+the hand the inverse of the forearm's, so each mesh stretches with its bone
+and the hand is its own size. The height residual, when it is ever
+non-zero, is applied the same way: the spine root carries it and the head
+and clavicles the inverse; each hip joint carries it and the foot the
+inverse.
+
+**The flicker.** *"It's not a judder. The body is alternating between two
+positions each frame."* The weapon rides the hidden avatar and is steady;
+the copy and its hands ride the body frame. The body frame's smoothing
+state -- its yaw and its "turning" -- was advanced by three callers on
+three clocks: the copy in the post-update with the frame's t, the two-hand
+stock at input time (`input.two_hand`) with the previous frame's t, the
+holsters at draw time. "Sampled at most once per game time" only
+de-duplicated an equal t; a different one re-ran the smoothing with that
+gap as dt, and a negative or oversized gap snaps the yaw to its target. So
+the copy's root was set from a snapped heading one frame and a smoothed
+one the next: two placements, alternating, hands included, weapon not.
+`api.sample` now advances once per rendered frame on the game's main clock
+and hands every other sample in that frame the same frame back, whatever
+time it passes: one writer.
+
+The motion probe no longer depends on the trace flag, which three
+deployments in an hour each wrote `disabled`; it runs with its own budget
+of 3,000 lines.
+
 ## Limits
 
+- The one-writer body frame is reasoned from the callers and their clocks
+  and reproduces the report exactly; it is not yet worn, and the motion
+  probe will show whether the alternation is gone.
 - The rest pose is now the spawner's first frame made neutral by rule:
   square, upright, hips at standing height. The spine's own curve from that
   frame is kept. Whether it reads as a good standing pose is a worn

@@ -336,7 +336,7 @@ end
 -- scale; chain = the copy's floor-to-neck height at that scale. Under a
 -- centimetre of residual is 1, and the factor is clamped so a bad
 -- calibration cannot draw a stick figure. Pure.
-Mirror.STRETCH_MIN, Mirror.STRETCH_MAX, Mirror.STRETCH_DEAD_M = 0.80, 1.25, 0.01
+Mirror.STRETCH_MIN, Mirror.STRETCH_MAX, Mirror.STRETCH_DEAD_M = 0.80, 1.25, 0.03
 function Mirror.height_stretch(calibrated_eye, character_eye, chain)
     if type(calibrated_eye) ~= "number" or type(character_eye) ~= "number" or type(chain) ~= "number" then return 1 end
     if calibrated_eye ~= calibrated_eye or character_eye ~= character_eye or chain ~= chain then return 1 end
@@ -525,6 +525,9 @@ end
 -- the motion probe: a millimetre, well under a walking step (about 4 cm at
 -- 90 Hz) and above the sub-millimetre breathing of a standing character.
 Mirror.MOTION_MOVING_M = 0.001
+-- The motion probe's own line budget when the trace flag is off: about
+-- half a minute of movement at 90 Hz.
+Mirror.MOTION_MAX_LINES = 3000
 
 -- Which units a drawn copy owns, so their collision can be taken off them.
 --
@@ -947,9 +950,18 @@ function Mirror.install(mod, presentation, options)
         local lower = (legs.left.lower + legs.right.lower) / 2
         local ankle_z = (legs.left.ankle_z + legs.right.ankle_z) / 2
         local width = (math.abs(legs.left.ankle_x) + math.abs(legs.right.ankle_x)) / 2
-        -- The scale the game gives this profile, and the eye height it
-        -- stands at; the calibration's standing eye height beside it.
-        local scale, character_eye, calibrated_eye = 1, nil, nil
+        -- The scale the game gives this profile, and the eye height the
+        -- game puts its camera at for it (heights.default x scale, the
+        -- first-person height). Beside it, the height the CAMERA actually
+        -- sits at above the floor right now: this mod anchors the tracked
+        -- eye to the avatar's eye, so the two agree and the stretch is 1.
+        -- The 11:14 worn run compared the player's real standing eye height
+        -- (1.723 m) with the avatar's (1.896 m) instead, compressed the
+        -- copy by 11 % to a head the camera was not at, and drew a body
+        -- "far too small". The residual that matters is between the copy
+        -- and the camera, and it appears only if the camera is ever put
+        -- somewhere other than the avatar's eye.
+        local scale, character_eye, camera_eye = 1, nil, nil
         local ok_scale = pcall(function()
             local Breeds = require("scripts/settings/breed/breeds")
             local PlayerHeight = require("scripts/utilities/player_height")
@@ -959,23 +971,31 @@ function Mirror.install(mod, presentation, options)
                 character_eye = breed.heights and tonumber(breed.heights.default) and
                     tonumber(breed.heights.default) * scale or nil
             end
-            local result = mod.darktidevr_calibration and mod.darktidevr_calibration.result or
-                (mod.get and mod:get("vr_calibration_v1"))
-            calibrated_eye = result and not result.seated and tonumber(result.floor_eye_height) or nil
+            local eye_position = avatar and Unit.alive(avatar) and presentation.eye_pose and presentation.eye_pose(avatar)
+            if eye_position then
+                camera_eye = Vector3.z(eye_position) - Vector3.z(Unit.world_position(avatar, 1))
+            end
         end)
         if not ok_scale or not (scale > 0.1) then scale = 1 end
         -- 2. The chain from floor to neck at that scale, and the stretch.
         local chain = Vector3.z(root_local(Unit.world_position(unit, neck)))
-        local k = Mirror.height_stretch(calibrated_eye, character_eye, chain * scale)
+        local k = Mirror.height_stretch(camera_eye, character_eye, chain * scale)
         local moved = {}
-        local function stretch(index)
+        -- Applied as the JOINTS' scales, so the skin stretches with the
+        -- bones (see apply_arm_scales for why an offset alone will not do):
+        -- the spine root carries k and everything above inherits it, with
+        -- the head and the two clavicles carrying 1/k so the head and the
+        -- arms stay their own size; each hip joint carries k and its foot
+        -- 1/k. The hips' own offset from the root is a position below.
+        local function scaled(index, factor)
             if index and k ~= 1 then
-                Unit.set_local_position(unit, index, Unit.local_position(unit, index) * k)
+                Unit.set_local_scale(unit, index, Vector3(factor, factor, factor))
                 moved[#moved + 1] = index
             end
         end
-        for _, name in ipairs({"j_spine", "j_spine1", "j_spine2", "j_neck"}) do stretch(node(name)) end
-        for _, leg in pairs(legs) do stretch(leg.knee); stretch(leg.ankle) end
+        scaled(node("j_spine"), k)
+        for _, name in ipairs({"j_head", "j_leftshoulder", "j_rightshoulder"}) do scaled(node(name), 1 / k) end
+        for _, leg in pairs(legs) do scaled(leg.hip, k); scaled(leg.ankle, 1 / k) end
         World.update_unit(world, unit)
         -- 3. Square and upright: the shoulder line to the root's right, the
         -- hips-to-neck axis to vertical, in one rotation of the hips.
@@ -1028,6 +1048,18 @@ function Mirror.install(mod, presentation, options)
             offsets = {left = {-width, 0, 0}, right = {width, 0, 0}},
             ankle_height = {left = ankle_z, right = ankle_z}}
     end
+    -- The three arm joints' scales for an upper-arm factor and a forearm
+    -- factor: the upper arm carries su, the forearm sl/su so its world scale
+    -- is sl, the hand 1/sl so it is its own size (and so are the fingers
+    -- under it). Uniform, so the joints' rotations do not shear anything.
+    local function apply_arm_scales(world, unit, arm)
+        local su, sl = arm.scale_upper or 1, arm.scale_lower or 1
+        if not (su > 1e-3) or not (sl > 1e-3) then return end
+        Unit.set_local_scale(unit, arm.arm, Vector3(su, su, su))
+        Unit.set_local_scale(unit, arm.forearm, Vector3(sl / su, sl / su, sl / su))
+        Unit.set_local_scale(unit, arm.hand, Vector3(1 / sl, 1 / sl, 1 / sl))
+        World.update_unit(world, unit)
+    end
     local function solve_arm(world, avatar, unit, arm)
         -- The final visible wrist pose (tracked, gun-aligned or on the support
         -- grip), whatever the mode: the gloves record it when they draw the
@@ -1045,10 +1077,23 @@ function Mirror.install(mod, presentation, options)
         end
         Unit.set_local_position(unit, arm.forearm, arm.rest_forearm:unbox())
         Unit.set_local_position(unit, arm.hand, arm.rest_hand:unbox())
-        World.update_unit(world, unit)
+        -- THE BONES ARE SCALED, NOT THEIR OFFSETS (19 September). Until now
+        -- a calibrated length moved the child joint along the bone and left
+        -- the skin where it was: a forearm bone shortened to the calibration
+        -- kept a forearm mesh of the authored length, which overhung the
+        -- wrist when the arm was bent ("with my hands close to me the wrist
+        -- moves down into the forearm"), and the reach stretch moved the
+        -- hand joint past the mesh's end ("when I reach out the hands
+        -- disconnect from the forearm and float away"). A joint's SCALE
+        -- reaches its skin: the upper arm scaled by su stretches its mesh
+        -- and moves the forearm joint with it; the forearm carries sl/su so
+        -- it ends at sl; the hand carries 1/sl so it is its own size.
+        -- Uniform scales compose whatever the joints' rotations are.
+        arm.scale_upper, arm.scale_lower = 1, 1
         local lengths = Mirror.MODES[mode_name].arm_length and state.arm_lengths
         if lengths then
             local config = Mirror.MODES[mode_name].arm_length
+            World.update_unit(world, unit)
             local rest_upper = Vector3.length(Unit.world_position(unit, arm.forearm) - Unit.world_position(unit, arm.arm))
             local rest_lower = Vector3.length(Unit.world_position(unit, arm.hand) - Unit.world_position(unit, arm.forearm))
             local function ratio(desired, current)
@@ -1056,10 +1101,9 @@ function Mirror.install(mod, presentation, options)
                 return math.max(config.min, math.min(config.max, desired / current))
             end
             arm.length_ratio_upper, arm.length_ratio_lower = ratio(lengths.upper, rest_upper), ratio(lengths.lower, rest_lower)
-            Unit.set_local_position(unit, arm.forearm, arm.rest_forearm:unbox() * arm.length_ratio_upper)
-            Unit.set_local_position(unit, arm.hand, arm.rest_hand:unbox() * arm.length_ratio_lower)
-            World.update_unit(world, unit)
+            arm.scale_upper, arm.scale_lower = arm.length_ratio_upper, arm.length_ratio_lower
         end
+        apply_arm_scales(world, unit, arm)
         if Mirror.MODES[mode_name].protract and arm.clavicle then
             local shoulder_position = Unit.world_position(unit, arm.arm)
             local forearm_position = Unit.world_position(unit, arm.forearm)
@@ -1091,11 +1135,10 @@ function Mirror.install(mod, presentation, options)
         if Mirror.MODES[mode_name].stretch then
             local ratio = Mirror.stretch_ratio(Vector3.length(target - shoulder), upper, lower)
             if ratio > 1 then
-                -- The drawn segments lengthen too (joint offsets along their bones),
-                -- not only the solve's lengths.
-                Unit.set_local_position(unit, arm.forearm, Unit.local_position(unit, arm.forearm) * ratio)
-                Unit.set_local_position(unit, arm.hand, Unit.local_position(unit, arm.hand) * ratio)
-                World.update_unit(world, unit)
+                -- The drawn segments lengthen too, skin and all: the bones'
+                -- scales, not their offsets.
+                arm.scale_upper, arm.scale_lower = arm.scale_upper * ratio, arm.scale_lower * ratio
+                apply_arm_scales(world, unit, arm)
                 upper, lower = upper * ratio, lower * ratio
                 arm.max_stretch_ratio = math.max(arm.max_stretch_ratio or 1, ratio)
             end
@@ -1519,9 +1562,15 @@ function Mirror.install(mod, presentation, options)
         -- value that alternates (0.000, 0.032, 0.000, 0.032) against a view
         -- that does not (0.016, 0.016, ...) is the answer. Every frame
         -- rather than every third, because a two-state alternation sampled
-        -- every third frame aliases into a smooth line. Shares the trace's
-        -- flag and its line budget.
-        if trace_flag() and trace_lines < Mirror.TRACE_MAX_LINES then
+        -- every third frame aliases into a smooth line. It ran under the
+        -- trace flag until 19 September, when three deployments in an hour
+        -- each wrote that flag `disabled` and three worn runs produced no
+        -- lines; now it always runs, with its own budget of MOTION_MAX_LINES
+        -- (about half a minute of movement), and the trace flag lifts the
+        -- budget to the trace's.
+        state.motion_lines = state.motion_lines or 0
+        if (trace_flag() and trace_lines < Mirror.TRACE_MAX_LINES) or
+                state.motion_lines < Mirror.MOTION_MAX_LINES then
             local ok = pcall(function()
                 local root_now = array(Unit.world_position(unit, 1))
                 local avatar_now = array(Unit.world_position(avatar, 1))
@@ -1533,6 +1582,7 @@ function Mirror.install(mod, presentation, options)
                     local d_avatar = Mirror.step_m(avatar_now, m.avatar)
                     if d_avatar and d_avatar > Mirror.MOTION_MOVING_M then
                         trace_lines = trace_lines + 1
+                        state.motion_lines = state.motion_lines + 1
                         local function fmt(v) return v and string.format("%.4f", v) or "na" end
                         mod:info("DARKTIDEVR_BODY_MOTION t=%.3f dt=%.4f d_avatar_m=%s d_neck_target_m=%s d_eye_m=%s d_unit_m=%s " ..
                             "avatar=%.3f,%.3f,%.3f unit=%.3f,%.3f,%.3f",

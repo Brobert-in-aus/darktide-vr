@@ -183,6 +183,36 @@ and whether the legs run when you run. If the size is still off, the line
 `DARKTIDEVR_BODY_MIRROR rest scale=... character_eye_m=... calibrated_eye_m=...
 stretch=...` has every number that decided it.
 
+### 1f. Worn at 11:14: far too small, wrists into forearms, and the flicker
+
+**Size.** My residual compared your real eye height with the avatar's and
+shrank the copy 11 % toward a head the camera is not at: the camera stands
+at the avatar's eye height in this mod, and at the game's scale alone the
+copy matches it. The residual is now camera against the game's own eye
+height, which agree, so the stretch is 1.
+
+**Wrists.** Your T-pose was right and the lengths were applied exactly.
+The fault was that a shortened bone moved the joint and left the skin
+behind: the forearm mesh overhung the wrist when bent, and the reach
+stretch pushed the hand past the mesh. Bones now change length through the
+joints' scales, so the skin follows and the hand keeps its own size.
+
+**Flicker.** Two writers, as you said. The weapon is steady because it
+rides the hidden avatar; the copy and its hands ride the body frame, whose
+smoothing was advanced by three callers on three clocks (the copy each
+frame, the two-hand stock at input time with the previous frame's time,
+the holsters at draw time), and a sample with a different time re-ran the
+smoothing and snapped the heading. Snapped one frame, smoothed the next.
+It advances once per frame on one clock now, and everyone gets the same
+frame.
+
+**Test**: stand and look down and in the mirror (size), bend your arms in
+close and reach out fully (wrists), walk and strafe (flicker), sprint.
+
+**Report**: size, whether the wrist stays joined at both extremes, and
+whether the flicker is gone. The motion probe runs without the trace flag
+now, so the log will show the per-frame steps either way.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

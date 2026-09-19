@@ -126,7 +126,7 @@ end
 function BodyFrame.install(mod, presentation, observation)
     local api = {}
     local frame_state = BodyFrame.new()
-    local last_t, last_frame, failures = nil, nil, 0
+    local last_t, last_frame, failures, last_main = nil, nil, 0, nil
     local function vector(v) return v and {Vector3.x(v), Vector3.y(v), Vector3.z(v)} or nil end
     local function sample(unit, t)
         -- The tracked eye (presentation.eye_pose), not the first-person unit:
@@ -145,21 +145,38 @@ function BodyFrame.install(mod, presentation, observation)
         local player = Managers.player and Managers.player:local_player(1)
         local scale = presentation.calibrated_character_scale and presentation.calibrated_character_scale(player) or 1
         local eye_height = presentation.physical_eye_height and presentation.physical_eye_height()
-        local dt = last_t and t - last_t or nil
+        -- The gap since the last ADVANCE, on the same clock `t` now is.
+        local dt = last_main and t - last_main or nil
         return frame_state.update({eye = vector(eye_position),
             head_forward = vector(Quaternion.forward(rotation)), head_up = vector(Quaternion.up(rotation)),
             hands = hands, eye_height = eye_height and eye_height * (tonumber(scale) or 1) or nil}, dt)
     end
+    -- ONE WRITER (19 September). The frame's smoothing state (its yaw, its
+    -- "turning") advances ONCE per rendered frame, on the game's main clock,
+    -- and every sample taken in that frame -- whoever asks and whatever
+    -- time they pass -- gets the same frame back. Until now "sampled at most
+    -- once per game time" meant once per DISTINCT t, and three callers
+    -- passed three: the drawn body its frame's t, the two-hand stock the
+    -- previous frame's, the holsters their draw t. A sample with a t other
+    -- than the last one re-ran the smoothing with that gap as dt, and a
+    -- negative or oversized gap snaps the yaw to its target (state.update).
+    -- So the copy's root was set from a snapped heading one frame and a
+    -- smoothed one the next: "the body is alternating between two positions
+    -- each frame ... and the hands, which are part of the body, not the
+    -- weapon" -- the weapon rides the avatar, which never reads this. The
+    -- caller's t is kept for the log only.
     function api.sample(unit, t)
-        if t ~= nil and t == last_t then return last_frame end
-        local ok, frame = pcall(sample, unit, t)
+        local now = Managers and Managers.time and Managers.time.has_timer and
+            Managers.time:has_timer("main") and Managers.time:time("main") or t
+        if now ~= nil and now == last_main then return last_frame end
+        local ok, frame = pcall(sample, unit, now)
         if not ok then
             failures = failures + 1
             if failures == 1 then mod:info("DARKTIDEVR_BODY_FRAME failed=%s", tostring(frame):sub(1, 160)) end
             frame = nil
             frame_state.reset()
         end
-        last_t, last_frame = t, frame
+        last_main, last_t, last_frame = now, t, frame
         return frame
     end
     return api

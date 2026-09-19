@@ -419,6 +419,7 @@ assert(source:find('Unit%.world_position%(avatar, 1%)'), 'the root position is t
 -- for anything unusable.
 near(Mirror.height_stretch(1.62, 1.62, 1.40), 1, 1e-12, 'no residual, no stretch')
 near(Mirror.height_stretch(1.625, 1.62, 1.40), 1, 1e-12, 'half a centimetre is noise')
+near(Mirror.height_stretch(1.64, 1.62, 1.40), 1, 1e-12, 'two centimetres is noise: the eye constants are not that exact')
 near(Mirror.height_stretch(1.70, 1.62, 1.40), (1.40 + 0.08) / 1.40, 1e-12, 'eight centimetres taller lengthens the chain by eight')
 near(Mirror.height_stretch(1.50, 1.62, 1.40), (1.40 - 0.12) / 1.40, 1e-12, 'twelve shorter compresses it by twelve')
 assert(Mirror.height_stretch(2.60, 1.62, 1.40) == Mirror.STRETCH_MAX, 'clamped above')
