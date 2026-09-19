@@ -20,6 +20,32 @@ cone attack's direction against its preview; both changed in `ec73ee6`'s
 successor, awaiting the worn clearance. The user's order: once the grab
 and the cone aim are cleared, items 4 to 8 proceed; item 9 waits.
 
+**Progress (19 September, 21:10).** Items 4 to 8 run on the user's order at
+20:45. Item 4: `CHANGELOG.md` Unreleased and the Nexus draft carry the 19th
+(commit `a5dae4c`). Item 5: the full ctest suite, 283 tests, 100 per cent
+passed in 92 s. Item 6: native Release build clean; provenance recorded
+(`artifacts/packages/component-provenance-0.3.0-alpha.1.json`, 2
+components, hashes matched); package built and tested
+(`runtime_package=pass files=124`):
+
+    darktidevr-0.3.0-alpha.1-a5dae4c24c51.zip
+    9,425,432 bytes
+    SHA-256 91B7FEE98A6C9E0239DD15070EC30DEF5B629811586B431E5A6E8F2AB7395CFA
+    built from a5dae4c24c51d9ff8c450aae9a5ea829903be75c (release_state
+    release_candidate, binary_source_provenance recorded_hash_matched_claims)
+
+Item 7: the install's twenty root-level dev flags deleted and the archive
+extracted over the game folder (125 files; the manifest in the install
+reads `a5dae4c`; only the two `bin` flags remain). What is left of item 7
+is the user's: run `Darktide VR Mode.bat` and choose VR mode so the
+package's proxy is the one in `binaries`, launch through Steam, and do the
+item 3 pass with the options set from the mod menu (the full body and the
+skull grab are off by default and must be turned on). Item 8: the user
+guide, README, licence, notices and changelog are in the archive at
+`mods\darktidevr`; the guide's full body, mirror, skull and first-run
+sections and its known limits were rewritten in `a5dae4c`; the README has
+no version line. Item 9 waits for the user's word, as ordered.
+
 ### 1. Decide what "Full body (experimental)" ships as
 
 The option today runs the overlay with the procedural gait; the dev flag
