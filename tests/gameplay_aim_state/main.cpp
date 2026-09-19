@@ -27,6 +27,35 @@ int main() {
             .count());
     SharedGameplayAimState sample{7, now_ns, 12.5F, true, true};
     expect(valid_gameplay_aim_state(sample), "Valid aim state was rejected");
+    // THE AIM ZOOM MUST FAIL CLOSED (19 September). A magnification the reader
+    // accepts is one the viewer will narrow its submitted frustum by, and a
+    // wrong one pulls the player's two eyes apart -- 2 * 0.1224 * (m - 1)
+    // radians, which is past the fusion limit before m reaches 1.2. So the
+    // rule is rejected-not-clamped, and this is the only new validation rule
+    // in that change, which is reason enough for it to have a test.
+    //
+    // The default first: a sample from a producer that never sets it carries
+    // the NSDMI of 1, which must read as "no zoom" rather than as invalid.
+    expect(sample.zoom_magnification == 1.0F,
+           "An unset magnification did not default to no zoom");
+    for (const float accepted : {1.0F, 1.0001F, 1.05F, 1.30F, 4.0F}) {
+      auto zoomed = sample;
+      zoomed.zoom_magnification = accepted;
+      expect(valid_gameplay_aim_state(zoomed),
+             "A magnification inside the range was rejected");
+    }
+    // Below 1 would WIDEN the submitted frustum, which is the same fault with
+    // its sign flipped; above 4 is past what the Lua will ever ask for, and a
+    // value that large would be unusable rather than merely wrong.
+    for (const float refused : {0.0F, 0.5F, 0.9999F, 4.0001F, 100.0F, -1.0F,
+                                std::numeric_limits<float>::infinity(),
+                                -std::numeric_limits<float>::infinity(),
+                                std::numeric_limits<float>::quiet_NaN()}) {
+      auto zoomed = sample;
+      zoomed.zoom_magnification = refused;
+      expect(!valid_gameplay_aim_state(zoomed),
+             "A magnification outside the range was accepted");
+    }
     expect(gameplay_aim_state_is_fresh(sample, now_ns, 100'000'000ULL),
            "Current aim state was treated as stale");
     expect(!gameplay_aim_state_is_fresh(sample, now_ns + 100'000'001ULL,
