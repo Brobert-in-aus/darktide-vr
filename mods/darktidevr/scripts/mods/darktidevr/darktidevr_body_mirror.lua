@@ -1961,8 +1961,18 @@ function Mirror.install(mod, presentation, options)
         -- other side's hand. The legs (the stock model's) are not mirrored:
         -- the left leg is the player's left leg, which in a mirror would be
         -- on the other side; that is the one known departure.
-        local mirror = Mirror.MODES[mode_name].reflect and frame and type(frame.yaw) == "number" and frame.neck and
-            Mirror.mirror_plane(Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale), frame.yaw, Mirror.MIRROR_DISTANCE) or nil
+        -- FIXED IN WORLD SPACE (user, 17:25: "When the mirror is spawned
+        -- in, place it in world space so it doesn't fly all over the place
+        -- as I move around"). The plane is set once, on the first frame the
+        -- reflection has a frame to set it from, and kept for the life of
+        -- this copy; toggling the mirror off and on spawns a new copy and a
+        -- new plane where the player then stands.
+        if Mirror.MODES[mode_name].reflect and not state.mirror_plane and frame and type(frame.yaw) == "number" and frame.neck then
+            state.mirror_plane = Mirror.mirror_plane(Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale), frame.yaw, Mirror.MIRROR_DISTANCE)
+            mod:info("DARKTIDEVR_BODY_MIRROR mirror_plane fixed at=%.2f,%.2f normal=%.2f,%.2f",
+                state.mirror_plane.px, state.mirror_plane.py, state.mirror_plane.nx, state.mirror_plane.ny)
+        end
+        local mirror = Mirror.MODES[mode_name].reflect and state.mirror_plane or nil
         local function reflected(p) return mirror and p and Mirror.reflect_point(mirror, p) or p end
         local function reflected_yaw(y) return mirror and type(y) == "number" and Mirror.reflect_yaw(mirror, y) or y end
         -- A reflected frame is left-handed; a proper rotation needs one axis
@@ -2398,29 +2408,24 @@ function Mirror.install(mod, presentation, options)
                 -- its target as well. The torso height was judged right, so
                 -- it stays; the head joint is lifted by the measured gap
                 -- between the camera's eye and the copy's eyes, each frame.
-                if mirror and state.data and state.data.slots then
+                if mirror and state.eyes_above_head then
+                    -- The eyes-above-head distance is measured in the height
+                    -- block at the end of a frame, after the children flush,
+                    -- in the root's frame (the 17:25 log had it read -0.255
+                    -- from the face unit on the first frame, before that
+                    -- unit had been flushed to the copy: the lift then
+                    -- never landed and the mirror's head stayed low). The
+                    -- gap here is the tracked eye against the head joint
+                    -- plus that distance, both in the root's frame, applied
+                    -- in world.
                     local eye_position = presentation.eye_pose(avatar)
-                    -- The face unit's eye joints refresh only at the end-
-                    -- of-frame children flush, so a gap read off them sees
-                    -- the previous frame's lift and the lift alternates
-                    -- ("head is freaking out", 16:40). The rig's eyes-
-                    -- above-head distance is read ONCE, before any lift,
-                    -- and the gap each frame is taken from the copy's own
-                    -- head joint, which is current within the frame.
-                    if state.eyes_above_head == nil then
-                        for _, slot in pairs(state.data.slots) do
-                            local face = slot.unit_3p
-                            if face and Unit.alive(face) and Unit.has_node(face, "j_lefteye") and Unit.has_node(face, "j_righteye") then
-                                local eyes_z = (Vector3.z(Unit.world_position(face, Unit.node(face, "j_lefteye"))) +
-                                    Vector3.z(Unit.world_position(face, Unit.node(face, "j_righteye")))) / 2
-                                state.eyes_above_head = eyes_z - Vector3.z(Unit.world_position(unit, head))
-                                mod:info("DARKTIDEVR_BODY_MIRROR eyes_above_head_m=%.3f", state.eyes_above_head)
-                                break
-                            end
-                        end
-                    end
-                    if eye_position and state.eyes_above_head then
-                        local gap = Vector3.z(eye_position) - (Vector3.z(Unit.world_position(unit, head)) + state.eyes_above_head)
+                    if eye_position then
+                        local root_pose = Unit.world_pose(unit, 1)
+                        local root_inverse = Matrix4x4.inverse(root_pose)
+                        local eye_local = Vector3.z(Matrix4x4.transform(root_inverse, eye_position))
+                        local head_local = Vector3.z(Matrix4x4.transform(root_inverse, Unit.world_position(unit, head)))
+                        local gap_local = eye_local - (head_local + state.eyes_above_head)
+                        local gap = gap_local * (state.scale or 1)
                         if math.abs(gap) < 0.25 then
                             local parent = Unit.scene_graph_parent(unit, head)
                             local parent_rotation = parent and Unit.world_rotation(unit, parent) or Quaternion.identity()
@@ -2811,6 +2816,16 @@ function Mirror.install(mod, presentation, options)
                     if left and right then eye_z = (left + right) / 2; break end
                 end
                 local neck_z, shoulder_left, shoulder_right = root_z(unit, "j_neck"), root_z(unit, "j_leftarm"), root_z(unit, "j_rightarm")
+                -- The rig's eyes above its head joint, in the root's frame,
+                -- read here once after the children flush (the face unit is
+                -- fresh at this point); the head lift uses it.
+                if eye_z and state.eyes_above_head == nil and Unit.has_node(unit, "j_head") then
+                    local head_local = root_z(unit, "j_head")
+                    if head_local then
+                        state.eyes_above_head = eye_z - head_local - (state.head_lift or 0) / (state.scale or 1)
+                        mod:info("DARKTIDEVR_BODY_MIRROR eyes_above_head_m=%.3f (root frame)", state.eyes_above_head)
+                    end
+                end
                 local function fmt(v) return v and string.format("%.3f", v) or "na" end
                 local d = state.neck_debug or {}
                 mod:info("DARKTIDEVR_BODY_MIRROR height instance=%s camera_eye_root_z=%.3f copy_eye_root_z=%s eye_gap_m=%s neck_root_z=%s shoulder_root_z=%s/%s scale=%.4f root_world_z=%.3f avatar_root_world_z=%.3f neck_offset_z=%s world: camera_z=%s frame_neck_z=%s target_z=%s rest_neck_z=%s frame_scale=%s neck_clamped=%s stretch_k=%s floor_gap_m=%s",
@@ -2835,12 +2850,14 @@ function Mirror.install(mod, presentation, options)
                     local first_person = ScriptUnit.has_extension(avatar, "first_person_system")
                     local component = first_person and first_person._first_person_component
                     local tracked = presentation.eye_pose(avatar)
-                    local model_eye = presentation.body_model_eye_anchor and presentation.body_model_eye_anchor(avatar)
+                    local model_eye, model_eye_reason
+                    if presentation.body_model_eye_anchor then model_eye, model_eye_reason = presentation.body_model_eye_anchor(avatar) end
                     local player = Managers.player and Managers.player:local_player(1)
                     local function fz(v) return v and string.format("%.3f", Vector3.z(v)) or "na" end
-                    mod:info("DARKTIDEVR_BODY_MIRROR eye_stack instance=%s avatar_root_z=%.3f first_person_unit_z=%s component_z=%s tracked_eye_z=%s avatar_model_eye_z=%s copy_eyes_z=%s physical_eye_height_m=%s calibrated_character_scale=%s frame_scale=%s",
+                    mod:info("DARKTIDEVR_BODY_MIRROR eye_stack instance=%s avatar_root_z=%.3f first_person_unit_z=%s component_z=%s tracked_eye_z=%s avatar_model_eye_z=%s model_eye_reason=%s calibrated_eye_height_m=%s physical_eye_height_m=%s calibrated_character_scale=%s frame_scale=%s",
                         is_reflection and "reflection" or "overlay", Vector3.z(Unit.world_position(avatar, 1)),
                         fz(Unit.world_position(camera, 1)), fz(component and component.position), fz(tracked), fz(model_eye),
+                        tostring(model_eye_reason), tostring(presentation.calibrated_eye_height and presentation.calibrated_eye_height()),
                         eye_z and string.format("%.3f", eye_z + Vector3.z(Unit.world_position(unit, 1))) or "na",
                         tostring(presentation.physical_eye_height and presentation.physical_eye_height()),
                         tostring(presentation.calibrated_character_scale and presentation.calibrated_character_scale(player)),

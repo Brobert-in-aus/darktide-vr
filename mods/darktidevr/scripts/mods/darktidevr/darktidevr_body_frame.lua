@@ -144,7 +144,11 @@ function BodyFrame.install(mod, presentation, observation)
         end
         local player = Managers.player and Managers.player:local_player(1)
         local scale = presentation.calibrated_character_scale and presentation.calibrated_character_scale(player) or 1
-        local eye_height = presentation.physical_eye_height and presentation.physical_eye_height()
+        -- The CALIBRATED standing eye height sizes the frame, not the live
+        -- headset height (19 September, 17:30: a seated start read 1.2 m
+        -- and scaled the frame to 0.75 for the whole session).
+        local eye_height = presentation.calibrated_eye_height and presentation.calibrated_eye_height() or
+            (presentation.physical_eye_height and presentation.physical_eye_height())
         -- The gap since the last ADVANCE, on the same clock `t` now is.
         local dt = last_main and t - last_main or nil
         return frame_state.update({eye = vector(eye_position),

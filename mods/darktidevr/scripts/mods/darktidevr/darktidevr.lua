@@ -5129,6 +5129,28 @@ end
 -- when it is alive, the component's otherwise, and the anchor moves every
 -- frame. Observable: the probe's d_eye_m, 0 then 0.074 until now, reads
 -- one smooth step a frame; the copy's d_unit_rel_eye_m stays near zero.
+-- THE CAMERA'S HEIGHT IS THE CALIBRATED EYE HEIGHT (19 September, 17:30).
+-- Every log today read camera_origin=first_person_fallback: the model eye
+-- anchor never captured, and the camera sat at the game's first-person
+-- point -- its camera height times the character scale, 1.896 m -- plus
+-- two 5 cm fallback offsets, 2.0 m above the floor, against the player's
+-- calibrated 1.72. "every time I load into the psykh I'm too far up";
+-- "resetting the camera view should reset headset height to the
+-- calibrated height". The calibration knows the standing eye height, so
+-- the camera's height above the avatar's root is that, whatever the anchor
+-- source; the source still gives the horizontal position. The hands'
+-- anchor takes the same height, so they agree.
+function presentation.calibrated_eye_height()
+    local result = mod.darktidevr_calibration and mod.darktidevr_calibration.result or mod:get("vr_calibration_v1")
+    local height = result and not result.seated and tonumber(result.floor_eye_height)
+    if height and height >= 0.8 and height <= 2.4 then return height end
+    return nil
+end
+function presentation.at_calibrated_eye_height(position, unit)
+    local height = presentation.calibrated_eye_height()
+    if not height or not position or not unit or not Unit.alive(unit) then return position end
+    return Vector3(Vector3.x(position), Vector3.y(position), Vector3.z(Unit.world_position(unit, 1)) + height)
+end
 function presentation.anchor_head_position(first_person_extension)
     local component = first_person_extension and first_person_extension._first_person_component
     local eye_unit = first_person_extension and first_person_extension.first_person_unit and
@@ -5321,6 +5343,7 @@ function presentation.refresh_body_anchor_from_avatar(unit)
         return false
     end
     local anchor_rotation = active_base_rotation:unbox()
+    eye_position = presentation.at_calibrated_eye_height(eye_position, unit)
     eye_position = eye_position + presentation.roomscale_anchor_offset(unit, anchor_rotation)
     -- The former one-user lateral correction subtracted 6 cm along the
     -- recenter-frame right axis. That is exactly a persistent leftward camera
@@ -5424,6 +5447,7 @@ local function update_stereo(manager)
             clean_position = model_eye_position or
                 presentation.eye_anchor_fallback(head_position,
                     active_base_rotation and active_base_rotation:unbox())
+            clean_position = presentation.at_calibrated_eye_height(clean_position, player_unit)
             body_anchor_position = clean_position
             if not controller_observation.body_camera_anchor_logged then
                 controller_observation.body_camera_anchor_logged = true

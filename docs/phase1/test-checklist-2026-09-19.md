@@ -1033,6 +1033,41 @@ rotation rebuilt from the reflected forward and up. That is correct
 for any weapon; the one thing a mirror cannot give a chiral object is
 its handedness.
 
+### 1ad. Worn at 17:25 to 17:35: the mirror fixed in the world; the camera at the calibrated eye height
+
+Your reports: place the mirror in world space at spawn so it does not
+fly about as you move; the body is right now but the mirror's head is
+about 10 cm low, and against the hub's model it is well low; a seated
+start then standing, and a recenter should reset the height to the
+calibrated one; every load into the Psykhanium you are too far up; you
+think the default camera position on spawn is too high.
+
+**The camera, from the log.** `camera_origin=first_person_fallback` in
+every log today: the model eye anchor never captured, so the camera
+sat at the game's first-person point, its camera height times the
+character scale (1.896 m), plus two 5 cm fallback offsets: 2.0 m above
+the floor. Your calibrated eye height is 1.72. Every body number today
+was built on a camera 27 cm too high, and that is why the model read
+short and why you are too far up on load. The camera's height above the
+avatar's root is the calibrated standing eye height now, whatever the
+anchor source (the source still gives the horizontal position), and the
+hands' anchor takes the same height so they agree. A recenter keeps
+that height because it is not derived from the headset. The body
+frame's scale is made from the calibrated height too, not the live
+headset height (a seated start had it at 0.75 all session). The eye
+stack line now says why the model eye anchor fails.
+
+**The mirror in world space.** The mirror plane is set once, on the
+first frame the reflection has a frame to set it from, and kept for
+the life of that copy (`mirror_plane fixed at=.. normal=..`). Toggling
+off and on spawns a new plane where you then stand.
+
+**The mirror's head.** The eyes-above-head distance had been read from
+the face unit on the first frame, before that unit was flushed to the
+copy, and read minus 25.5 cm; the lift then never landed. It is read
+once at the end of a frame after the flush, in the root's frame, and
+the lift is applied against the tracked eye in that frame.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not
