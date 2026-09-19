@@ -943,6 +943,38 @@ and a half turn about the forward turned it end for end instead, so the
 barrel is the unit's right axis. The half turn goes about that now, by
 elimination rather than by guess.
 
+### 1aa. Worn at 16:50: floating; the neck follow's lift was not 4 cm; the stretch to the floor
+
+Your report: floating above the ground; stretch the torso and legs a
+bit so the feet reach the ground with slightly bent legs; the model
+height may not be calculated right, since standing your in-game floor
+is level with the real one and your height is calibrated. You are 178
+cm tall with eyes near 1.73 m.
+
+The log, on the build that let the neck follow lift the root: the
+offset read +0.204 up at ready and -0.487 down later, with 449 of
+8,675 traced frames at the 0.5 m cap; the body stood 20 cm in the air
+and later 49 cm sunk. The previous run's neck distance averaged 5 cm,
+this one's 21 cm. The rig's shortfall is 3.9 cm, so a 20 cm lift is a
+fault that the clamp had been hiding, and I do not know its cause yet.
+Your eye height matches the camera: it read 1.74 m above the avatar's
+root. The model's height is the other side of it: the copy is scaled
+1.069 by the game's height setting, its rest neck stands 1.542 above
+the root, and which of those the 20 cm comes from is what this build
+measures.
+
+**This build.** The neck follow's vertical part is held to 12 cm either
+way while the numbers that decide it go on the height line: the
+camera's height, the frame's neck, the target, the rest neck, and the
+frame's scale, all in world metres, with a count of clamped frames.
+And the stretch you asked for: the copy's hips above the floor against
+the avatar's, whose animated feet stand on it, is the floor gap; the
+chain from neck to ankle is stretched by k = 1 + gap / chain, spine and
+upper legs by k, head, clavicles and ankles by 1/k, eased over a
+second, never below 1 nor above 1.25. `stretch_k` and `floor_gap_m` are
+on the height line; `toe_above_floor_m` on the stock-legs line should
+read near zero when it has settled.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

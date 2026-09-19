@@ -207,6 +207,11 @@ Mirror.EYE_FORWARD_OF_HEAD = 0.08
 Mirror.NEAR_EYE_MAX_HALF_EXTENT = 0.30
 -- Largest root move toward the body frame's neck.
 Mirror.NECK_FOLLOW_MAX = 0.5
+-- The neck follow's vertical part, either way (16:50, 19 September): the
+-- rig's shortfall is 3.9 cm; anything past this is a fault being measured.
+Mirror.NECK_LIFT_MAX = 0.12
+-- The stretch to the floor: never more than a quarter longer.
+Mirror.STRETCH_TO_FLOOR_MAX = 1.25
 Mirror.MAX_BODY_SCALE_RATIO = 1.3
 -- Per second: the fraction of the remaining scale change applied.
 Mirror.BODY_SCALE_RATE = 1.0
@@ -992,6 +997,8 @@ function Mirror.install(mod, presentation, options)
     -- The eye at the render boundary against the eye the pose was built
     -- on (render_eye_lag in the heartbeat): the view's lag on the copy.
     local eye_lag_checks, eye_lag_over, eye_lag_max = 0, 0, 0
+    -- Frames on which the neck follow's vertical offset hit NECK_LIFT_MAX.
+    local neck_clamped = 0
     -- THE CHILDREN (19 September, 13:47 worn run). Everything drawn of the
     -- copy is a child unit: the gear, the hands, the head with its eye
     -- lenses, each linked to the copy's skeleton by the profile spawner
@@ -1864,6 +1871,43 @@ function Mirror.install(mod, presentation, options)
         for index = 2, state.count do
             Unit.set_local_pose(unit, index, state.rest[index]:unbox())
         end
+        -- THE STRETCH TO THE FLOOR (user, 16:50: "stretch the torso and
+        -- legs a bit to reach the ground even with slightly bent legs").
+        -- The stock legs hang from the copy's hips and the animation
+        -- carries the avatar's hips lower, so the feet float by the
+        -- difference of the two hips' heights above the floor
+        -- (state.floor_gap, from the stock-legs block). With the neck
+        -- pinned to the headset, stretching the chain from neck to ankle
+        -- by k pushes the feet down by (k - 1) times the chain, so
+        -- k = 1 + gap / chain reaches the floor with the torso and the
+        -- legs stretched in proportion. The joints the rest-time height
+        -- stretch scales are scaled here every frame (spine k; head and
+        -- clavicles 1/k; upper legs k, re-applied after the leg copy;
+        -- ankles 1/k). k eases with a second's time constant, never below
+        -- 1 and never above 1.25. Off while the gap is unmeasured.
+        if Mirror.MODES[mode_name].animated_legs and state.legs and Unit.has_node(unit, "j_spine") then
+            if not state.stretch_chain then
+                local root_inverse = Matrix4x4.inverse(Unit.world_pose(unit, 1))
+                local neck_z = Vector3.z(Matrix4x4.transform(root_inverse, Unit.world_position(unit, Unit.node(unit, "j_neck"))))
+                local ankle_z = (Vector3.z(Matrix4x4.transform(root_inverse, Unit.world_position(unit, state.legs.left.ankle))) +
+                    Vector3.z(Matrix4x4.transform(root_inverse, Unit.world_position(unit, state.legs.right.ankle)))) / 2
+                state.stretch_chain = (neck_z - ankle_z > 0.5) and (neck_z - ankle_z) or nil
+            end
+            local wanted = 1
+            if state.stretch_chain and state.floor_gap then
+                wanted = math.max(1, math.min(Mirror.STRETCH_TO_FLOOR_MAX, 1 + state.floor_gap / state.stretch_chain))
+            end
+            local alpha = (type(dt) == "number" and dt > 0) and (1 - math.exp(-dt / 1.0)) or 1
+            state.stretch_k = (state.stretch_k or 1) + (wanted - (state.stretch_k or 1)) * alpha
+            local k = state.stretch_k
+            if k > 1.0005 then
+                Unit.set_local_scale(unit, Unit.node(unit, "j_spine"), Vector3(k, k, k))
+                for _, name in ipairs({"j_head", "j_leftshoulder", "j_rightshoulder"}) do
+                    if Unit.has_node(unit, name) then Unit.set_local_scale(unit, Unit.node(unit, name), Vector3(1 / k, 1 / k, 1 / k)) end
+                end
+                World.update_unit(world, unit)
+            end
+        end
         local frame = Mirror.MODES[mode_name].follow_neck and presentation.body_frame and
             presentation.body_frame.sample(avatar, t)
         -- THE MIRROR PLANE, for the reflection: half the mirror distance
@@ -1969,10 +2013,27 @@ function Mirror.install(mod, presentation, options)
                 -- refusal dated from the scaling days (the root never lifts
                 -- to FAKE height) and this is not that: the scale is the
                 -- calibration's and the lift is the rig's own shortfall.
-                local offset, length = Mirror.neck_offset(array(Unit.world_position(unit, Unit.node(unit, "j_neck"))), neck_target, true)
+                local rest_neck = array(Unit.world_position(unit, Unit.node(unit, "j_neck")))
+                local offset, length = Mirror.neck_offset(rest_neck, neck_target, true)
+                -- GUARDED (16:50 worn run: with lifting allowed the offset
+                -- read +0.204 up at ready and -0.487 down later, 449 frames
+                -- at the 0.5 m cap, the body 20 cm in the air and then 49
+                -- cm sunk; the rig's shortfall is 3.9 cm). The vertical
+                -- part is held to 12 cm either way while the numbers that
+                -- decide it -- camera, frame neck, target, rest neck, frame
+                -- scale -- go on the height line.
+                local clamped = math.max(-Mirror.NECK_LIFT_MAX, math.min(Mirror.NECK_LIFT_MAX, offset[3]))
+                if clamped ~= offset[3] then
+                    neck_clamped = (neck_clamped or 0) + 1
+                    offset = {offset[1], offset[2], clamped}
+                end
                 Unit.set_local_position(unit, 1, Unit.local_position(unit, 1) + vector(offset))
                 World.update_unit(world, unit)
                 state.neck_offset, state.neck_distance = offset, length
+                local camera = presentation.eye_pose(avatar)
+                state.neck_debug = {target_z = neck_target[3], frame_neck_z = frame and frame.neck and frame.neck[3] or nil,
+                    rest_neck_z = rest_neck[3], camera_z = camera and Vector3.z(camera) or nil, frame_scale = frame and frame.scale or nil,
+                    clamped = neck_clamped or 0}
             elseif neck_target then
                 local neck = Unit.node(unit, "j_neck")
                 local target = vector(neck_target)
@@ -2083,7 +2144,31 @@ function Mirror.install(mod, presentation, options)
                     local relative = Quaternion.multiply(inverse(avatar_yaw), Unit.world_rotation(avatar, leg.hip))
                     set_world_rotation(unit, leg.hip, Quaternion.multiply(copy_yaw, relative))
                 end
+                -- The leg part of the stretch to the floor (see the rest
+                -- reset): the copied local poses carry the avatar's unit
+                -- scale, so the upper legs' k and the ankles' 1/k go on
+                -- after the copy.
+                local k = state.stretch_k or 1
+                if k > 1.0005 then
+                    for _, leg in pairs(state.legs) do
+                        Unit.set_local_scale(unit, leg.hip, Vector3(k, k, k))
+                        Unit.set_local_scale(unit, leg.ankle, Vector3(1 / k, 1 / k, 1 / k))
+                    end
+                end
                 World.update_unit(world, unit)
+                -- The floor gap that drives it: the copy's hips above the
+                -- floor against the avatar's, whose animated feet stand on
+                -- it. Read every frame, before the stretch of the next.
+                if Unit.has_node(unit, "j_hips") and Unit.has_node(avatar, "j_hips") then
+                    local floor = Vector3.z(Unit.world_position(avatar, 1))
+                    local gap = (Vector3.z(Unit.world_position(unit, Unit.node(unit, "j_hips"))) - floor) -
+                        (Vector3.z(Unit.world_position(avatar, Unit.node(avatar, "j_hips"))) - floor)
+                    -- The stretch already applied lowers the copy's hips;
+                    -- the gap wanted is the one at k = 1, so the applied
+                    -- torso share is added back.
+                    local applied = ((state.stretch_k or 1) - 1) * (state.stretch_chain or 0)
+                    state.floor_gap = gap + applied
+                end
             end)
             if ok then animated = true else log_once("stock_legs_copy", "stock_legs=copy_failed") end
             if state.frames % 900 == 0 and Unit.has_node(unit, "j_hips") and Unit.has_node(avatar, "j_hips") then
@@ -2683,11 +2768,14 @@ function Mirror.install(mod, presentation, options)
                 end
                 local neck_z, shoulder_left, shoulder_right = root_z(unit, "j_neck"), root_z(unit, "j_leftarm"), root_z(unit, "j_rightarm")
                 local function fmt(v) return v and string.format("%.3f", v) or "na" end
-                mod:info("DARKTIDEVR_BODY_MIRROR height instance=%s camera_eye_root_z=%.3f copy_eye_root_z=%s eye_gap_m=%s neck_root_z=%s shoulder_root_z=%s/%s scale=%.4f root_world_z=%.3f avatar_root_world_z=%.3f neck_offset_z=%s",
+                local d = state.neck_debug or {}
+                mod:info("DARKTIDEVR_BODY_MIRROR height instance=%s camera_eye_root_z=%.3f copy_eye_root_z=%s eye_gap_m=%s neck_root_z=%s shoulder_root_z=%s/%s scale=%.4f root_world_z=%.3f avatar_root_world_z=%.3f neck_offset_z=%s world: camera_z=%s frame_neck_z=%s target_z=%s rest_neck_z=%s frame_scale=%s neck_clamped=%s stretch_k=%s floor_gap_m=%s",
                     is_reflection and "reflection" or "overlay",
                     Vector3.z(eye), fmt(eye_z), fmt(eye_z and Vector3.z(eye) - eye_z), fmt(neck_z), fmt(shoulder_left), fmt(shoulder_right),
                     state.scale or 1, Vector3.z(Unit.world_position(unit, 1)), Vector3.z(Unit.world_position(avatar, 1)),
-                    fmt(state.neck_offset and state.neck_offset[3]))
+                    fmt(state.neck_offset and state.neck_offset[3]),
+                    fmt(d.camera_z), fmt(d.frame_neck_z), fmt(d.target_z), fmt(d.rest_neck_z), fmt(d.frame_scale), tostring(d.clamped),
+                    fmt(state.stretch_k), fmt(state.floor_gap))
             end
             -- How far the hand sits from its forearm joint after the solve
             -- (the stretch). The hand's error against its recorded target is
