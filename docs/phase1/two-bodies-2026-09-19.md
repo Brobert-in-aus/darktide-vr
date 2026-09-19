@@ -1260,6 +1260,39 @@ height instance=reflection camera_eye_root_z=1.773 copy_eye_root_z=1.696 eye_gap
 
 Not worn.
 
+## Worn, 16:25: eye level and the weapon's roll
+
+On f2f3b41. The user: weapons in the correct hand but upside down; the
+head following but below eye level.
+
+```
+head_axes forward=0,-1,0 up=1,0,0
+reflection_weapon moved_to=j_lefthand slot=slot_primary grip_m=-0.053,0.045,0.010 signs=-1,-1,-1   (the same on four switches)
+height instance=reflection camera_eye_root_z=1.773 copy_eye_root_z=1.698 eye_gap_m=0.075 neck_root_z=1.542
+```
+
+The frame puts the neck 8 cm under the eye and `Mirror.neck_target`
+another 10 cm (`NECK_EXTRA_DOWN`), 19.2 cm at scale 1.069; the rig's
+eyes are 15.6 cm above its neck joint (1.698 - 1.542); `neck_offset`
+never lifts the root, and the rest neck at 1.542 is 3.9 cm under the
+target 1.581. The reflection's head joint is now moved up by the gap
+between the camera's eye and the face unit's eye joints each frame
+(`state.head_lift`), after the rotation; the torso is untouched. The
+weapon's mirrored grip rotation takes a half turn about the unit's
+forward axis.
+
+At 16:30 the user (on the build before the head lift): the mirror's
+shoulders level with the 3p model's; its head squished into the torso;
+the 3p model's shoulders below the real ones; "bring the torso of my 3p
+character model up a bit, and bring the mirror model head up a bit more
+beyond that". `Mirror.neck_offset` is called with `allow_lift` now: the
+root rises the 3.9 cm the rest neck sat under its target, on both
+copies; the reflection's head lift covers the remaining 3.6 cm. The
+refusal to lift dated from the scaling days and guarded against faking
+height; the scale is the calibration's and this is the rig's shortfall.
+The feet of the stock legs rise with the root; `toe_above_floor_m`
+measures it. Not worn.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows

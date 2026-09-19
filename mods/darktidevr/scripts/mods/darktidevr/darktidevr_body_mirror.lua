@@ -1960,7 +1960,16 @@ function Mirror.install(mod, presentation, options)
             -- frozen in a crouched combat stance, fixed at ready below, not a
             -- body that needed to be bigger.
             if neck_target and not Mirror.MODES[mode_name].spine_bend then
-                local offset, length = Mirror.neck_offset(array(Unit.world_position(unit, Unit.node(unit, "j_neck"))), neck_target)
+                -- The root may LIFT to put the neck on its target (16:30, 19
+                -- September). The rest neck stands 1.542 above the root at
+                -- this scale and the target 1.581: with lifting refused the
+                -- neck sat 3.9 cm under the target, the torso "a bit too
+                -- [low] relative to my irl torso" and the head squished
+                -- into it. Lifting is the neck follow doing its job; the
+                -- refusal dated from the scaling days (the root never lifts
+                -- to FAKE height) and this is not that: the scale is the
+                -- calibration's and the lift is the rig's own shortfall.
+                local offset, length = Mirror.neck_offset(array(Unit.world_position(unit, Unit.node(unit, "j_neck"))), neck_target, true)
                 Unit.set_local_position(unit, 1, Unit.local_position(unit, 1) + vector(offset))
                 World.update_unit(world, unit)
                 state.neck_offset, state.neck_distance = offset, length
@@ -2251,6 +2260,38 @@ function Mirror.install(mod, presentation, options)
                 end
                 set_world_rotation(unit, head, Quaternion.multiply(reflected_rotation(eye_rotation), state.head_axes:unbox()))
                 World.update_unit(world, unit)
+                -- EYE LEVEL, for the mirror (16:25 worn run: "head is
+                -- following mine now, but is below my eye level"; the
+                -- height line: the copy's eyes 7.5 cm under the camera's).
+                -- The rig's eyes stand 15.6 cm above its neck joint where
+                -- the neck target is put 19.2 cm under the eye, and the neck
+                -- follow never lifts the root, so the neck sits 3.9 cm under
+                -- its target as well. The torso height was judged right, so
+                -- it stays; the head joint is lifted by the measured gap
+                -- between the camera's eye and the copy's eyes, each frame.
+                if mirror and state.data and state.data.slots then
+                    local eye_position = presentation.eye_pose(avatar)
+                    local eyes_z
+                    for _, slot in pairs(state.data.slots) do
+                        local face = slot.unit_3p
+                        if face and Unit.alive(face) and Unit.has_node(face, "j_lefteye") and Unit.has_node(face, "j_righteye") then
+                            eyes_z = (Vector3.z(Unit.world_position(face, Unit.node(face, "j_lefteye"))) +
+                                Vector3.z(Unit.world_position(face, Unit.node(face, "j_righteye")))) / 2
+                            break
+                        end
+                    end
+                    if eye_position and eyes_z then
+                        local gap = Vector3.z(eye_position) - eyes_z
+                        if math.abs(gap) < 0.25 then
+                            local parent = Unit.scene_graph_parent(unit, head)
+                            local parent_rotation = parent and Unit.world_rotation(unit, parent) or Quaternion.identity()
+                            Unit.set_local_position(unit, head, Unit.local_position(unit, head) +
+                                Quaternion.rotate(inverse(parent_rotation), Vector3(0, 0, gap)))
+                            World.update_unit(world, unit)
+                            state.head_lift = gap
+                        end
+                    end
+                end
             end
         end
         -- THE FINGERS FROM THE OVERLAY (15:00: "its hand animations should
@@ -2341,7 +2382,15 @@ function Mirror.install(mod, presentation, options)
                             World.unlink_unit(world, weapon)
                             World.link_unit(world, weapon, 1, unit, left_hand)
                             Unit.set_local_position(weapon, 1, mirrored_local_position(grip_position, state.hand_mirror))
-                            Unit.set_local_rotation(weapon, 1, mirrored_local_rotation(grip.rotation:unbox(), state.hand_mirror))
+                            -- With all three hand axes reversed the grip
+                            -- rotation carries unchanged, and the weapon
+                            -- came out upside-down in the other hand (16:25
+                            -- worn run): the mirror image of a weapon is its
+                            -- grip turned half a turn about the barrel, the
+                            -- unit's forward axis. Labelled: if it comes out
+                            -- backwards instead, the barrel is another axis.
+                            Unit.set_local_rotation(weapon, 1, Quaternion.multiply(
+                                mirrored_local_rotation(grip.rotation:unbox(), state.hand_mirror), Quaternion(Vector3.forward(), math.pi)))
                             World.update_unit_and_children(world, unit)
                             state.weapon_on_left = weapon
                             mod:info("DARKTIDEVR_BODY_MIRROR reflection_weapon moved_to=j_lefthand slot=%s grip_m=%.3f,%.3f,%.3f signs=%s",

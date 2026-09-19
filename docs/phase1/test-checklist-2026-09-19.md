@@ -888,6 +888,44 @@ weapon I moved goes back on the right hand with its grip, so the flows
 find what they expect. `reflection_weapon moved_to=j_lefthand grip_m=..`
 should read the same grip on every switch.
 
+### 1y. Worn at 16:25: the head at eye level; the weapon's half turn
+
+Your report: weapons in the correct hand but upside down; the head
+following yours but below your eye level.
+
+The log: `head_axes forward=0,-1,0 up=1,0,0` (the mapping the head
+tracks on), the grip the same on every switch (`grip_m=-0.053,0.045,0.010`
+for the primary, `-0.056,0.045,0.009` for the secondary, four switches),
+and the reflection's `height` line: camera eye 1.773 above the root,
+copy eyes 1.698, neck 1.542.
+
+**The head's height, from those numbers.** The neck target is put 19.2
+cm under the eye (8 cm in the frame plus 10 cm extra, at scale 1.069)
+and the rig's eyes stand only 15.6 cm above its neck joint; and the
+neck follow never lifts the root, so the neck also sits 3.9 cm under
+its target. Together, 7.5 cm. You judged the torso height right, so
+the torso stays where it is; for the mirror the head joint is lifted
+by the measured gap between the camera's eye and the copy's eyes each
+frame. The reflection's height line should read an eye gap near zero.
+
+**The weapon.** With all three hand axes reversed the grip rotation
+carries unchanged, which leaves the weapon rolled half a turn about its
+barrel in the other hand. It gets that half turn about the unit's
+forward axis. If it now comes out backwards rather than upside-down,
+the barrel is another axis of the weapon unit and the next log will
+say which by elimination.
+
+**The torso, from your 16:30 note** (the mirror's shoulders level with
+your 3p model's, its head squished into the torso; the 3p model's
+shoulders below your real ones; bring the 3p torso up a bit and the
+mirror's head up a bit beyond that). The neck follow may now lift the
+root to reach its target: that is the 3.9 cm the rest neck sat under
+it, on both copies, so the 3p model's shoulders come up by that. The
+mirror's head lift then covers what remains, the rig's own 3.6 cm
+between its eyes and its neck, so its eyes land on yours. The stock
+legs hang from the hips, so the feet rise with the torso; the
+`stock_legs` line's `toe_above_floor_m` says by how much.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not
