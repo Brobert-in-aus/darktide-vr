@@ -292,6 +292,53 @@ RecenteredProjection recentered_symmetric_projection(
           {-horizontal_half, horizontal_half, vertical_half, -vertical_half}};
 }
 
+RecenteredProjection zoom_submitted_projection(
+    Fov runtime_fov, float render_aspect, float magnification) {
+  const auto rendered = zoomed_fov(runtime_fov, magnification);
+  const auto base = recentered_symmetric_projection(rendered, render_aspect);
+  if (!std::isfinite(magnification) || !(magnification > 1.0001F) ||
+      magnification > 4.0F) {
+    return base;
+  }
+  // The render projection's own axis and half-angles, recomputed here because
+  // the quaternion cannot be taken apart again.
+  const auto horizontal_center =
+      (rendered.angle_left + rendered.angle_right) * 0.5F;
+  const auto vertical_center =
+      (rendered.angle_down + rendered.angle_up) * 0.5F;
+  const auto vertical_half = (rendered.angle_up - rendered.angle_down) * 0.5F;
+  const auto horizontal_half =
+      std::atan(std::tan(vertical_half) * render_aspect);
+
+  const auto submitted_vertical_half =
+      std::atan(std::tan(vertical_half) * magnification);
+  const auto submitted_horizontal_half =
+      std::atan(std::tan(horizontal_half) * magnification);
+  // A magnification that would push the frustum past a hemisphere is refused
+  // rather than clamped: no zoom is a picture, a broken frustum is not.
+  if (!(submitted_vertical_half > 0.0F) ||
+      !(submitted_horizontal_half > 0.0F) ||
+      submitted_vertical_half >= 1.57079633F ||
+      submitted_horizontal_half >= 1.57079633F) {
+    return base;
+  }
+  // atan(m * tan(centre)) rather than m * centre. The difference is the
+  // tangent's own curvature -- about 0.065 degrees per eye at m=1.15, so an
+  // eighth of a degree between them, which is small but is exactly the kind
+  // of residual this whole change exists to remove.
+  const auto submitted_horizontal_center =
+      std::atan(std::tan(horizontal_center) * magnification);
+  const auto submitted_vertical_center =
+      std::atan(std::tan(vertical_center) * magnification);
+  const auto yaw =
+      from_axis_angle({0.0F, 1.0F, 0.0F}, -submitted_horizontal_center);
+  const auto pitch =
+      from_axis_angle({1.0F, 0.0F, 0.0F}, submitted_vertical_center);
+  return {multiply(yaw, pitch),
+          {-submitted_horizontal_half, submitted_horizontal_half,
+           submitted_vertical_half, -submitted_vertical_half}};
+}
+
 BillboardBasis z_up_billboard_basis(Vec3 camera_forward,
                                     Vec3 fallback_right) {
   constexpr float kMinimumHorizontalLengthSquared = 1.0e-8F;

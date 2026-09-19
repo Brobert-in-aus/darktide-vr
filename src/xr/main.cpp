@@ -3397,16 +3397,21 @@ class OpenXrProbe {
             // 2 * 0.1224 * (m - 1) radians of divergence, 0.42 degrees at
             // three per cent and 1.93 at fifteen, against a fusion limit near
             // one degree.
-            const darktidevr::math::Fov runtime_fov =
-                darktidevr::math::zoomed_fov(
-                    {located_views[eye].fov.angleLeft,
-                     located_views[eye].fov.angleRight,
-                     located_views[eye].fov.angleUp,
-                     located_views[eye].fov.angleDown},
-                    submitted_zoom_magnification);
+            const darktidevr::math::Fov runtime_fov{
+                located_views[eye].fov.angleLeft,
+                located_views[eye].fov.angleRight,
+                located_views[eye].fov.angleUp,
+                located_views[eye].fov.angleDown};
+            // The projection for an image the cameras rendered ZOOMED. Not
+            // the render projection -- submitting that makes the two agree and
+            // removes the zoom, leaving the narrow image covering less of the
+            // view ("it just shrinks the game window", worn 19 September) --
+            // and not the unzoomed one, which magnifies about each eye's own
+            // optical axis and pulls them apart. See zoom_submitted_projection.
             const auto recentered =
-                darktidevr::math::recentered_symmetric_projection(
-                    runtime_fov, render_aspect_ratio);
+                darktidevr::math::zoom_submitted_projection(
+                    runtime_fov, render_aspect_ratio,
+                    submitted_zoom_magnification);
             const darktidevr::math::Pose base{
                 {base_pose.orientation.x, base_pose.orientation.y,
                  base_pose.orientation.z, base_pose.orientation.w},

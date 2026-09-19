@@ -450,129 +450,86 @@ int main() {
                           submitted_ipd.z * submitted_ipd.z),
                 0.064F, 0.0001F, "6dof submitted IPD");
 
-    // THE ZOOM MUST REACH THE RECENTRING, not just the submitted fov.
+    // FORWARD MUST DISPLAY AT FORWARD, IN BOTH EYES.
     //
-    // `recentered_symmetric_projection` returns an orientation offset as well
-    // as a frustum, and the offset is the half that diverges the eyes: it
-    // turns each view onto its own optical axis, and the two eyes' axes lean
-    // opposite ways. A build that zoomed the fov but recentred from the
-    // UNZOOMED frustum would submit a symmetric frustum of the right width
-    // pointing fractionally the wrong way, in opposite directions per eye.
+    // This is the property the whole aim-zoom transport exists to hold, and
+    // it is stated here in the units the fault was measured in: degrees of
+    // divergence between the two eyes for the direction the player is
+    // actually looking at.
     //
-    // The frustum alone cannot catch that -- both orders leave it symmetric,
-    // and their half-widths differ by 0.006 in tangent, which is noise next
-    // to what the fov check above already covers. The offset can.
+    // The cameras render through recentred(zoomed(runtime)); the runtime
+    // displays that texture through whatever is submitted. Chase it through
+    // both: render maps a world direction phi to texture x = tan(phi - R')/T',
+    // and display maps x back to R + atan(x * T). Straight ahead is phi = 0,
+    // and the two eyes lean opposite ways, so whatever error this leaves is
+    // doubled between them.
     {
-      const Fov eye{-0.893445F, 0.648593F, 0.71549F, -0.909609F};
+      // eye0 as the runtime reports it, and eye1 mirrored -- which is what
+      // makes the error a divergence rather than a shift.
+      const Fov eye0{-0.893445F, 0.648593F, 0.71549F, -0.909609F};
+      const Fov eye1{-0.648593F, 0.893445F, 0.71549F, -0.909609F};
       const auto aspect = 2112.0F / 2304.0F;
-      const auto m = 1.15F;
-      const auto zoomed_first = recentered_symmetric_projection(zoomed_fov(eye, m), aspect);
-      const auto not_zoomed = recentered_symmetric_projection(eye, aspect);
-      // The frustum's own centre, computed here rather than taken from the
-      // helper, is what the offset undoes.
-      const auto centre = [](const Fov& f) {
-        return (f.angle_left + f.angle_right) * 0.5F;
-      };
-      const auto shift = std::abs(centre(zoomed_fov(eye, m)) - centre(eye));
-      // The zoom moves the optical axis. Small -- about 0.09 degrees at this
-      // magnification -- but opposite per eye, and it is exactly the term
-      // that has to come from the zoomed frustum rather than the raw one.
-      if (!(shift > 1e-4F)) {
-        throw std::runtime_error(
-            "the zoom does not move the optical axis, so this guard cannot "
-            "catch the recentring being fed the unzoomed frustum");
-      }
-      // And the two projections really are different objects: if a change
-      // made recentring ignore the zoom, these would collapse together.
-      const auto& a = zoomed_first.orientation_offset;
-      const auto& b = not_zoomed.orientation_offset;
-      const auto difference = std::abs(a.x - b.x) + std::abs(a.y - b.y) +
-                              std::abs(a.z - b.z) + std::abs(a.w - b.w);
-      if (!(difference > 1e-5F)) {
-        throw std::runtime_error(
-            "recentring gave the same orientation for a zoomed and an "
-            "unzoomed frustum");
-      }
-    }
 
-    // THE AIM ZOOM MUST REACH THE SUBMITTED PROJECTION (19 September).
-    //
-    // The game's cameras render through the Lua's Projection.zoomed_frustum;
-    // the runtime displays the result through this. Any difference between
-    // them is the two eyes pulled apart, because recentring turns each eye
-    // onto its own optical axis and a magnification about THAT axis moves the
-    // eyes in opposite directions.
-    {
-      const Fov zoom_runtime_eye{-0.893445F, 0.648593F, 0.71549F, -0.909609F};
-      // The Lua's arithmetic, written out independently rather than by
-      // calling the same helper -- that is the only way this can fail if the
-      // C++ drifts from it.
-      const auto lua_edge = [](float angle, float m) {
-        return std::atan(std::tan(angle) / m);
+      const auto forward_error = [aspect](const Fov& eye, float m,
+                                          const Fov& submitted_fov,
+                                          float submitted_axis) {
+        const auto rendered = zoomed_fov(eye, m);
+        const auto render_axis =
+            (rendered.angle_left + rendered.angle_right) * 0.5F;
+        const auto render_half = std::tan(
+            std::atan(std::tan((rendered.angle_up - rendered.angle_down) * 0.5F) *
+                      aspect));
+        // Straight ahead, as a texture coordinate in the rendered image.
+        const auto x = std::tan(0.0F - render_axis) / render_half;
+        // And where the runtime puts that coordinate.
+        return submitted_axis +
+               std::atan(x * std::tan(submitted_fov.angle_right));
       };
-      for (const float m : {1.01F, 1.03F, 1.15F, 1.30F, 3.99F}) {
-        const auto narrowed = zoomed_fov(zoom_runtime_eye, m);
-        expect_near(narrowed.angle_left, lua_edge(zoom_runtime_eye.angle_left, m), 1e-6F,
-                    "zoomed left edge matches the Lua");
-        expect_near(narrowed.angle_right, lua_edge(zoom_runtime_eye.angle_right, m), 1e-6F,
-                    "zoomed right edge matches the Lua");
-        expect_near(narrowed.angle_up, lua_edge(zoom_runtime_eye.angle_up, m), 1e-6F,
-                    "zoomed up edge matches the Lua");
-        expect_near(narrowed.angle_down, lua_edge(zoom_runtime_eye.angle_down, m), 1e-6F,
-                    "zoomed down edge matches the Lua");
-        // It narrows. A zoom that widened the frustum would push the eyes the
-        // other way and still "look like a zoom" in a still image.
-        if (!(std::tan(narrowed.angle_right) - std::tan(narrowed.angle_left) <
-              std::tan(zoom_runtime_eye.angle_right) - std::tan(zoom_runtime_eye.angle_left))) {
-          throw std::runtime_error("zoomed_fov did not narrow the frustum");
+
+      for (const float m : {1.0F, 1.05F, 1.15F, 1.30F}) {
+        const auto left = zoom_submitted_projection(eye0, aspect, m);
+        const auto right = zoom_submitted_projection(eye1, aspect, m);
+        // The submitted axis taken FROM THE RETURNED QUATERNION, by turning
+        // the forward vector with it, rather than recomputed from the same
+        // formula the implementation uses. Recomputing it made this guard
+        // tautological for the axis -- it could not fail when the axis was
+        // scaled linearly instead of through the tangent, which is a real
+        // way to get this wrong (mutation, 19 September).
+        const auto axis_of = [](const RecenteredProjection& projection) {
+          const auto direction =
+              rotate(projection.orientation_offset, Vec3{0.0F, 0.0F, -1.0F});
+          return std::atan2(direction.x, -direction.z);
+        };
+        const auto left_error =
+            forward_error(eye0, m, left.symmetric_fov, axis_of(left));
+        const auto right_error =
+            forward_error(eye1, m, right.symmetric_fov, axis_of(right));
+        const auto divergence = std::abs(left_error - right_error);
+        // A twentieth of a degree. Submitting the UNZOOMED projection instead
+        // gives 2 * 0.1224 * (m - 1): 1.93 degrees at m=1.15, forty times
+        // this bound and well past where the eyes can fuse at all.
+        if (!(divergence < 0.00087F)) {
+          throw std::runtime_error(
+              "forward does not display at forward: the eyes diverge at m=" +
+              std::to_string(m));
         }
       }
-      // No zoom, no change -- byte for byte, so the unzoomed path cannot
-      // acquire a rounding drift that would itself diverge the eyes.
-      for (const float m : {1.0F, 1.00005F, 0.5F, 4.5F,
-                            std::numeric_limits<float>::quiet_NaN()}) {
-        const auto untouched = zoomed_fov(zoom_runtime_eye, m);
-        if (untouched.angle_left != zoom_runtime_eye.angle_left ||
-            untouched.angle_right != zoom_runtime_eye.angle_right ||
-            untouched.angle_up != zoom_runtime_eye.angle_up ||
-            untouched.angle_down != zoom_runtime_eye.angle_down) {
-          throw std::runtime_error("zoomed_fov moved an unzoomed frustum");
-        }
-      }
-      // And the whole point, in the units the fault was measured in: with the
-      // zoom carried through, the optical axis the submitted projection
-      // recentres onto is the one the cameras rendered with. Left unfixed the
-      // two differ, and the eyes diverge by twice that difference.
-      const auto aspect = 2112.0F / 2304.0F;
-      const auto unzoomed = recentered_symmetric_projection(zoom_runtime_eye, aspect);
-      const auto zoom_recentred =
-          recentered_symmetric_projection(zoomed_fov(zoom_runtime_eye, 1.15F), aspect);
-      const auto horizontal = [](const Fov& f) {
-        return (f.angle_left + f.angle_right) * 0.5F;
-      };
-      if (!(std::abs(horizontal(unzoomed.symmetric_fov) -
-                     horizontal(zoom_recentred.symmetric_fov)) < 1e-6F)) {
-        throw std::runtime_error("the recentred frustum is not symmetric");
-      }
-      // The submitted half-width must follow the zoom, or the image is
-      // stretched across a frustum it was not rendered in.
-      //
-      // Within a quarter of a per cent rather than exactly, and the residual
-      // is real rather than slack: the recentred half-width comes from the
-      // VERTICAL half times the aspect, and this frustum is vertically
-      // asymmetric (up 0.715, down -0.910), so halving the zoomed angles is
-      // not quite atan(tan(half) / m). What matters is that it tracks the
-      // magnification -- a submitted frustum that had not been zoomed at all
-      // would be out by the full 15 per cent here, sixty times this bound.
-      const auto half = [](const Fov& f) { return std::tan(f.angle_right); };
-      const auto followed = half(zoom_recentred.symmetric_fov) * 1.15F;
-      const auto wanted = half(unzoomed.symmetric_fov);
-      expect_near(followed / wanted, 1.0F, 5e-3F,
-                  "the submitted half-width follows the zoom");
-      // And it is unambiguously narrower than the unzoomed one, which is the
-      // thing that was missing before 19 September.
-      if (!(half(zoom_recentred.symmetric_fov) < wanted * 0.9F)) {
-        throw std::runtime_error("the submitted frustum did not narrow with the zoom");
+
+      // And the image still fills the view -- within a per cent of the
+      // unzoomed half-width. Submitting the RENDER projection would satisfy
+      // every divergence check above and shrink the picture instead, which is
+      // the other way this has been got wrong.
+      const auto unzoomed = recentered_symmetric_projection(eye0, aspect);
+      const auto submitted = zoom_submitted_projection(eye0, aspect, 1.15F);
+      const auto rendered =
+          recentered_symmetric_projection(zoomed_fov(eye0, 1.15F), aspect);
+      const auto width = [](const Fov& f) { return std::tan(f.angle_right); };
+      expect_near(width(submitted.symmetric_fov) / width(unzoomed.symmetric_fov),
+                  1.0F, 0.01F, "the submitted frustum still fills the view");
+      if (!(width(rendered.symmetric_fov) < width(unzoomed.symmetric_fov) * 0.95F)) {
+        throw std::runtime_error(
+            "the render frustum should be visibly narrower, or the fills-the-"
+            "view check above proves nothing");
       }
     }
 

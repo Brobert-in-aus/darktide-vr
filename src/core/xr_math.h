@@ -107,6 +107,29 @@ RecenteredProjection recentered_symmetric_projection(
 // untouched, which is no zoom rather than a guess.
 Fov zoomed_fov(Fov runtime_fov, float magnification);
 
+// The projection to SUBMIT for an image the cameras rendered through
+// `recentered_symmetric_projection(zoomed_fov(runtime_fov, m), aspect)`.
+//
+// Not the render projection, and not the unzoomed one. Submitting the render
+// projection makes the two agree but removes the zoom: a zoom IS "render a
+// narrow cone and display it across the wide one", so matching them leaves the
+// narrow image covering less of the view -- worn, 19 September, "it just
+// shrinks the game window". Submitting the unzoomed one magnifies the image
+// about each eye's OPTICAL AXIS, which leans opposite ways, and pulls the eyes
+// apart by 2 * 0.1224 * (m - 1).
+//
+// Display maps texture x to direction R + atan(x * T); render maps direction
+// phi to x = tan(phi - R') / T'. For the displayed result to be the world
+// magnified about FORWARD -- the direction both eyes must agree on -- set
+//
+//     T = m * T'              the image still fills the view
+//     R = atan(m * tan(R'))   forward displays at forward, in both eyes
+//
+// which is exact at the centre and second order off it. m at or below 1
+// returns the plain recentred projection.
+RecenteredProjection zoom_submitted_projection(
+    Fov runtime_fov, float render_aspect, float magnification);
+
 // Builds a cylindrical billboard basis for Darktide's Z-up world. Camera
 // pitch/roll are deliberately removed. Near a vertical look direction, the
 // previous horizontal right vector prevents an undefined yaw and visible flip.
