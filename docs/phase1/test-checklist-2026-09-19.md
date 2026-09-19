@@ -290,9 +290,12 @@ back over the machine's output at the render boundary. The gait stands
 down while the machine is live and is the fallback whenever it is not. The
 base model contributes nothing of its pose.
 
-**To try it**: write `overlayanimated` into
-`mods\darktidevr\darktidevr_body_mirror.flag` in the installed mod (the
-file selects the dev mode; delete it to return to the option's overlay).
+**Set up for you**: `mods\darktidevr\darktidevr_body_mirror.flag` in the
+installed mod now holds `overlayanimated`, so launching the game as usual
+runs the animated legs in the Psykhanium (the flag is gated out of the hub
+like the option). Delete the file to return to the option's overlay with
+the gait. The sync deployment does not write this file, so it survives a
+redeploy; it is listed here so it is not left behind by mistake.
 
 **Test**: with the flag, wield a gun, stand still, walk, sprint, strafe,
 then swap to melee and back.

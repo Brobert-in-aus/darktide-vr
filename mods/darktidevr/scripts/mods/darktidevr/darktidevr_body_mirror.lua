@@ -767,7 +767,10 @@ function Mirror.install(mod, presentation, options)
         if is_reflection then
             wanted = mirror_toggled and in_psykhanium() and "reflection" or nil
         else
-            wanted = Mirror.requested_mode(parsed, false, false,
+            -- The dev flag is gated out of the hub as the option is: the
+            -- user runs a worn session with the flag set in the install,
+            -- and the hub's own presentation has no combat body to replace.
+            wanted = Mirror.requested_mode(game_mode ~= nil and game_mode ~= "hub" and parsed or nil, false, false,
                 mod.get and mod:get("vr_full_body_experimental") == true and game_mode ~= nil and game_mode ~= "hub")
         end
         if state and wanted ~= mode_name then destroy_own() end
