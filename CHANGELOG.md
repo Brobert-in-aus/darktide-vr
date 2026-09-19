@@ -11,15 +11,20 @@ on in the mod's settings; the rest applies to everyone.
 
 ### New experimental options
 
-- **Full body.** A copy of your character stands where you do, scaled so its
-  neck meets your head, with its arms solved to your controllers: look down
-  and you see your own body rather than a pair of floating hands. It takes a
-  few seconds to appear and it spawns a second copy of your character, so
-  expect a frame-rate cost. Not in the Mourningstar.
+- **Full body.** A copy of your character stands where you do, scaled from
+  your calibration, its legs running the game's own walk and run animation
+  and its arms solved to your controllers: look down and you see your own
+  body rather than a pair of floating hands. It takes a few seconds to
+  appear and it spawns a second copy of your character, so expect a
+  frame-rate cost. Not in the Mourningstar.
 - **Grab and throw the servo skull.** With the flamethrower skull talented,
-  it hovers at your off-hand side; reach out and grip it to take it, and
-  throw. All your skulls now keep their place as you glance around, swing
-  after you when you turn, and move up to 30 cm ahead of you as you run.
+  it hovers at your off-hand side. Reach out and grip it and it locks to
+  your palm where you took it and turns with your hand; let go with a
+  target marked and it leaves your hand on your throw's arc, whichever way
+  you threw, before turning for the target. Its cone attack faces where the
+  preview showed. All your skulls now keep their place as you glance
+  around, swing after you when you turn, and move up to 30 cm ahead of you
+  as you run.
 - **Item radial at your hand.** Hold the carried-items control and your
   item, stim and device appear at your off hand; flick the stick to one to
   take it. A plain tap still cycles as it always did.
@@ -33,9 +38,11 @@ on in the mod's settings; the rest applies to everyone.
 
 ### New shortcut
 
-- **F8, in the Psykhanium**: a copy of your character stands a few paces in
-  front of you, posed exactly as you are, so you can see what everyone else
-  sees. Press again to remove it.
+- **F8, in the Psykhanium**: a mirror. A copy of your character stands a
+  few paces in front of you, fixed in the world where you summoned it, its
+  head on your headset, its fingers matching yours and your wielded weapon
+  in its reflected hand, so you can see what everyone else sees. Press again
+  to remove it.
 
 ### Fixed
 
@@ -58,6 +65,21 @@ on in the mod's settings; the rest applies to everyone.
   move.
 - The neutral eye position the view is built from is measured correctly
   wherever your character happens to be facing when you enter a level.
+- Your view stands at the eye height from your calibration when a level
+  loads and after a recenter. It stood about 27 cm too high before, on the
+  game's own camera point, whatever your calibration said.
+- The view, your hands and your weapon move smoothly every frame rather
+  than stepping at the game's fixed update rate; anything drawn on the
+  body, cloth and lenses included, stops wobbling with them.
+
+### Known issues
+
+- Cloth on the full body can jiggle.
+- The full body's feet follow the animation, not the floor, on slopes and
+  steps.
+- The F8 mirror's legs are not mirrored left for right.
+- A skull thrown away from its target arrives a moment after the real
+  attack begins there.
 - The item radial stays open while you hold its control with a gun out, and
   reaching for an interaction works again while a weapon is wielded.
 - The push-to-talk zone at your mouth is a third smaller, so it no longer

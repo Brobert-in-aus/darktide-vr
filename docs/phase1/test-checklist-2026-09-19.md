@@ -1313,7 +1313,14 @@ previews). It is off from the flight's start (`flight ... culling_off=`)
 and back on at the flight's end and on a reset; the test's source scan
 holds the pairing. Observable: the worn report on whether the skull still
 vanishes, read against the probe's root and drawn angles at the moment
-the free flight ends. Not worn.
+the free flight ends. **Worn at 20:45: "Yep, that fixed it."** The 20:45
+log: two away throws (112 and 147 degrees), `culling_off=true` on both,
+chase started at 0.49 and 0.53 s, caught at 1.29 and 1.40 s, 0.08 s late,
+largest step 0.33 m. The probe logged nothing (its pcall swallowed whatever
+failed) and is removed; the experiment's own observable settled it. The
+engine culled the skull unit by its root while the drawn parts were metres
+away, and culling off for the flight is the fix. The flamer skull is
+CLEARED: grab, aim and throw.
 
 ## 2. The torso turning faster than your head
 

@@ -791,7 +791,6 @@ function Skull.install(mod, presentation)
     local skull_motion_lines = 0
     local skull_grab_lines = 0
     local skull_state_lines = 0
-    local skull_flight_lines = 0
     -- The anchor's lag: where the first-person unit stands (the game's
     -- interpolated timeline) minus the fixed-step component position the
     -- view is built on, as the body mirror measures it. A 3-array, or nil.
@@ -1468,40 +1467,10 @@ function Skull.install(mod, presentation)
             throw.tumble_angle = Skull.tumbled_angle(throw.tumble_angle, rate, settle, dt)
         end
         local drawn = throw.free_position
-        -- THE FLIGHT PROBE (20:30 worn run: "still disappears the instant
-        -- the ballistic arc ends"). Every third frame of a flight, budgeted:
-        -- the phase, where the drawn skull is against the eye (distance and
-        -- the angle from the view's forward -- past about 50 degrees it is
-        -- outside the headset's view), the same for the unit's root, and
-        -- how far the unit's world box centre sits from the drawn point
-        -- (whether the mesh is drawn where the numbers say). A skull that
-        -- vanishes while its drawn angle stays small and its box stays on
-        -- it was culled or hidden, not moved; the root's angle at that
-        -- moment says whether the root left the view.
-        throw.probe_frames = (throw.probe_frames or 0) + 1
-        if throw.probe_frames % 3 == 1 and skull_flight_lines < 600 then
-            pcall(function()
-                local owner = local_player_unit()
-                local eye, eye_rotation = presentation.eye_pose and presentation.eye_pose(owner)
-                if not eye or not eye_rotation then return end
-                local forward = Quaternion.forward(eye_rotation)
-                local function against(point)
-                    local to = point - eye
-                    local distance = Vector3.length(to)
-                    if distance < 1e-6 then return distance, 0 end
-                    return distance, math.deg(math.acos(math.max(-1, math.min(1, Vector3.dot(to, forward) / distance))))
-                end
-                local drawn_v = Vector3(drawn[1], drawn[2], drawn[3])
-                local d_dist, d_angle = against(drawn_v)
-                local r_dist, r_angle = against(Vector3(real[1], real[2], real[3]))
-                local box_to_drawn = -1
-                local ok_box, box_pose = pcall(Unit.box, skull)
-                if ok_box and box_pose then box_to_drawn = Vector3.distance(Matrix4x4.translation(box_pose), drawn_v) end
-                skull_flight_lines = skull_flight_lines + 1
-                mod:info("DARKTIDEVR_SKULL_FLIGHT elapsed_s=%.3f phase=%s drawn=%.2f,%.2f,%.2f drawn_eye_m=%.2f drawn_view_deg=%.0f root_eye_m=%.2f root_view_deg=%.0f box_to_drawn_m=%.3f gap_m=%.2f",
-                    elapsed, throw.chase_started and "chase" or "free", drawn[1], drawn[2], drawn[3], d_dist, d_angle, r_dist, r_angle, box_to_drawn, gap)
-            end)
-        end
+        -- (A per-frame flight probe stood here for one run and logged
+        -- nothing -- its pcall swallowed whatever failed -- while the
+        -- culling experiment's own observable, the worn report, settled the
+        -- question: 20:45, "Yep, that fixed it". Removed.)
         if throw.last_drawn then
             local step = math.sqrt((drawn[1] - throw.last_drawn[1]) ^ 2 + (drawn[2] - throw.last_drawn[2]) ^ 2 +
                 (drawn[3] - throw.last_drawn[3]) ^ 2)

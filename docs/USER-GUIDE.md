@@ -88,7 +88,9 @@ patch needs an update from us.
   is set from it, and a character you create or pick later is brought to
   that height when you select it (the creation slider does not stick).
   Repeat the calibration any time from the same screen's button or with
-  the chat command `/dtvr_calibration`.
+  the chat command `/dtvr_calibration`. Your view stands at the eye height
+  the calibration measured when a level loads and after a recenter, so
+  stand or sit as you calibrated when you recenter.
 - Cutscenes and videos: hold the right trigger to skip.
 - Menus use the right controller as a pointer. Trigger selects, the sticks
   scroll. Text entry needs a physical keyboard; the character-name Randomize
@@ -196,27 +198,35 @@ rather than turns you. Not in the Mourningstar.
 ### Full body (experimental)
 
 Mod Options, Darktide VR, Your body and hands, "Full body". A copy of your
-own character stands where you do, scaled so that its neck meets your head,
-with its arms solved to your controllers: look down and you see your body,
-your gear and your gloves rather than a pair of floating hands. It takes a
-few seconds to appear after you turn it on, and it spawns a second copy of
-your character, so expect it to cost some frames. It is not shown in the
-Mourningstar.
+own character stands where you do, scaled from your calibration, its legs
+running the game's own walk and run animation and its arms solved to your
+controllers: look down and you see your body, your gear and your gloves
+rather than a pair of floating hands. It takes a few seconds to appear
+after you turn it on, and it spawns a second copy of your character, so
+expect it to cost some frames. It is not shown in the Mourningstar. Its
+feet follow the animation rather than the floor on slopes and steps, and
+cloth on it can jiggle.
 
-**F8** (rebindable, Mod Options, "Body mirror shortcut") stands another copy
-a few paces in front of you in the Psykhanium, posed exactly as you are and
-facing you, so you can see what everyone else sees. Press it again to remove
-it.
+**F8** (rebindable, Mod Options, "Body mirror shortcut") stands a mirror of
+your character a few paces in front of you in the Psykhanium, fixed in the
+world where you summoned it: its head follows your headset, its fingers
+match yours and your wielded weapon is in its reflected hand, so you can
+see what everyone else sees. Its legs run the game's animation and are not
+mirrored left for right. Press F8 again to remove it.
 
 ### Grab and throw the servo skull (experimental)
 
 Mod Options, Darktide VR, The world around you, "Grab and throw the servo
 skull". With the flamethrower servo skull talented, it hovers at your
-off-hand side, a little forward, where you can reach it: grip it and it
-comes to your hand, and letting go with a target marked sends it. All of
-your skulls keep their place as you glance about, swing after you when you
-turn, and move up to 30 cm ahead of you as you run, so the one you want to
-grab is easier to find.
+off-hand side, a little forward, where you can reach it. Grip it and it
+locks to your palm where you took it and turns with your hand. Mark a
+target as usual, then let go with a throw: the skull leaves your hand on
+your arc, whichever way you threw, and turns for the target from there,
+arriving a moment after the attack begins if you threw the other way. Its
+cone attack faces where the ground preview showed. All of your skulls keep
+their place as you glance about, swing after you when you turn, and move
+up to 30 cm ahead of you as you run, so the one you want to grab is easier
+to find.
 
 ### Aim zoom (experimental)
 
@@ -344,6 +354,11 @@ beside the hand.
   gripping can feel off; the virtual stock's shoulder position is an estimate.
 - If a crash wipes your game settings, `Darktide VR Mode.bat` option 4
   restores the last good copy.
+- The full body's feet follow the animation, not the floor, on slopes and
+  steps, and cloth on it can jiggle.
+- The F8 mirror's legs are not mirrored left for right.
+- A servo skull thrown away from its target arrives a moment after the
+  attack begins there.
 - Only one setup has been tested: an RTX 4090, a Quest 3 and Virtual
   Desktop.
 

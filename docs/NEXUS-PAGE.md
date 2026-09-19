@@ -107,30 +107,42 @@ the Psykhanium and part of a mission.
 
 ## Changelog post: the next release (draft, not published)
 
-Written 18 September from what has actually changed since 0.2.0-alpha.1.
-Keep it in step with the Unreleased section of `CHANGELOG.md`, which carries
-the same text in full; this is the shortened form for the page.
+Written 18 September and brought up to date on 19 September from what has
+actually changed since 0.2.0-alpha.1. Keep it in step with the Unreleased
+section of `CHANGELOG.md`, which carries the same text in full; this is the
+shortened form for the page.
 
 **New, each experimental and off until you turn it on:** your character's
-full body under you, scaled to your height with its arms solved to your
-controllers; grab and throw the flamethrower servo skull; an item radial at
-your off hand; push to talk by bringing a hand to your mouth; a melee
-weapon's special charges shown at the hand as a count or as the game's own
-bars; and a small zoom while you aim down the sights.
+full body under you, scaled from your calibration, its legs running the
+game's own animation and its arms solved to your controllers; grab the
+flamethrower servo skull, which locks to your palm and turns with your
+hand, and throw it on your own arc; an item radial at your off hand; push
+to talk by bringing a hand to your mouth; a melee weapon's special charges
+shown at the hand as a count or as the game's own bars; and a small zoom
+while you aim down the sights.
 
-**New shortcut:** F8 in the Psykhanium stands a copy of your character in
-front of you, posed exactly as you are, so you can see what everyone else
-sees.
+**New shortcut:** F8 in the Psykhanium stands a mirror of your character in
+front of you, fixed where you summoned it, its head on your headset, its
+fingers matching yours and your weapon in its reflected hand, so you can
+see what everyone else sees.
 
-**Fixed:** loading screens and menus no longer turn or distort when Virtual
-Desktop's FOV tangent is below 100 per cent; the aim-down-sights vignette
-appears at all, which it never had; a stick flick with the item radial or
-the communication wheel open no longer also fires the stick's own binding;
+**Fixed:** your view stands at your calibrated eye height on load and after
+a recenter (it stood about 27 cm high before); the view, hands and weapon
+move smoothly every frame instead of stepping at the game's update rate;
+loading screens and menus no longer turn or distort when Virtual Desktop's
+FOV tangent is below 100 per cent; the aim-down-sights vignette appears at
+all, which it never had; a stick flick with the item radial or the
+communication wheel open no longer also fires the stick's own binding;
 slivers of neighbouring displays beside the ammo count are gone and hand
 display text is fitted to its space; the ammo count and the charge display
 sit clear of the weapon; servo skulls sit on the right sides and no longer
 flicker as you move; your eye is placed correctly whichever way you face on
 entering a level.
+
+**Known issues:** cloth on the full body can jiggle; its feet follow the
+animation, not the floor, on slopes and steps; the mirror's legs are not
+mirrored left for right; a skull thrown away from its target arrives a
+moment after the attack begins there.
 
 **Built, tried, withdrawn:** reach to interact, inspect by raising the
 weapon, and tag by pointing.
