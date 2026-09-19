@@ -813,8 +813,6 @@ function Mirror.install(mod, presentation, options)
         if state then
             if state.profile_spawner then pcall(state.profile_spawner.destroy, state.profile_spawner) end
             if state.unit_spawner then pcall(state.unit_spawner.destroy, state.unit_spawner) end
-            if state.marker_profile_spawner then pcall(state.marker_profile_spawner.destroy, state.marker_profile_spawner) end
-            if state.marker_unit_spawner then pcall(state.marker_unit_spawner.destroy, state.marker_unit_spawner) end
         end
         state = nil
     end
@@ -1582,41 +1580,6 @@ function Mirror.install(mod, presentation, options)
         state = {world = world, avatar = avatar, unit_spawner = unit_spawner, profile_spawner = profile_spawner, frames = 0,
             profile = profile}
         mod:info("DARKTIDEVR_BODY_MIRROR spawn mode=%s kept_slots=%d ignored_slots=%d", tostring(mode_name), kept, ignored)
-        -- THE MARKER (14:05 worn run), a labelled experiment. The flicker is
-        -- on the copy, its hands and the servo-skulls; not on the weapon or
-        -- the rigid gloves of the hands-only mode. The gloves are the one
-        -- thing the mod draws that is placed by moving a unit's ROOT only,
-        -- so one is spawned here the way the hands-only mode spawns them
-        -- (a profile with only the glove item, no state machine asked for)
-        -- and stood at the copy's head every frame by its root, with the
-        -- copy's own numbers. What it tells: if the glove at your head holds
-        -- still while the body under it flickers, the pose the module
-        -- computes is steady and the fault is in how the linked, machine-
-        -- bearing copy is drawn; if the glove flickers with the body, the
-        -- pose itself alternates and every Lua check so far has read it at
-        -- the wrong moments. Overlay modes only.
-        if not Mirror.MODES[mode_name].reflect then
-            local ok, err = pcall(function()
-                local MasterItems = require("scripts/backend/master_items")
-                local item = MasterItems.get_item("content/items/characters/player/human/gear_hands/hmn_gloves_b_left_only")
-                if not item then error("glove item unavailable") end
-                local marker_unit_spawner = UIUnitSpawner:new(world)
-                local marker_spawner = UIProfileSpawner:new("DarktideVRBodyMarker", world, nil, marker_unit_spawner, false)
-                for slot_name, settings in pairs(ItemSlotSettings) do
-                    if slot_name ~= "slot_gear_upperbody" and slot_name ~= "slot_unarmed" and
-                            not settings.ignore_character_spawning then
-                        marker_spawner:ignore_slot(slot_name)
-                    end
-                end
-                local marker_profile = table.clone_instance(profile)
-                marker_profile.loadout = table.clone_instance(profile.loadout)
-                marker_profile.loadout.slot_gear_upperbody = item
-                marker_spawner:spawn_profile(marker_profile, Unit.world_position(avatar, 1), rotation,
-                    nil, nil, nil, nil, nil, false, false, nil, true)
-                state.marker_unit_spawner, state.marker_profile_spawner = marker_unit_spawner, marker_spawner
-            end)
-            if not ok then log_once("marker", "marker=failed error=%s", tostring(err):sub(1, 160)) end
-        end
     end
     local function update(world, avatar, dt, t)
         if not flag() or not world or not avatar or not Unit.alive(avatar) then destroy_own(); return end
@@ -2097,36 +2060,6 @@ function Mirror.install(mod, presentation, options)
         state.child_before, state.child_before_name = measure_children(unit, state.children)
         World.update_unit_and_children(world, unit)
         state.child_after, state.child_after_name = measure_children(unit, state.children)
-        -- The marker glove (see spawn): its root put at the copy's head
-        -- joint, nothing else of it touched, the way the rigid gloves move.
-        if state.marker_profile_spawner then
-            if not state.marker then
-                state.marker_profile_spawner:update(dt, t)
-                local marker_data = state.marker_profile_spawner:spawned() and state.marker_profile_spawner._character_spawn_data
-                local marker = marker_data and marker_data.unit_3p
-                if marker and Unit.alive(marker) then
-                    state.marker = marker
-                    pcall(Unit.disable_animation_state_machine, marker)
-                    mod:info("DARKTIDEVR_BODY_MIRROR marker=ready machine=%s",
-                        tostring(Unit.has_animation_state_machine and Unit.has_animation_state_machine(marker)))
-                end
-            elseif Unit.alive(state.marker) and Unit.has_node(unit, "j_head") then
-                -- The glove itself (the marker body's left hand joint, where
-                -- the glove item hangs) half a metre ahead of the copy's head
-                -- at head height: the root is moved by whatever the hand is
-                -- off the target, as place_rigid_hand does. The 14:20 run had
-                -- the root at the head and the glove where the rest pose
-                -- hangs it, above and behind.
-                local head = Unit.node(unit, "j_head")
-                local goal = Unit.world_position(unit, head) + Quaternion.forward(Unit.world_rotation(unit, 1)) * 0.5
-                Unit.set_local_rotation(state.marker, 1, Unit.world_rotation(unit, 1))
-                World.update_unit_and_children(world, state.marker)
-                local anchor = Unit.has_node(state.marker, "j_lefthand") and Unit.world_position(state.marker, Unit.node(state.marker, "j_lefthand"))
-                    or Unit.world_position(state.marker, 1)
-                Unit.set_local_position(state.marker, 1, Unit.local_position(state.marker, 1) + goal - anchor)
-                World.update_unit_and_children(world, state.marker)
-            end
-        end
         -- What the copy looks like when this update is done, for the
         -- pre-render check (api.check_before_render): the root and the
         -- right hand. The probe (12:07) showed the root as smooth as the
@@ -2202,7 +2135,6 @@ function Mirror.install(mod, presentation, options)
                 local hand_now = Unit.has_node(unit, "j_righthand") and array(Unit.world_position(unit, Unit.node(unit, "j_righthand"))) or nil
                 local target_position = body_proxy() and body_proxy().hand_pose and body_proxy().hand_pose("right")
                 local target_now = target_position and array(target_position) or nil
-                local marker_now = state.marker and Unit.alive(state.marker) and array(Unit.world_position(state.marker, 1)) or nil
                 local m = state.motion
                 if m then
                     local d_avatar = Mirror.step_m(avatar_now, m.avatar)
@@ -2212,7 +2144,7 @@ function Mirror.install(mod, presentation, options)
                         local function fmt(v) return v and string.format("%.4f", v) or "na" end
                         mod:info("DARKTIDEVR_BODY_MOTION t=%.3f dt=%.4f d_avatar_m=%s d_neck_target_m=%s d_eye_m=%s d_unit_m=%s " ..
                             "anchor_lag_m=%s avatar=%.3f,%.3f,%.3f unit=%.3f,%.3f,%.3f child_before_m=%s child_after_m=%s child=%s " ..
-                            "d_head_m=%s d_hand_m=%s d_hand_target_m=%s d_marker_m=%s head=%s hand=%s d_unit_rel_eye_m=%s",
+                            "d_head_m=%s d_hand_m=%s d_hand_target_m=%s head=%s hand=%s d_unit_rel_eye_m=%s",
                             type(t) == "number" and t or 0, type(dt) == "number" and dt or 0,
                             fmt(d_avatar), fmt(Mirror.step_m(neck_now, m.neck)), fmt(Mirror.step_m(eye_now, m.eye)),
                             fmt(Mirror.step_m(root_now, m.root)),
@@ -2220,7 +2152,7 @@ function Mirror.install(mod, presentation, options)
                             avatar_now[1], avatar_now[2], avatar_now[3], root_now[1], root_now[2], root_now[3],
                             fmt(state.child_before), fmt(state.child_after), tostring(state.child_before_name),
                             fmt(Mirror.step_m(head_now, m.head)), fmt(Mirror.step_m(hand_now, m.hand)),
-                            fmt(Mirror.step_m(target_now, m.target)), fmt(Mirror.step_m(marker_now, m.marker)),
+                            fmt(Mirror.step_m(target_now, m.target)),
                             head_now and string.format("%.3f,%.3f,%.3f", head_now[1], head_now[2], head_now[3]) or "na",
                             hand_now and string.format("%.3f,%.3f,%.3f", hand_now[1], hand_now[2], hand_now[3]) or "na",
                             fmt(eye_now and m.eye and Mirror.step_m({root_now[1] - eye_now[1], root_now[2] - eye_now[2], root_now[3] - eye_now[3]},
@@ -2228,7 +2160,7 @@ function Mirror.install(mod, presentation, options)
                     end
                 end
                 state.motion = {avatar = avatar_now, neck = neck_now, eye = eye_now, root = root_now,
-                    head = head_now, hand = hand_now, target = target_now, marker = marker_now}
+                    head = head_now, hand = hand_now, target = target_now}
             end)
             if not ok then log_once("motion_probe", "motion_probe=failed") end
         end
