@@ -4,20 +4,34 @@ local function near(a,b,m) assert(math.abs(a-b)<1e-9,(m or 'mismatch')..': '..to
 near(Skull.flight_time({0,0,0},{0,8,0}),0.8,'8 m at 10 m/s')
 near(Skull.flight_time({1,2,3},{4,6,3}),0.5,'5 m')
 assert(Skull.flight_time(nil,{0,0,0})==nil and Skull.flight_time({0,0,0},{0/0,0,0})==nil)
--- Free for the first 2/5 of the flight OR a quarter of a second, whichever is
--- shorter, then blended in by its end. The cap is what stops a long throw
--- flying the drawn skull metres off the real one -- and through the floor --
--- before the blend takes over.
-near(Skull.FREE_MAX_SECONDS,0.25,'the cap')
+-- Free for the first 2/5 of the flight (2/5 of the distance at the real
+-- skull's constant speed), uncapped, in every direction; then blended in
+-- over the NEXT 2/5, accelerating (the square of the blend's progress), on
+-- the real skull from 4/5 on (user, 19:45, 19 September).
+near(Skull.FREE_FRACTION,0.4,'two fifths free')
+near(Skull.BLEND_END_FRACTION,0.8,'on the real skull from four fifths')
+assert(Skull.FREE_MAX_SECONDS==nil,'no cap: a long throw is free for its two fifths')
 near(Skull.blend_weight(0,1),0)
-near(Skull.blend_weight(Skull.FREE_MAX_SECONDS,1),0,'a one second flight is capped, not 2/5 of it')
-near(Skull.blend_weight(0.625,1),0.5,'halfway through the blend that follows')
-near(Skull.blend_weight(1,1),1); near(Skull.blend_weight(3,1),1)
--- A short throw is below the cap, so it is unchanged: 2/5 of 0.5 s is 0.2 s.
-near(Skull.blend_weight(0.2,0.5),0,'short throws still use the fraction')
-near(Skull.blend_weight(0.35,0.5),0.5)
-assert(Skull.blend_weight(0.3,1)>0,'and the cap really shortens the free flight')
+near(Skull.blend_weight(0.4,1),0,'free to two fifths of a one second flight')
+near(Skull.blend_weight(0.25,1),0,'no quarter-second cap')
+near(Skull.blend_weight(0.5,1),0.0625,'a quarter into the blend is a sixteenth of the way: it starts gently')
+near(Skull.blend_weight(0.6,1),0.25,'halfway through the blend is a quarter of the way')
+near(Skull.blend_weight(0.7,1),0.5625)
+near(Skull.blend_weight(0.8,1),1,'on the real skull at four fifths'); near(Skull.blend_weight(0.9,1),1); near(Skull.blend_weight(3,1),1)
+near(Skull.blend_weight(0.2,0.5),0,'short throws: the same fractions')
+near(Skull.blend_weight(0.3,0.5),0.25)
 near(Skull.blend_weight(0.1,0),1,'no flight: on the real skull')
+-- Accelerating means every step of the blend closes more of the gap than
+-- the one before it.
+do
+  local last = 0
+  for step = 1, 8 do
+    local w = Skull.blend_weight(0.4 + step * 0.05, 1)
+    local gain = w - Skull.blend_weight(0.4 + (step - 1) * 0.05, 1)
+    assert(gain > last - 1e-12, 'the blend accelerates at step ' .. step)
+    last = gain
+  end
+end
 -- The free flight arcs now (user, worn: "can we have the skull tumble and
 -- follow a ballistic arc rather than moving in a straight line?"). Only the
 -- DRAWN skull does; the real one still flies straight to its target, and the
@@ -31,9 +45,11 @@ near(arc[1],3,'horizontal is ballistic-free'); near(arc[2],0)
 near(arc[3],4-0.5*Skull.GRAVITY,'and the vertical carries the gravity')
 near(Skull.ballistic({1,2,3},{0,0,0},0)[3],3,'no time, no drop')
 near(Skull.ballistic({1,2,3},{0,0,0},-5)[3],3,'nor negative time')
--- Over the free flight's own cap the drop stays in the range a throw reads as.
-local drop=0.5*Skull.GRAVITY*Skull.FREE_MAX_SECONDS*Skull.FREE_MAX_SECONDS
-assert(drop>0.15 and drop<0.6,'the arc is visible but not a fall: '..drop)
+-- Over the free two fifths of a 10 m throw the drop is under a metre: an arc,
+-- and the sweep bounces it off the floor if it gets there.
+local free_10m=Skull.flight_time({0,0,0},{0,10,0})*Skull.FREE_FRACTION
+local drop=0.5*Skull.GRAVITY*free_10m*free_10m
+assert(drop>0.5 and drop<1.0,'the arc is visible but not a fall: '..drop)
 
 -- The tumble axis is RANDOM per throw (user, 18 September: "give the thrown
 -- skull a random tumble rather than a horizontal spin"). Uniform on the
@@ -197,13 +213,13 @@ do
     'the placement spins about the drawn point when asked')
 end
 
--- A throw away from the target (19:25 worn: "it teleports"). Toward is a
--- positive component along the line to the target; an undecidable input is
--- toward. With no free flight the blend rises from the release at once, so
--- the drawn skull leaves the hand on the real skull's line and never turns
--- round: at every moment it lies between the release and the real one. The
--- source has to zero the free velocity and hold the free point for an away
--- throw, or the free flight still runs the hand's way.
+-- The direction against the target is information for the flight log, not
+-- a branch (user, 19:45: "the skull throw needs to work the same way
+-- regardless of throw direction"). Toward is a positive component along
+-- the line to the target; an undecidable input is toward. The source scan
+-- holds the flight to one path: the free velocity is the release velocity,
+-- the free flight is stepped every frame, and the blend takes no per-throw
+-- fraction -- the 19:35 build had all three branch on `away`.
 do
   local toward, angle = Skull.toward_target({0, 5, 0}, {0, 0, 0}, {0, 10, 0})
   assert(toward and math.abs(angle) < 1e-9, 'straight at it')
@@ -214,19 +230,29 @@ do
   assert(Skull.toward_target({0, 0, 0}, {0, 0, 0}, {0, 10, 0}) == true, 'no speed is toward')
   assert(Skull.toward_target({0, 5, 0}, {0, 10, 0}, {0, 10, 0}) == true, 'no distance is toward')
   assert(Skull.toward_target(nil, {0, 0, 0}, {0, 10, 0}) == true, 'nothing is toward')
-  near(Skull.blend_weight(0.25, 1.0, 0), 0.25, 'no free flight: the blend runs from the release')
-  local release, real = {0, 0, 0}, {0, -6, 0}
-  for step = 0, 10 do
-    local w = Skull.blend_weight(step * 0.1, 1.0, 0)
-    local d = Skull.drawn_position(release, {0, 0, 0}, step * 0.1, real, w, release)
-    assert(d[2] <= 0 and d[2] >= -6 and d[1] == 0 and d[3] == 0, 'between the hand and the real skull: ' .. d[2])
+  -- An away throw drawn by the same rule: free the hand's way for two
+  -- fifths, then closing on the real skull with every step larger than the
+  -- last, on it from four fifths.
+  local release, real = {0, 0, 0}, {0, -10, 0}
+  local free = Skull.drawn_position(release, {0, 8, 0}, 0.4, real, Skull.blend_weight(0.4, 1), Skull.ballistic(release, {0, 8, 0}, 0.4))
+  near(free[2], 3.2, 'two fifths of the way, still the hand\'s way')
+  local last_gap, last_close = nil, 0
+  for step = 0, 8 do
+    local t = 0.4 + step * 0.05
+    local d = Skull.drawn_position(release, {0, 8, 0}, t, real, Skull.blend_weight(t, 1), Skull.ballistic(release, {0, 8, 0}, 0.4))
+    local gap = math.abs(d[2] - real[2])
+    if last_gap then
+      local close = last_gap - gap
+      assert(close >= last_close - 1e-9, 'each step closes more than the last at ' .. t)
+      last_close = close
+    end
+    last_gap = gap
   end
+  assert(last_gap < 1e-9, 'on the real skull at four fifths')
   local source = assert(io.open(arg[1], 'rb')):read('*a')
-  assert(source:find('velocity = toward and pending%.velocity or {0, 0, 0}', 1), 'an away throw has no free velocity')
-  assert(source:find('if not throw%.away then%s+throw%.free_position, throw%.free_velocity, bounced =', 1),
-    'an away throw holds its free point at the release')
-  assert(source:find('Skull%.blend_weight%(elapsed, throw%.total, throw%.away and 0 or nil%)', 1),
-    'an away throw blends from the release at once')
+  assert(source:find('velocity = pending%.velocity, thrown = pending%.velocity', 1), 'the free velocity is the release velocity, every direction')
+  assert(not source:find('if not throw%.away then', 1), 'the free flight is stepped every frame, every direction')
+  assert(source:find('Skull%.blend_weight%(elapsed, throw%.total%)', 1), 'the blend takes no per-throw fraction')
 end
 
 print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed stock_offset lead fed_offset axis_angle rigid_part toward_target')

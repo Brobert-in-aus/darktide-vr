@@ -1199,6 +1199,34 @@ into the real one, so it leaves the hand on the real skull's line. The
 carries `max_step_m`, the largest frame-to-frame move of the drawn skull
 over the flight. A teleport is metres; a flight is centimetres. Not worn.
 
+### 1ai. Worn at 19:40 ("grab is locked, throwing towards works, throwing away doesn't work"): the throw is the same in every direction, free for two fifths, then an accelerating blend
+
+**The grab is closed.** The 19:40 log's `in_hand=` triple did not move by a
+millimetre over the hold; `anim_nodes=10:30mm` named the bob as node 10,
+about 3 cm of animation below the nine children, now frozen while held.
+
+**The away throw.** The 19:35 build skipped the free flight for a throw
+away from the aim point (1ah), which the user rejected: "the order point
+needs to stay where it's been targeted, and the skull throw needs to work
+the same way regardless of throw direction - ballistic for the first 2/5 of
+the distance. If needed, we could have it accelerate over the next 2/5
+rather than a fixed speed so it doesn't appear to teleport." The log's four
+flights had the same largest per-frame step, 0.18 to 0.21 m, toward or
+away, so what read as a teleport on an away throw was the linear blend
+starting across the gap at full speed the frame the free flight ended.
+
+Now: the free flight is two fifths of the flight time (two fifths of the
+distance at the real skull's constant speed), uncapped (the quarter-second
+cap of the 18th guarded a straight line through the floor; the free flight
+has been swept and bounced since), in every direction. The blend runs over
+the next two fifths, to `Skull.BLEND_END_FRACTION` (0.8), and its weight is
+the square of its progress, so it leaves the free path gently and closes
+fastest at the end; the drawn skull rides the real one for the last fifth.
+`Skull.toward_target` stays for the flight log only. Tests: the weights at
+the fractions, every blend step closing more than the last, an away throw
+drawn by the rule, and a source scan holding the flight to one path. Not
+worn; the `flight_end max_step_m` row measures the largest step either way.
+
 ## 2. The torso turning faster than your head
 
 This one is arithmetic rather than a theory, which is a change from the last

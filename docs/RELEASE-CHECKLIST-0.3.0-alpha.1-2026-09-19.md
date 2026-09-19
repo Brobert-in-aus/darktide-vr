@@ -68,12 +68,13 @@ checklist:
   Confirmed at 15:50.
 - The flamer skull grab: locked to the palm where grabbed, turning with the
   hand, throw still works (`DARKTIDEVR_SKULL_GRAB_DRAWN ... in_hand=` holds
-  three constant numbers while held). Worn at 19:25: "grab is fixed now",
-  the idle bob still moves it (about 2 cm either way over 2.6 s) and a
-  throw AWAY from the target "teleports". Test-checklist 1ah: the nodes
-  below the nine children are frozen while held (`anim_nodes=` names the
-  bobbing ones) and an away throw has no free flight (`flight ... away=`,
-  `flight_end max_step_m=`). Not worn.
+  three constant numbers while held). Worn at 19:40: "grab is locked,
+  throwing towards works" (the grab is CLEARED: in_hand did not move a
+  millimetre, the bob was node 10 and is frozen). Open: a throw AWAY from
+  the aim point. Test-checklist 1ai: the throw is the same in every
+  direction, free for two fifths, then an accelerating blend to four
+  fifths (`flight ... away= angle_to_target_deg=`, `flight_end
+  max_step_m=`). Not worn.
 - Cloth on the body: still jiggles as of 17:15. Either it settled with the
   smooth anchor and the calibrated camera, or it ships as a known issue.
 

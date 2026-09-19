@@ -75,17 +75,22 @@ end
 Skull.SPEED = 10
 Skull.TARGET_DROP = 1
 Skull.FREE_FRACTION = 0.4
--- ...but never longer than this, however far the throw goes. The free flight
--- is a straight line along the hand's release velocity with no gravity and no
--- relation to the target, so its length is how far the drawn skull can end up
--- from the real one before the blend takes over. At FREE_FRACTION alone a 20 m
--- throw gives 0.8 s of it, and a natural downward follow-through at 3 m/s puts
--- the drawn skull two and a half metres below the hand -- through the floor,
--- most likely -- before it is pulled back (review, 18 September). A quarter of
--- a second is long enough to read as a throw and short enough that it cannot
--- go somewhere absurd. Short throws are unaffected: below about 0.6 s of
--- flight the fraction is already the smaller of the two.
-Skull.FREE_MAX_SECONDS = 0.25
+-- THE SAME THROW IN EVERY DIRECTION (user, 19:45, 19 September: "the order
+-- point needs to stay where it's been targeted, and the skull throw needs to
+-- work the same way regardless of throw direction - ballistic for the first
+-- 2/5 of the distance. If needed, we could have it accelerate over the next
+-- 2/5 rather than a fixed speed so it doesn't appear to teleport"). The real
+-- skull flies at a constant SPEED, so 2/5 of the distance is 2/5 of the
+-- flight time: the free flight is that, uncapped (the quarter-second cap of
+-- the 18th guarded a straight line through the floor; the free flight has
+-- been swept and bounced since). The blend then runs over the NEXT 2/5, to
+-- BLEND_END_FRACTION of the flight, and ACCELERATES: its weight is the
+-- square of its progress, so the drawn skull leaves its free path gently
+-- and closes on the real one fastest at the end, whichever way it was
+-- thrown, and rides the real skull for the last fifth. What read as a
+-- teleport on an away throw was a linear blend starting across the gap at
+-- full speed the frame the free flight ended.
+Skull.BLEND_END_FRACTION = 0.8
 -- The free flight arcs and tumbles (user, worn: "can we have the skull tumble
 -- and follow a ballistic arc rather than moving in a straight line?").
 --
@@ -93,8 +98,8 @@ Skull.FREE_MAX_SECONDS = 0.25
 -- target at SPEED, because that is the game's order and this module has never
 -- touched it; the arc is what the throw looks like for the quarter second
 -- before the blend takes over, and the blend still lands on the real position.
--- Over FREE_MAX_SECONDS the drop is about 30 cm, which reads as a throw
--- without the skull appearing to be falling out of the air.
+-- Over the free two fifths of a 10 m throw (0.4 s) the drop is about 80 cm,
+-- swept against the world so it bounces rather than sinks.
 Skull.GRAVITY = 9.81
 -- Radians per second per metre per second: a hard throw spins faster than a
 -- gentle one, which is most of what makes a tumble read as thrown rather than
@@ -156,29 +161,27 @@ function Skull.flight_time(from, to, speed)
 end
 
 -- How far the drawn skull has blended into the real one: 0 during the free
--- flight (the first free_fraction of total), rising to 1 at total. Pure.
-function Skull.blend_weight(elapsed, total, free_fraction)
+-- flight (the first free_fraction of total), then the SQUARE of the blend's
+-- progress up to blend_end (a fraction of total), 1 from there. Pure.
+function Skull.blend_weight(elapsed, total, free_fraction, blend_end)
     free_fraction = free_fraction or Skull.FREE_FRACTION
+    blend_end = blend_end or Skull.BLEND_END_FRACTION
     if not finite(elapsed) or not finite(total) or total <= 0 then return 1 end
-    local free = math.min(total * free_fraction, Skull.FREE_MAX_SECONDS)
+    local free = total * free_fraction
+    local finish = total * blend_end
     if elapsed <= free then return 0 end
-    if elapsed >= total then return 1 end
-    return (elapsed - free) / (total - free)
+    if elapsed >= finish or finish <= free then return 1 end
+    local progress = (elapsed - free) / (finish - free)
+    return progress * progress
 end
 
--- A THROW AWAY FROM THE TARGET (user, 19:25, 19 September: "if I throw it
--- away from the target location instead of towards it, it teleports"). The
--- order flies the real skull to the aimed point whichever way the hand
--- went; the free flight went the hand's way for up to a quarter second and
--- the blend then hauled the drawn skull back across the whole gap in what
--- was left of the flight -- at 10 m/s each way that is a reversal of
--- several metres in well under a second. Whether a release goes toward the
--- target: the release velocity's component along the line from the release
--- point to the target is positive. Returns the answer and the angle in
--- degrees; an undecidable input (no speed, no distance) is toward. Pure.
--- A throw away skips the free flight: the drawn skull is held at the hand
--- and blended straight into the real flight from there, so it leaves the
--- hand the way the real one goes and never turns round.
+-- Whether a release goes toward the target: the release velocity's
+-- component along the line from the release point to the target is
+-- positive. Returns the answer and the angle in degrees; an undecidable
+-- input (no speed, no distance) is toward. Pure. INFORMATION ONLY, for the
+-- flight log: the 19:35 build skipped the free flight for a throw away
+-- from the target and the user's rule (19:45) is that the throw works the
+-- same way in every direction; the flight no longer branches on this.
 function Skull.toward_target(velocity, release, target)
     if type(velocity) ~= "table" or type(release) ~= "table" or type(target) ~= "table" then return true, nil end
     local dx, dy, dz = target[1] - release[1], target[2] - release[2], target[3] - release[3]
@@ -1076,13 +1079,11 @@ function Skull.install(mod, presentation)
             local from = array(Unit.world_position(skull, 1))
             local total = pending.target and Skull.flight_time(from, pending.target)
             if total and total > 0.05 then
-                -- Away from the target (Skull.toward_target): no free flight,
-                -- the drawn skull is held at the hand and blended straight
-                -- into the real one. The tumble still spins at the thrown
-                -- speed.
+                -- The direction against the target is logged, nothing more:
+                -- the throw is the same in every direction (BLEND_END_FRACTION).
                 local toward, angle = Skull.toward_target(pending.velocity, pending.position, pending.target)
                 throw = {start = t, total = total, release = pending.position,
-                    velocity = toward and pending.velocity or {0, 0, 0}, thrown = pending.velocity, away = not toward,
+                    velocity = pending.velocity, thrown = pending.velocity, away = not toward,
                 -- One axis per throw, drawn here so it is steady for its whole
                 -- flight rather than re-rolled every frame.
                 tumble_axis = Skull.random_axis(math.random(), math.random()),
@@ -1354,7 +1355,7 @@ function Skull.install(mod, presentation)
                 mod:info("DARKTIDEVR_SKULL_THROW arrived predicted_s=%.2f actual_s=%.2f", throw.total, elapsed)
             end
         end
-        local weight = Skull.blend_weight(elapsed, throw.total, throw.away and 0 or nil)
+        local weight = Skull.blend_weight(elapsed, throw.total)
         if not flying or elapsed > Skull.MAX_THROW_SECONDS or weight >= 1 then
             -- THE FLIGHT'S LARGEST DRAWN STEP (19:25, "it teleports" on a
             -- throw away from the target): the biggest frame-to-frame move
@@ -1378,18 +1379,16 @@ function Skull.install(mod, presentation)
         end
         -- Step the free flight and sweep it. The first frame starts it at the
         -- release with the release velocity; after that it carries its own
-        -- state, because a bounce cannot be recovered from a closed form. A
-        -- throw away from the target has no free flight: the free point is
-        -- the release, held, and the blend runs from there.
+        -- state, because a bounce cannot be recovered from a closed form.
+        -- Every direction alike: the free flight is the hand's, whichever
+        -- way the target lies.
         if not throw.free_position then
             throw.free_position = {throw.release[1], throw.release[2], throw.release[3]}
             throw.free_velocity = {throw.velocity[1], throw.velocity[2], throw.velocity[3]}
         end
         local bounced
-        if not throw.away then
-            throw.free_position, throw.free_velocity, bounced =
-                swept_step(extension, throw.free_position, throw.free_velocity, dt)
-        end
+        throw.free_position, throw.free_velocity, bounced =
+            swept_step(extension, throw.free_position, throw.free_velocity, dt)
         if bounced and not throw.bounce_logged then
             throw.bounce_logged = true
             mod:info("DARKTIDEVR_SKULL_THROW bounced elapsed_s=%.3f speed=%.2f", elapsed,
