@@ -13,49 +13,51 @@ assert(Skull.flight_time(nil,{0,0,0})==nil and Skull.flight_time({0,0,0},{0/0,0,
 near(Skull.FREE_FRACTION,0.4,'two fifths free')
 assert(Skull.FREE_MAX_SECONDS==nil,'no cap: a long throw is free for its two fifths')
 assert(Skull.blend_weight==nil and Skull.drawn_position==nil and Skull.BLEND_END_FRACTION==nil,'no blend')
-assert(Skull.CHASE_SPEED>Skull.SPEED,'the chase can catch a skull flying at SPEED')
-assert(Skull.CHASE_ACCEL>0 and Skull.CHASE_ACCEL*0.1<=Skull.CHASE_SPEED,'and turns in a few tenths, not in a frame')
+-- The chase's one limit (user, 20:15: "don't cap the speed, just cap the
+-- acceleration, and don't cap the deceleration").
+assert(Skull.CHASE_SPEED==nil,'no speed cap')
+assert(Skull.CHASE_ACCEL>0,'the acceleration is the limit')
 do
   local dist=function(a,b) return math.sqrt((a[1]-b[1])^2+(a[2]-b[2])^2+(a[3]-b[3])^2) end
   -- From rest, one step at accel 30 over 0.1 s: 3 m/s straight at it, 0.3 m moved.
-  local p,v,caught=Skull.chase({0,0,0},{0,0,0},{0,10,0},0.1,15,30)
+  local p,v,caught=Skull.chase({0,0,0},{0,0,0},{0,10,0},0.1,30)
   near(v[2],3,'accelerated by accel*dt'); near(p[2],0.3,'and moved by the new velocity'); assert(not caught)
-  -- The cap: running at it too fast is pulled down to the cap, never above it.
-  p,v=Skull.chase({0,0,0},{0,20,0},{0,100,0},0.1,15,30)
-  near(v[2],17,'pulled toward the cap by accel*dt')
-  for _=1,10 do p,v=Skull.chase(p,v,{0,100,0},0.1,15,30) end
-  near(v[2],15,'and held at it')
-  -- A throw straight AWAY turns round and catches a real skull that flies
-  -- on to 10 m and stops, with every step a flight-sized move.
+  -- No speed cap: it keeps gaining accel*dt every step, however fast it is.
+  p,v=Skull.chase({0,0,0},{0,20,0},{0,1000,0},0.1,30)
+  near(v[2],23,'faster still')
+  for _=1,10 do p,v=Skull.chase(p,v,{0,1000,0},0.1,30) end
+  near(v[2],53,'and still gaining')
+  -- Deceleration is free: the sideways and away parts of the velocity are
+  -- dropped at once, and the speed along the line starts from what it had
+  -- along the line (nothing, moving away).
+  p,v=Skull.chase({0,0,0},{5,0,0},{0,10,0},0.1,30)
+  near(v[1],0,'sideways dropped'); near(v[2],3,'and the chase starts from rest along the line')
+  p,v=Skull.chase({0,0,0},{0,-8,0},{0,10,0},0.1,30)
+  near(v[2],3,'moving away: dropped to rest, then accel*dt toward')
+  p,v=Skull.chase({0,0,0},{0,4,0},{0,10,0},0.1,30)
+  near(v[2],7,'moving toward: kept, plus accel*dt')
+  -- A throw straight AWAY is caught by a real skull that flies on to 10 m
+  -- and stops, with no step ever growing by more than the acceleration.
   p,v={0,-2,0},{0,-8,0}
-  local real,t,steps,max_step,caught_at={0,4,0},0,0,0,nil
+  local real,t,last_step,caught_at={0,4,0},0,nil,nil
   while t<4 do
     local before={p[1],p[2],p[3]}
     real={0,math.min(10,real[2]+10*0.01),0}
     p,v,caught=Skull.chase(p,v,real,0.01)
-    t=t+0.01; steps=steps+1
-    if caught then
-      -- The catching step lands on the real skull: the step plus the reach.
-      assert(dist(before,p)<=Skull.ARRIVED_METRES+Skull.CHASE_SPEED*0.01+1e-9,'the catch is a reach, not a jump')
-      caught_at=t break
-    end
-    max_step=math.max(max_step,dist(before,p))
+    t=t+0.01
+    local step=dist(before,p)
+    if caught then caught_at=t break end
+    if last_step then assert(step<=last_step+Skull.CHASE_ACCEL*0.01*0.01+1e-9,'a step grows by at most the acceleration at '..t) end
+    last_step=step
   end
   assert(caught_at,'the away throw is caught')
   assert(caught_at>0.4 and caught_at<2.5,'later than the real flight, not much later: '..caught_at)
-  assert(max_step<=Skull.CHASE_SPEED*0.01+1e-9,'no step faster than the cap: '..max_step)
-  -- Within reach: the step lands on the real skull rather than past it.
-  p,v,caught=Skull.chase({0,9.9,0},{0,15,0},{0,10,0},0.1)
-  assert(caught and p[2]==10,'caught, and drawn on it')
-  p,v,caught=Skull.chase({0,0,0},{0,4,0},{0,0.5,0},0.1)
-  assert(caught and p[2]==0.5,'a full step would overshoot: it lands instead')
-  -- Too fast to stop within the limit: it overshoots, turns, and is caught
-  -- within a few steps rather than jumping onto it.
+  -- It lands on the real skull exactly, never past it: at 15 m/s half a
+  -- metre away, one step of 0.1 s would carry 1.5 m; it lands instead.
   p,v,caught=Skull.chase({0,0,0},{0,15,0},{0,0.5,0},0.1)
-  assert(not caught and p[2]>0.5,'a skull at 15 m/s cannot stop in half a metre')
-  local turns=0
-  while not caught and turns<20 do p,v,caught=Skull.chase(p,v,{0,0.5,0},0.1); turns=turns+1 end
-  assert(caught and turns<10,'and comes back for it: '..turns)
+  assert(caught and p[2]==0.5,'a full step would overshoot: it lands instead')
+  p,v,caught=Skull.chase({0,9.9,0},{0,15,0},{0,10,0},0.1)
+  assert(caught and p[2]==10,'within reach: caught, and drawn on it')
   -- No time, no move; bad inputs, no move.
   p,v,caught=Skull.chase({1,2,3},{4,5,6},{0,0,0},0)
   assert(p[1]==1 and v[1]==4 and not caught,'no dt, no step')

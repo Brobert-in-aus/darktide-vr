@@ -94,12 +94,18 @@ Skull.FREE_FRACTION = 0.4
 -- and growing -- so the crossing is tens of metres a second whatever the
 -- curve; the square curve spent that in its last tenth of a second, which
 -- is the vanishing. Instead the drawn skull carries its free-flight
--- velocity on and STEERS toward the real skull under an acceleration
--- limit up to a speed cap, and arrives when it arrives: on a toward throw
--- about when the real one does, on an away throw later, by however long
--- the turn and the catch-up take. Late is a skull seen flying; on time was
--- a skull seen vanishing. The flight_end row logs the lateness.
-Skull.CHASE_SPEED = 16
+-- velocity on and STEERS toward the real skull, and arrives when it
+-- arrives: on a toward throw about when the real one does, on an away
+-- throw later, by however long the catch-up takes. Late is a skull seen
+-- flying; on time was a skull seen vanishing. The flight_end row logs the
+-- lateness.
+--
+-- THE CHASE'S ONE LIMIT (user, 20:15: "don't cap the speed, just cap the
+-- acceleration, and don't cap the deceleration"). Speed toward the real
+-- skull grows by at most CHASE_ACCEL per second and has no ceiling;
+-- slowing is free, so the free flight's sideways and away components are
+-- dropped the moment the chase starts, and the last step lands on the real
+-- skull exactly instead of overshooting it.
 Skull.CHASE_ACCEL = 40
 -- The free flight arcs and tumbles (user, worn: "can we have the skull tumble
 -- and follow a ballistic arc rather than moving in a straight line?").
@@ -172,34 +178,32 @@ function Skull.flight_time(from, to, speed)
     return distance / speed
 end
 
--- One step of the chase: the drawn skull's velocity is steered toward the
--- real skull -- the wanted velocity is straight at it at `speed` (or slower
--- when a full step would overshoot), and the change of velocity this step
--- is limited to accel * dt -- then the position moves by the new velocity.
--- Returns the new position, the new velocity, and whether the skull has
--- caught the real one (within ARRIVED_METRES, in which case the position
--- returned is the real one's). No dt, no change. 3-arrays. Pure.
-function Skull.chase(position, velocity, real, dt, speed, accel)
+-- One step of the chase. The drawn skull moves straight at the real one:
+-- its speed along that line is what it already had along it (nothing, if
+-- it was moving away) plus at most accel * dt -- the acceleration is
+-- capped, the speed is not -- and never more than would land it past the
+-- real skull this step (slowing is free, so it lands exactly). Anything
+-- the velocity had sideways or away is dropped at once, for the same
+-- reason. Returns the new position, the new velocity, and whether the
+-- skull has caught the real one (landed on it, or within ARRIVED_METRES,
+-- in which case the position returned is the real one's). No dt, no
+-- change. 3-arrays. Pure.
+function Skull.chase(position, velocity, real, dt, accel)
     if type(position) ~= "table" or type(real) ~= "table" then return position, velocity, false end
     velocity = type(velocity) == "table" and velocity or {0, 0, 0}
     local d = finite(dt) and dt or 0
     if d <= 0 then return position, velocity, false end
-    speed = speed or Skull.CHASE_SPEED
     accel = accel or Skull.CHASE_ACCEL
     local tx, ty, tz = real[1] - position[1], real[2] - position[2], real[3] - position[3]
     local distance = math.sqrt(tx * tx + ty * ty + tz * tz)
     if not finite(distance) then return position, velocity, false end
     if distance <= Skull.ARRIVED_METRES then return {real[1], real[2], real[3]}, velocity, true end
-    local wanted_speed = math.min(speed, distance / d)
-    local wx, wy, wz = tx / distance * wanted_speed, ty / distance * wanted_speed, tz / distance * wanted_speed
-    local dvx, dvy, dvz = wx - velocity[1], wy - velocity[2], wz - velocity[3]
-    local dv = math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz)
-    local dv_max = accel * d
-    if dv > dv_max then
-        local k = dv_max / dv
-        dvx, dvy, dvz = dvx * k, dvy * k, dvz * k
-    end
-    local v = {velocity[1] + dvx, velocity[2] + dvy, velocity[3] + dvz}
+    local dx, dy, dz = tx / distance, ty / distance, tz / distance
+    local along = velocity[1] * dx + velocity[2] * dy + velocity[3] * dz
+    if not finite(along) or along < 0 then along = 0 end
+    local speed = math.min(along + accel * d, distance / d)
+    local v = {dx * speed, dy * speed, dz * speed}
+    if speed * d >= distance - 1e-9 then return {real[1], real[2], real[3]}, v, true end
     local p = {position[1] + v[1] * d, position[2] + v[2] * d, position[3] + v[3] * d}
     local rx, ry, rz = real[1] - p[1], real[2] - p[2], real[3] - p[3]
     if rx * rx + ry * ry + rz * rz <= Skull.ARRIVED_METRES * Skull.ARRIVED_METRES then

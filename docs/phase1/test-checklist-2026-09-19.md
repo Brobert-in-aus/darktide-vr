@@ -1265,6 +1265,22 @@ is now logged (`state from= to= following= held= throw=`, budgeted 300),
 which says what the module was doing during that while. Unmeasured until
 then.
 
+### 1ak. The user's rule for the chase (20:15): "don't cap the speed, just cap the acceleration, and don't cap the deceleration"
+
+Not a worn report; a rule on the 1aj chase before it was worn. `Skull.chase`
+now: the drawn skull moves straight at the real one; its speed along that
+line is what it already had along it (nothing, if it was moving away) plus
+at most `CHASE_ACCEL` (40 m/s²) times the step, with no ceiling, and never
+more than would land it past the real skull this step. Slowing is free, so
+the free flight's sideways and away components are dropped the moment the
+chase starts, and the last step lands on the real skull exactly instead of
+overshooting. `CHASE_SPEED` is gone; the test forbids it, and holds: no
+ceiling (a chase at 20 m/s keeps gaining), sideways and away dropped,
+toward kept, every step of an away throw growing by at most the
+acceleration, an overshoot landed instead, and the away throw caught
+within 2.5 s. Not worn; the `flight_end` row's `max_step_m` and `late_s`
+measure it.
+
 ## 2. The torso turning faster than your head
 
 This one is arithmetic rather than a theory, which is a change from the last
