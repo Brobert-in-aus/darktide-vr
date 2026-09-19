@@ -5461,6 +5461,29 @@ class OpenXrProbe {
             // does not. The runtime's own per-eye span is printed beside it,
             // since the recentred symmetric frustum is built from it and the
             // difference between those two is a candidate on its own.
+            // THE EYE SEPARATION, measured rather than inferred.
+            //
+            // The reticle's parallax varies with distance about a tenth as
+            // much as it should (worn, 19 September: disparity moves 0.0014
+            // between 4 and 31 metres where the geometry says 0.014). A
+            // parallax compressed by a constant factor is an eye separation
+            // smaller by that factor and nothing else -- so this prints the
+            // separation the SUBMITTED poses carry beside the one the runtime
+            // reports, which tells apart "the submitted poses lost the IPD"
+            // from "the runtime reports a tiny IPD" without another guess.
+            const auto separation = [](const XrPosef& a, const XrPosef& b) {
+                const auto dx = a.position.x - b.position.x;
+                const auto dy = a.position.y - b.position.y;
+                const auto dz = a.position.z - b.position.z;
+                return std::sqrt(dx * dx + dy * dy + dz * dz);
+            };
+            std::cout << "openxr.ads_reticle_eyes_ipd submitted_m="
+                      << separation(submitted_view_poses[0], submitted_view_poses[1])
+                      << " runtime_m="
+                      << separation(located_views[0].pose, located_views[1].pose)
+                      << " quad_space_local="
+                      << (gameplay_reticle_quad.space == local_space_ ? 1 : 0)
+                      << '\n';
             const auto span = [](const XrFovf& f) {
                 return std::tan(f.angleRight) - std::tan(f.angleLeft);
             };
