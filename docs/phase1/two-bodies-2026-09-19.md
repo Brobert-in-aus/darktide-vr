@@ -722,7 +722,10 @@ the reflection's distance in those frames that is about 3 px of 960. The
 residual is a tenth of that. But the walking in both recordings is toward
 the reflection, which moves it vertically and in scale, not sideways, so
 this measurement is not sensitive to the alternation and decides nothing
-about it. A recording of a sideways pass would.
+about it. The reflection keeps its distance from the player, so a
+sideways pass is not possible; a strafe while facing it is the recording
+that would show it, with the floor plates sliding behind a reflection
+that stays put.
 
 ### What the probe's eye column is
 

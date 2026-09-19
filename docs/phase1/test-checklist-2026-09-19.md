@@ -447,9 +447,13 @@ at the render boundary.
 `prerender calls=... checks=... drifted=...` line (now a read-only check
 of what the world update did to the copy after it was posed; drift there
 would be new information), and the probe as before. If you record again,
-walk **sideways** past the reflection: both recordings walked toward it,
-and forward motion moves it in scale, not across the floor plates, so
-those recordings could not show an alternation either way.
+face the reflection and **strafe** with the stick for a few seconds (the
+reflection keeps its distance from you, so there is no walking past it).
+The floor plates then slide sideways behind a reflection that stays put,
+and a frame-old alternation shows as the reflection jittering against
+them. Both recordings so far walked toward it, and forward motion moves
+it in scale, not across the plates, so they could not show an
+alternation either way.
 
 ### The weapon, and why it is still on the stock model
 
