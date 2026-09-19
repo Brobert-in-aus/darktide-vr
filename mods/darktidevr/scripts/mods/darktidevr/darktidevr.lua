@@ -14957,6 +14957,17 @@ end)
 mod:hook(ScriptWorld, "render", function(func, world, ...)
     if presentation.render_world_census then presentation.render_world_census.observe(world) end
     if presentation.hud_panel then presentation.hud_panel.observe_render(world) end
+    -- The body copy read again after the engine's render call, whichever
+    -- of the branches below makes it (darktidevr_body_mirror
+    -- check_after_render, 19 September): the original is wrapped once here.
+    if presentation.body_mirror and presentation.body_mirror.check_after_render then
+        local original_render = func
+        func = function(rendered_world, ...)
+            local results = {original_render(rendered_world, ...)}
+            pcall(presentation.body_mirror.check_after_render, rendered_world)
+            return unpack(results)
+        end
+    end
     -- The drawn body at the render boundary, after the engine's own world
     -- update: a read-only check of whether anything moved the copy since it
     -- was posed before that update

@@ -497,6 +497,57 @@ joints against the camera's eye, all in the root's frame, and the gait
 line gains `toe_above_ground_m` per side. Those numbers, not a guess,
 decide the height and the float.
 
+### 1o. Worn at 14:05: the children were fine, the servo-skulls flicker too, a glove marker at your head, and the feet
+
+Your report: the top of the torso is right relative to the camera and
+comfortable; the legs float and the body should extend further down with
+the torso top kept; flicker unchanged; the servo-skulls floating around
+you flicker as well.
+
+The log for that run: 13 linked child units measured three times a
+frame. As the update left them, before the flush: off on 4,338 of 4,340
+moving frames (2-5 cm at the head gear, the reflection's hips by its whole
+2.5 m). After the flush and at the render boundary: zero on every one of
+19,523 checks. So the children stand exactly on the skeleton when the
+frame is rendered, and the body still alternates. Also new: the hub's
+unarmed machine did set on the copy once at 04:05:36 (`animated_legs=live
+... unarmed_hub`), and with it running the render check saw the hand
+drift 0.6-1.2 m on 86 frames, the machine writing over the solve.
+
+**What flickers and what does not.** Flickers: the copy, its hands, the
+servo-skulls (game units with their own animation, whose nodes the mod
+moves). Steady: the weapon, the rigid gloves of the hands-only mode. The
+gloves are the one thing the mod draws by moving a unit's root only.
+
+**Two things in this build, both labelled.** A `machines` line at ready
+lists which units carry an animation state machine: the copy, each of
+its gear units, and the weapon units. And a marker: one glove, spawned
+the way the hands-only mode spawns them, stood 35 cm above the copy's
+head joint every frame by its root, with the copy's own numbers. Look
+up: if the glove holds still while the body under it flickers, the pose
+the module computes is steady and the fault is in how the linked,
+machine-bearing units are drawn; if the glove flickers with the body,
+the pose itself alternates and the Lua checks have been reading it at
+the wrong moments. Two more counters in the heartbeat close the frame:
+`after_render=moved/checks` (the copy read again after the engine's
+render call) and `between_frames=moved/checks` (as the last render left
+it against the next frame's start).
+
+**The feet, from the numbers.** The gait line gave
+`toe_above_ground_m=0.045/0.052` at rest and the leg's ankle error under
+a centimetre: the legs reach the ground point, and the toe joint sits
+4.5-5.7 cm above it where the spawn pose has it 2.7 cm up. The foot was
+pitched toes-up after the leg solve, and the ankle target was the
+toe-derived 7.4 cm rather than the 10.1 cm the spawn pose stands at.
+This build restores the foot's rest pitch after the solve and uses the
+spawn ankle height; the gait line now carries `foot_pitch_deg` against
+`rest_pitch_deg` per side, and `toe_above_ground_m` should read about
+0.029. The height itself is unchanged: `height` gave the copy's eyes 11
+cm below the camera's with the neck at 1.515 and the shoulders at 1.51-
+1.53 in the root's frame, which is the torso you called right. If the
+feet still float after this, the lever is the leg bones, stretched the
+way the arms are, and the numbers above are what it would be set from.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

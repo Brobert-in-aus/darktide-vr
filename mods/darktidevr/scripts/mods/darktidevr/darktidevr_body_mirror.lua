@@ -813,6 +813,8 @@ function Mirror.install(mod, presentation, options)
         if state then
             if state.profile_spawner then pcall(state.profile_spawner.destroy, state.profile_spawner) end
             if state.unit_spawner then pcall(state.unit_spawner.destroy, state.unit_spawner) end
+            if state.marker_profile_spawner then pcall(state.marker_profile_spawner.destroy, state.marker_profile_spawner) end
+            if state.marker_unit_spawner then pcall(state.marker_unit_spawner.destroy, state.marker_unit_spawner) end
         end
         state = nil
     end
@@ -949,6 +951,10 @@ function Mirror.install(mod, presentation, options)
     -- flush (child_update_*, from state.child_before).
     local child_render_over, child_render_max, child_render_worst = 0, 0, "none"
     local child_update_over, child_update_max = 0, 0
+    -- After the render (check_after_render) and between frames
+    -- (run_scheduled): how often and how far the copy moved.
+    local after_checks, after_moved, after_max = 0, 0, 0
+    local between_checks, between_moved, between_max = 0, 0, 0
     -- THE CHILDREN (19 September, 13:47 worn run). Everything drawn of the
     -- copy is a child unit: the gear, the hands, the head with its eye
     -- lenses, each linked to the copy's skeleton by the profile spawner
@@ -996,9 +1002,10 @@ function Mirror.install(mod, presentation, options)
         local parts = {}
         for reason, count in pairs(skipped) do parts[#parts + 1] = reason .. "=" .. count end
         table.sort(parts)
-        mod:info("DARKTIDEVR_BODY_MIRROR prerender calls=%d checks=%d drifted=%d child_render_over_1mm=%d child_render_max_m=%.4f child_render_worst=%s child_update_over_1mm=%d child_update_max_m=%.4f skipped=%s",
+        mod:info("DARKTIDEVR_BODY_MIRROR prerender calls=%d checks=%d drifted=%d child_render_over_1mm=%d child_render_max_m=%.4f child_render_worst=%s child_update_over_1mm=%d child_update_max_m=%.4f after_render=%d/%d max_m=%.4f between_frames=%d/%d max_m=%.4f skipped=%s",
             calls, checks, drifts, child_render_over, child_render_max, tostring(child_render_worst),
-            child_update_over, child_update_max, #parts > 0 and table.concat(parts, ",") or "none")
+            child_update_over, child_update_max, after_moved, after_checks, after_max,
+            between_moved, between_checks, between_max, #parts > 0 and table.concat(parts, ",") or "none")
     end
     function api.check_before_render(world)
         calls = calls + 1
@@ -1218,11 +1225,25 @@ function Mirror.install(mod, presentation, options)
                 local from_toe = Vector3.z(ankle_local) - toe_z + Mirror.TOE_ABOVE_SOLE_M
                 if from_toe > 0.02 and from_toe < 0.25 then ankle_above_sole = from_toe end
             end
-            legs[side] = {side = side, hip = hip, knee = knee, ankle = ankle,
+            -- FLOAT (14:05 worn run): with the toe-derived height the toe
+            -- joint stood 4.5-5.7 cm above the ground point at rest, where
+            -- the spawn pose has it 2.7 cm up, and "the legs float". The
+            -- spawn pose stands on the root's plane, so the ankle's height
+            -- above the sole IS its height above the root there
+            -- (spawn_ankle_z), and the toe's rest pitch below the ankle is
+            -- what a flat foot looks like on this rig; both are kept and
+            -- the solve restores the pitch each frame (see the gait block).
+            local rest_pitch = nil
+            if toe then
+                local to_toe = Unit.world_position(unit, toe) - Unit.world_position(unit, ankle)
+                local flat = math.sqrt(Vector3.x(to_toe) ^ 2 + Vector3.y(to_toe) ^ 2)
+                rest_pitch = math.atan2(Vector3.z(to_toe), flat)
+            end
+            legs[side] = {side = side, hip = hip, knee = knee, ankle = ankle, toe = toe, rest_pitch = rest_pitch,
                 upper = Vector3.length(Unit.world_position(unit, knee) - Unit.world_position(unit, hip)),
                 lower = Vector3.length(Unit.world_position(unit, ankle) - Unit.world_position(unit, knee)),
-                ankle_x = Vector3.x(ankle_local), ankle_z = ankle_above_sole,
-                spawn_ankle_z = Vector3.z(ankle_local), toe_z = toe_z}
+                ankle_x = Vector3.x(ankle_local), ankle_z = Vector3.z(ankle_local),
+                spawn_ankle_z = Vector3.z(ankle_local), toe_z = toe_z, toe_derived_z = ankle_above_sole}
         end
         local upper = (legs.left.upper + legs.right.upper) / 2
         local lower = (legs.left.lower + legs.right.lower) / 2
@@ -1547,6 +1568,41 @@ function Mirror.install(mod, presentation, options)
         state = {world = world, avatar = avatar, unit_spawner = unit_spawner, profile_spawner = profile_spawner, frames = 0,
             profile = profile}
         mod:info("DARKTIDEVR_BODY_MIRROR spawn mode=%s kept_slots=%d ignored_slots=%d", tostring(mode_name), kept, ignored)
+        -- THE MARKER (14:05 worn run), a labelled experiment. The flicker is
+        -- on the copy, its hands and the servo-skulls; not on the weapon or
+        -- the rigid gloves of the hands-only mode. The gloves are the one
+        -- thing the mod draws that is placed by moving a unit's ROOT only,
+        -- so one is spawned here the way the hands-only mode spawns them
+        -- (a profile with only the glove item, no state machine asked for)
+        -- and stood at the copy's head every frame by its root, with the
+        -- copy's own numbers. What it tells: if the glove at your head holds
+        -- still while the body under it flickers, the pose the module
+        -- computes is steady and the fault is in how the linked, machine-
+        -- bearing copy is drawn; if the glove flickers with the body, the
+        -- pose itself alternates and every Lua check so far has read it at
+        -- the wrong moments. Overlay modes only.
+        if not Mirror.MODES[mode_name].reflect then
+            local ok, err = pcall(function()
+                local MasterItems = require("scripts/backend/master_items")
+                local item = MasterItems.get_item("content/items/characters/player/human/gear_hands/hmn_gloves_b_left_only")
+                if not item then error("glove item unavailable") end
+                local marker_unit_spawner = UIUnitSpawner:new(world)
+                local marker_spawner = UIProfileSpawner:new("DarktideVRBodyMarker", world, nil, marker_unit_spawner, false)
+                for slot_name, settings in pairs(ItemSlotSettings) do
+                    if slot_name ~= "slot_gear_upperbody" and slot_name ~= "slot_unarmed" and
+                            not settings.ignore_character_spawning then
+                        marker_spawner:ignore_slot(slot_name)
+                    end
+                end
+                local marker_profile = table.clone_instance(profile)
+                marker_profile.loadout = table.clone_instance(profile.loadout)
+                marker_profile.loadout.slot_gear_upperbody = item
+                marker_spawner:spawn_profile(marker_profile, Unit.world_position(avatar, 1), rotation,
+                    nil, nil, nil, nil, nil, false, false, nil, true)
+                state.marker_unit_spawner, state.marker_profile_spawner = marker_unit_spawner, marker_spawner
+            end)
+            if not ok then log_once("marker", "marker=failed error=%s", tostring(err):sub(1, 160)) end
+        end
     end
     local function update(world, avatar, dt, t)
         if not flag() or not world or not avatar or not Unit.alive(avatar) then destroy_own(); return end
@@ -1572,6 +1628,29 @@ function Mirror.install(mod, presentation, options)
             mod:info("DARKTIDEVR_BODY_MIRROR children linked=%d joints=%s", #state.children,
                 (function() local names = {}; for _, c in ipairs(state.children) do names[#names + 1] = c.name end
                     table.sort(names); return table.concat(names, ",") end)())
+            -- MACHINES (14:05 worn run). The flicker is on the copy, its
+            -- hands, and the servo-skulls the mod places; not on the weapon
+            -- or the rigid gloves. Which of these units carry an animation
+            -- state machine is a fact the engine can be asked for; this
+            -- line lists it for the copy, each linked child, and the
+            -- avatar's weapon units, so the pattern can be read off.
+            if Unit.has_animation_state_machine then
+                local parts = {"copy=" .. tostring(Unit.has_animation_state_machine(unit))}
+                for slot_name, slot in pairs(data.slots or {}) do
+                    if slot.unit_3p and Unit.alive(slot.unit_3p) then
+                        parts[#parts + 1] = slot_name .. "=" .. tostring(Unit.has_animation_state_machine(slot.unit_3p))
+                    end
+                end
+                local loadout = ScriptUnit.has_extension(avatar, "visual_loadout_system")
+                for _, slot_name in ipairs({"slot_primary", "slot_secondary"}) do
+                    local ok, weapon = pcall(function() return loadout and loadout:unit_3p_from_slot(slot_name) end)
+                    if ok and weapon and Unit.alive(weapon) then
+                        parts[#parts + 1] = "avatar_" .. slot_name .. "=" .. tostring(Unit.has_animation_state_machine(weapon))
+                    end
+                end
+                table.sort(parts)
+                mod:info("DARKTIDEVR_BODY_MIRROR machines %s", table.concat(parts, " "))
+            end
             capture_arms(unit)
             -- THE REST POSE. Every joint below the root, as the spawner left
             -- it on this frame, boxed once. This is the whole of what the
@@ -1888,6 +1967,24 @@ function Mirror.install(mod, presentation, options)
                         set_world_rotation(unit, leg.ankle, Quaternion.multiply(
                             Quaternion(Vector3.up(), foot.yaw), leg.rest_foot_rotation:unbox()))
                         World.update_unit(world, unit)
+                        -- The foot's pitch, measured on the ankle-to-toe
+                        -- line and put back to the rest pose's (a flat
+                        -- foot), whatever the re-based rotation left it at.
+                        -- Both angles go in the gait log line.
+                        if leg.toe and leg.rest_pitch then
+                            local ankle_position = Unit.world_position(unit, leg.ankle)
+                            local to_toe = Unit.world_position(unit, leg.toe) - ankle_position
+                            local flat = math.sqrt(Vector3.x(to_toe) ^ 2 + Vector3.y(to_toe) ^ 2)
+                            leg.pitch = math.atan2(Vector3.z(to_toe), flat)
+                            if flat > 0.01 and math.abs(leg.pitch - leg.rest_pitch) > math.rad(0.5) then
+                                local side_axis = Vector3.normalize(Vector3.cross(Vector3.up(), Vector3(Vector3.x(to_toe), Vector3.y(to_toe), 0)))
+                                local correction = Quaternion.axis_angle(side_axis, leg.rest_pitch - leg.pitch)
+                                set_world_rotation(unit, leg.ankle, Quaternion.multiply(correction, Unit.world_rotation(unit, leg.ankle)))
+                                World.update_unit(world, unit)
+                                to_toe = Unit.world_position(unit, leg.toe) - ankle_position
+                                leg.pitch = math.atan2(Vector3.z(to_toe), math.sqrt(Vector3.x(to_toe) ^ 2 + Vector3.y(to_toe) ^ 2))
+                            end
+                        end
                         leg.error = Vector3.length(Unit.world_position(unit, leg.ankle) - target)
                     else
                         leg.error = nil
@@ -1914,6 +2011,26 @@ function Mirror.install(mod, presentation, options)
         state.child_before, state.child_before_name = measure_children(unit, state.children)
         World.update_unit_and_children(world, unit)
         state.child_after, state.child_after_name = measure_children(unit, state.children)
+        -- The marker glove (see spawn): its root put at the copy's head
+        -- joint, nothing else of it touched, the way the rigid gloves move.
+        if state.marker_profile_spawner then
+            if not state.marker then
+                state.marker_profile_spawner:update(dt, t)
+                local marker_data = state.marker_profile_spawner:spawned() and state.marker_profile_spawner._character_spawn_data
+                local marker = marker_data and marker_data.unit_3p
+                if marker and Unit.alive(marker) then
+                    state.marker = marker
+                    pcall(Unit.disable_animation_state_machine, marker)
+                    mod:info("DARKTIDEVR_BODY_MIRROR marker=ready machine=%s",
+                        tostring(Unit.has_animation_state_machine and Unit.has_animation_state_machine(marker)))
+                end
+            elseif Unit.alive(state.marker) and Unit.has_node(unit, "j_head") then
+                local head = Unit.node(unit, "j_head")
+                Unit.set_local_position(state.marker, 1, Unit.world_position(unit, head) + Vector3(0, 0, 0.35 * (state.scale or 1)))
+                Unit.set_local_rotation(state.marker, 1, Unit.world_rotation(unit, 1))
+                World.update_unit_and_children(world, state.marker)
+            end
+        end
         -- What the copy looks like when this update is done, for the
         -- pre-render check (api.check_before_render): the root and the
         -- right hand. The probe (12:07) showed the root as smooth as the
@@ -2179,13 +2296,20 @@ function Mirror.install(mod, presentation, options)
                     if not Unit.has_node(unit, name) then return "na" end
                     return string.format("%.3f", Vector3.z(Unit.world_position(unit, Unit.node(unit, name))) - feet[side].position[3])
                 end
-                mod:info("DARKTIDEVR_BODY_MIRROR gait speed_mps=%.3f ground_hits=%d left=%s right=%s ankle_error_m=%s/%s left_foot=%.3f,%.3f,%.3f right_foot=%.3f,%.3f,%.3f toe_above_ground_m=%s/%s",
+                local function pitch(side)
+                    local leg = state.legs and state.legs[side]
+                    return leg and leg.pitch and string.format("%.1f", math.deg(leg.pitch)) or "na",
+                        leg and leg.rest_pitch and string.format("%.1f", math.deg(leg.rest_pitch)) or "na"
+                end
+                local left_pitch, left_rest = pitch("left")
+                local right_pitch, right_rest = pitch("right")
+                mod:info("DARKTIDEVR_BODY_MIRROR gait speed_mps=%.3f ground_hits=%d left=%s right=%s ankle_error_m=%s/%s left_foot=%.3f,%.3f,%.3f right_foot=%.3f,%.3f,%.3f toe_above_ground_m=%s/%s foot_pitch_deg=%s/%s rest_pitch_deg=%s/%s",
                     feet.speed or 0, state.ground_hits or 0,
                     feet.left.swinging and "swinging" or "planted", feet.right.swinging and "swinging" or "planted",
                     err("left"), err("right"),
                     feet.left.position[1], feet.left.position[2], feet.left.position[3],
                     feet.right.position[1], feet.right.position[2], feet.right.position[3],
-                    toe_above("left"), toe_above("right"))
+                    toe_above("left"), toe_above("right"), left_pitch, right_pitch, left_rest, right_rest)
             end
             if Mirror.MODES[mode_name].solve_arms then
                 if state.arm_lengths then
@@ -2251,9 +2375,37 @@ function Mirror.install(mod, presentation, options)
     function api.run_scheduled(dt, t)
         if not scheduled.pending then return false end
         scheduled.pending = false
+        -- Between frames: the copy as the last render left it against the
+        -- copy now, before this frame's pose. A move here is something
+        -- other than this module writing the copy between renders.
+        if state and state.unit and Unit.alive(state.unit) and state.after_render and Unit.has_node(state.unit, "j_righthand") then
+            local root = array(Unit.world_position(state.unit, 1))
+            local hand = array(Unit.world_position(state.unit, Unit.node(state.unit, "j_righthand")))
+            local d = math.max(Mirror.step_m(root, state.after_render.root) or 0, Mirror.step_m(hand, state.after_render.hand) or 0)
+            between_checks = between_checks + 1
+            if d >= 0.001 then between_moved = between_moved + 1 end
+            if d > between_max then between_max = d end
+        end
         api.update(scheduled.world, scheduled.avatar,
             type(dt) == "number" and dt or scheduled.dt, type(t) == "number" and t or scheduled.t)
         return true
+    end
+    -- After the engine's render call for the copy's world: the copy read
+    -- once more. A move between check_before_render and here is the render
+    -- itself (or something in the render hook) moving the copy.
+    function api.check_after_render(world)
+        if not state or not state.unit or world ~= state.world or not Unit.alive(state.unit) then return end
+        if not Unit.has_node(state.unit, "j_righthand") then return end
+        local root = array(Unit.world_position(state.unit, 1))
+        local hand = array(Unit.world_position(state.unit, Unit.node(state.unit, "j_righthand")))
+        if state.render_check and state.render_check.root then
+            local d = math.max(Mirror.step_m(root, state.render_check.root) or 0, Mirror.step_m(hand, state.render_check.hand) or 0)
+            after_checks = after_checks + 1
+            if d >= 0.001 then after_moved = after_moved + 1 end
+            if d > after_max then after_max = d end
+        end
+        state.after_render = state.after_render or {}
+        state.after_render.root, state.after_render.hand = root, hand
     end
     return api
 end

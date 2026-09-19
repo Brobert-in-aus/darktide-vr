@@ -793,6 +793,62 @@ joints follow the skeleton), all in the root's frame against the camera's
 eye in that frame. The gait line gains `toe_above_ground_m` per side,
 the drawn toe joint against the ground the gait put the foot on.
 
+## Worn, 14:05: the children stand on the skeleton; the skulls flicker too
+
+On 2e17761. The user: torso top right relative to the camera, comfortable
+to look down, shoulders out of the view; the legs float and the body
+should extend downward with the torso top kept; flicker unchanged; the
+servo-skulls flicker as well.
+
+```
+children linked=13 joints=slot_body_arms:j_lefthand,slot_body_arms:j_righthand,slot_gear_head:j_head,...
+height camera_eye_root_z=1.773 copy_eye_root_z=1.660 eye_gap_m=0.113 neck_root_z=1.515 shoulder_root_z=1.511/1.526
+gait ... toe_above_ground_m=0.045/0.052      (at rest; ankle_error_m=0.002/0.010)
+prerender calls=225600 checks=19523 drifted=86 child_render_over_1mm=0 child_render_max_m=0.0000 child_update_over_1mm=5830 child_update_max_m=1.1906
+animated_legs=live machine=content/characters/player/human/third_person/animations/unarmed_hub template=unarmed_hub_human   (04:05:36, the hub)
+```
+
+`child_before_m` was non-zero on 4,338 of 4,340 moving probe lines (the
+head gear 2-5 cm, the reflection's hips 2.5 m: `World.update_unit` on the
+copy alone leaves the linked units where the last flush put them);
+`child_after_m` and the render-boundary read were zero throughout. The
+children are on the skeleton at the render boundary and the drawn body
+alternates. The 86 drifts are the hub instance with the unarmed machine
+live: the hand 0.6-1.2 m from the solve, the machine writing over it.
+
+### What flickers
+
+The copy and its hands; the servo-skulls (`darktidevr_skull_throw.lua`
+moves the flying companion's root children in its post_update and
+flushes with `World.update_unit_and_children`; the companion is a game
+unit with its own animation). Steady: the weapon; the rigid gloves of the
+hands-only mode (`place_rigid_hand`: the glove unit's root moved so the
+hand joint lands on the target, the fingers copied, flushed with the
+children call). The gloves are spawned by the same profile spawner as the
+copy, with the same `optional_ignore_state_machine`.
+
+### This build
+
+- `machines` at ready: `Unit.has_animation_state_machine` for the copy,
+  each gear unit and the avatar's weapon units.
+- The marker: a glove spawned as the hands-only mode spawns one (a profile
+  carrying only the glove item, no machine asked for, the machine
+  disabled once spawned), its root set 35 cm above the copy's head joint
+  every frame with the copy's rotation, flushed with the children call.
+  Overlay modes only. The observable is the user's eye: the glove steady
+  over a flickering body, or flickering with it.
+- `check_after_render`: the original render call is wrapped once at the
+  top of the `ScriptWorld.render` hook, and the copy's root and hand are
+  read after it; `after_render=moved/checks max_m` in the heartbeat. And
+  `between_frames=moved/checks max_m`: the copy as the last render left it
+  against the next frame's start, read in `run_scheduled` before the pose.
+- The feet: the ankle target height is the spawn pose's ankle height above
+  the root (0.101 m at scale 1; the spawn pose stands on the root's
+  plane), not the toe-derived 0.074; and after the leg solve the foot's
+  pitch on the ankle-to-toe line is measured and put back to the rest
+  pose's. `foot_pitch_deg=solved/solved rest_pitch_deg=rest/rest` on the
+  gait line. Not worn.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows
