@@ -46,6 +46,27 @@ guide, README, licence, notices and changelog are in the archive at
 sections and its known limits were rewritten in `a5dae4c`; the README has
 no version line. Item 9 waits for the user's word, as ordered.
 
+**Progress (19 September, 21:40): published on GitHub.** The user's order
+at 21:20: keep the aim zoom default at 5, change its stale text, pass over
+the rest for outdated text, and push the release to GitHub. The text pass
+(`ba25b09`, `e2861b5`) rewrote the full body, mirror, skull and aim zoom
+option descriptions, dated the changelog and Nexus headings, and the
+package was rebuilt from `e2861b5`, superseding the `a5dae4c` archive:
+
+    darktidevr-0.3.0-alpha.1-e2861b5cb045.zip
+    9,425,519 bytes
+    SHA-256 55880A2CFB978EE21609673AD8A3AFC8ABC0CBCD9F0C87108E903FFC3F046D19
+    runtime_package=pass files=124; provenance recorded, 2 components
+
+`main` fast-forwarded to `e2861b5` locally and on both remotes; annotated
+tag `v0.3.0-alpha.1` on `e2861b5`, on both remotes; GitHub release
+https://github.com/Brobert-in-aus/darktide-vr/releases/tag/v0.3.0-alpha.1
+with the zip attached, marked latest, notes = the changelog section plus
+Install and Archive. Nexus is the user's. The install still holds the
+`a5dae4c` extraction (the game was running when the rebuilt archive was
+ready; the two differ only in the option descriptions and the documents),
+to be re-extracted when the game closes.
+
 ### 1. Decide what "Full body (experimental)" ships as
 
 The option today runs the overlay with the procedural gait; the dev flag
