@@ -54,9 +54,30 @@ return {
                                 -- value keeps it: DMF stores the chosen
                                 -- number, and a default only ever applies to
                                 -- a setting that has never been set.
+                                -- OFF by default since 19 September. The
+                                -- zoom narrows the frustum the game's cameras
+                                -- render with, and the viewer -- which never
+                                -- learns of it -- keeps submitting the
+                                -- UNZOOMED projection to the runtime. Each
+                                -- eye's frustum is asymmetric in the opposite
+                                -- direction, so magnifying each eye's image
+                                -- about its own optical axis pushes the two
+                                -- eyes' content apart: divergence is
+                                -- 2 * 0.1224 * (m - 1) radians, which is 0.4
+                                -- degrees at 3 per cent and 1.9 at fifteen.
+                                -- Worn: "better but still present" at 1, and
+                                -- at 15 "so diverged I couldn't visually
+                                -- converge the reticules". Human fusion gives
+                                -- out around a degree.
+                                --
+                                -- It stays as an option because the fault is
+                                -- the projection the viewer submits, not the
+                                -- zoom itself; when the magnification is
+                                -- carried across to the viewer this can come
+                                -- back on.
                                 setting_id = "vr_ads_zoom",
                                 type = "numeric",
-                                default_value = 5,
+                                default_value = 0,
                                 range = {0, 30},
                                 decimals_number = 0,
                                 step_size_value = 1,
