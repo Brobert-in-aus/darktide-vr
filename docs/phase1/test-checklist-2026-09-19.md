@@ -1068,6 +1068,28 @@ copy, and read minus 25.5 cm; the lift then never landed. It is read
 once at the end of a frame after the flush, in the root's frame, and
 the lift is applied against the tracked eye in that frame.
 
+### 1ae. Worn at 17:40: camera right, all good; the skull grab made a grab
+
+Your report: the camera height is right and it all works; next, grabbing
+the flamer skull should be an actual grab: the hand against the side of
+the skull, the skull turning with the hand, not just translating.
+
+The log for the run: the camera 1.723 m above the avatar's root, the
+calibrated height; the mirror plane fixed; the eyes-above-head constant
+6 cm, sane.
+
+**The grab.** While the off hand holds the skull it is rigid to the
+hand. On the frame the hold begins, the vector from the hand to the
+skull's drawn centre is taken in the hand's frame and set to the
+skull's radius (10 to 16 cm), so the palm sits on its side from
+whichever direction it was grabbed, and the hand's rotation is taken
+as the zero. Every held frame after, the centre is the hand plus the
+hand's rotation on that vector, and the skull turns by the hand's
+rotation since the zero, about its centre. The stock movement is still
+fed the hold so the real root follows; the drawn parts are what the
+hand holds. Released, the grab drops and the throw or the bridge takes
+over as before. `grabbed offset_m=..` logs the vector on each grab.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

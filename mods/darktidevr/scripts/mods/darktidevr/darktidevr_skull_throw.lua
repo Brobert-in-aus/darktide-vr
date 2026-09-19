@@ -34,6 +34,20 @@ Skull.FORWARD = 0.60
 Skull.SIDE_RIGHT = 0.30
 Skull.DOWN = 0.30
 Skull.GRAB_RADIUS = 0.12
+-- Held: the hand-to-centre distance the grab keeps, so the palm sits on the
+-- skull's side (its drawn radius is about 12 cm) wherever it was taken from.
+Skull.GRAB_HOLD_MIN, Skull.GRAB_HOLD_MAX = 0.10, 0.16
+
+-- A rotation's axis (3-array, unit) and angle from quaternion elements, for
+-- the placement's world axis and angle; nil axis and zero angle for the
+-- identity. Pure.
+function Skull.axis_angle(x, y, z, w)
+    local sine = math.sqrt(x * x + y * y + z * z)
+    if sine < 1e-6 then return nil, 0 end
+    local angle = 2 * math.atan2(sine, w)
+    if angle > math.pi then angle = angle - 2 * math.pi end
+    return {x / sine, y / sine, z / sine}, angle
+end
 Skull.SPEED = 10
 Skull.TARGET_DROP = 1
 Skull.FREE_FRACTION = 0.4
@@ -557,6 +571,15 @@ function Skull.install(mod, presentation)
                 end
             end
             hand_track.position, hand_track.t = p, t
+            -- The hand's rotation too (the visible wrist's, from the body
+            -- proxy), for the grab: the skull turns with the hand.
+            local proxy = presentation.body_proxy
+            if proxy and proxy.hand_pose then
+                local _, rotation = proxy.hand_pose(side)
+                if rotation then
+                    if hand_track.rotation then hand_track.rotation:store(rotation) else hand_track.rotation = QuaternionBox(rotation) end
+                end
+            end
         end
         if not api.following then return nil end
         zone.centre = Holsters.local_point(frame, array(Unit.world_position(skull, 1)))
@@ -966,10 +989,50 @@ function Skull.install(mod, presentation)
                 -- view as the hands and the weapon do. The real root is
                 -- untouched; the bridge still starts from it.
                 local lag = anchor_lag(local_player_unit())
-                if lag then
-                    place(extension, skull, record.bridge_nodes, {real[1] - lag[1], real[2] - lag[2], real[3] - lag[3]})
+                -- AN ACTUAL GRAB (user, 17:45, 19 September: "grabbing the
+                -- flamer skull [should] be an actual grab ... it should be
+                -- against the side of the skull and the skull should turn
+                -- with the hand"). While the off hand holds it, the skull
+                -- is rigid to the hand: on the frame the hold begins, the
+                -- vector from the hand to the skull's drawn centre is taken
+                -- in the hand's frame and set to the skull's radius, so the
+                -- palm sits on its side wherever it was grabbed from, and
+                -- the hand's rotation is taken as the zero. Every held
+                -- frame after: centre = hand + hand_rotation * that vector,
+                -- and the skull turns by hand_rotation * inverse(zero)
+                -- about its centre. The stock movement is still fed the
+                -- hold (feed), so the real root follows; the drawn parts
+                -- are what the hand holds. Released, the grab is dropped
+                -- and the throw or the bridge takes over.
+                local grabbed = false
+                if thrower and held(t) and hand_track.position and hand_track.rotation then
+                    local hand = Vector3(hand_track.position[1], hand_track.position[2], hand_track.position[3])
+                    local hand_rotation = hand_track.rotation:unbox()
+                    if not record.grab then
+                        local centre = lag and Vector3(real[1] - lag[1], real[2] - lag[2], real[3] - lag[3]) or Vector3(real[1], real[2], real[3])
+                        local in_hand = Quaternion.rotate(Quaternion.inverse(hand_rotation), centre - hand)
+                        local length = Vector3.length(in_hand)
+                        if length < 1e-3 then in_hand = Vector3(0, 0, Skull.GRAB_RADIUS); length = Skull.GRAB_RADIUS end
+                        in_hand = in_hand * (math.max(Skull.GRAB_HOLD_MIN, math.min(Skull.GRAB_HOLD_MAX, length)) / length)
+                        record.grab = {offset = Vector3Box(in_hand), zero = QuaternionBox(hand_rotation)}
+                        mod:info("DARKTIDEVR_SKULL_THROW grabbed offset_m=%.3f,%.3f,%.3f", Vector3.x(in_hand), Vector3.y(in_hand), Vector3.z(in_hand))
+                    end
+                    local centre = hand + Quaternion.rotate(hand_rotation, record.grab.offset:unbox())
+                    local delta = Quaternion.multiply(hand_rotation, Quaternion.inverse(record.grab.zero:unbox()))
+                    local x, y, z, w = Quaternion.to_elements(delta)
+                    local axis, angle = Skull.axis_angle(x, y, z, w)
+                    place(extension, skull, record.bridge_nodes, {Vector3.x(centre), Vector3.y(centre), Vector3.z(centre)},
+                        axis and Vector3(axis[1], axis[2], axis[3]) or nil, angle)
+                    grabbed = true
                 else
-                    unplace(record.bridge_nodes, skull)
+                    record.grab = nil
+                end
+                if not grabbed then
+                    if lag then
+                        place(extension, skull, record.bridge_nodes, {real[1] - lag[1], real[2] - lag[2], real[3] - lag[3]})
+                    else
+                        unplace(record.bridge_nodes, skull)
+                    end
                 end
                 record.bridge, record.position = nil, real
             else

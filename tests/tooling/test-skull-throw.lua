@@ -152,4 +152,21 @@ assert(Skull.MAX_CONSECUTIVE_FAILURES and Skull.MAX_CONSECUTIVE_FAILURES > 1,
   'one error does not stand the module down, got ' .. tostring(Skull.MAX_CONSECUTIVE_FAILURES))
 assert(Skull.MAX_CONSECUTIVE_FAILURES <= 10, 'but a run of them still does')
 
-print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed stock_offset lead fed_offset')
+-- The grab's axis and angle from quaternion elements: the identity gives no
+-- axis and no angle; a quarter turn about z gives z and pi/2; a turn past a
+-- half is taken the short way; a negated quaternion is the same rotation.
+do
+  local axis, angle = Skull.axis_angle(0, 0, 0, 1)
+  assert(axis == nil and angle == 0, 'the identity has no axis')
+  local s, c = math.sin(math.pi / 4), math.cos(math.pi / 4)
+  axis, angle = Skull.axis_angle(0, 0, s, c)
+  assert(math.abs(axis[3] - 1) < 1e-9 and math.abs(angle - math.pi / 2) < 1e-9, 'a quarter turn about z')
+  axis, angle = Skull.axis_angle(0, 0, -s, -c)
+  assert(math.abs(angle) - math.pi / 2 < 1e-9 and math.abs(axis[3] * angle - math.pi / 2) < 1e-9, 'the negated quaternion is the same turn')
+  local h = math.rad(100)
+  axis, angle = Skull.axis_angle(0, math.sin(h), 0, math.cos(h))
+  assert(math.abs(math.abs(angle) - math.rad(160)) < 1e-9, 'a 200 degree turn is taken as 160 the other way')
+  assert(Skull.GRAB_HOLD_MIN < Skull.GRAB_RADIUS + 0.05 and Skull.GRAB_HOLD_MAX > Skull.GRAB_HOLD_MIN, 'the held distance brackets the skull')
+end
+
+print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed stock_offset lead fed_offset axis_angle')
