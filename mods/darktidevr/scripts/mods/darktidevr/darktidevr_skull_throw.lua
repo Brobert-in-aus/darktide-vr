@@ -83,14 +83,24 @@ Skull.FREE_FRACTION = 0.4
 -- skull flies at a constant SPEED, so 2/5 of the distance is 2/5 of the
 -- flight time: the free flight is that, uncapped (the quarter-second cap of
 -- the 18th guarded a straight line through the floor; the free flight has
--- been swept and bounced since). The blend then runs over the NEXT 2/5, to
--- BLEND_END_FRACTION of the flight, and ACCELERATES: its weight is the
--- square of its progress, so the drawn skull leaves its free path gently
--- and closes on the real one fastest at the end, whichever way it was
--- thrown, and rides the real skull for the last fifth. What read as a
--- teleport on an away throw was a linear blend starting across the gap at
--- full speed the frame the free flight ended.
-Skull.BLEND_END_FRACTION = 0.8
+-- been swept and bounced since), whichever way the target lies.
+--
+-- THEN A CHASE, NOT A BLEND (20:00 worn run on the accelerating blend: "it
+-- absolutely teleports at the end of the ballistic arc ... It's in free
+-- flight, then it's gone"; flight_end max_step_m 0.45 to 0.70 on three
+-- throws). Any blend that lands on the real skull by a fixed fraction of
+-- the flight has to cross the gap in the time left, and on an away throw
+-- the gap is the free flight plus the real skull's own travel -- ten metres
+-- and growing -- so the crossing is tens of metres a second whatever the
+-- curve; the square curve spent that in its last tenth of a second, which
+-- is the vanishing. Instead the drawn skull carries its free-flight
+-- velocity on and STEERS toward the real skull under an acceleration
+-- limit up to a speed cap, and arrives when it arrives: on a toward throw
+-- about when the real one does, on an away throw later, by however long
+-- the turn and the catch-up take. Late is a skull seen flying; on time was
+-- a skull seen vanishing. The flight_end row logs the lateness.
+Skull.CHASE_SPEED = 16
+Skull.CHASE_ACCEL = 40
 -- The free flight arcs and tumbles (user, worn: "can we have the skull tumble
 -- and follow a ballistic arc rather than moving in a straight line?").
 --
@@ -106,6 +116,8 @@ Skull.GRAVITY = 9.81
 -- as animated. Capped so a fast throw does not turn into a blur.
 Skull.TUMBLE_PER_SPEED = 1.1
 Skull.TUMBLE_MAX_RATE = 14
+-- The tumble eases out over the last metres of the chase.
+Skull.TUMBLE_SETTLE_METRES = 2
 -- A release counts as the throw that started a flight this soon after it.
 Skull.RELEASE_WINDOW = 0.75
 Skull.MAX_THROW_SECONDS = 4
@@ -160,19 +172,40 @@ function Skull.flight_time(from, to, speed)
     return distance / speed
 end
 
--- How far the drawn skull has blended into the real one: 0 during the free
--- flight (the first free_fraction of total), then the SQUARE of the blend's
--- progress up to blend_end (a fraction of total), 1 from there. Pure.
-function Skull.blend_weight(elapsed, total, free_fraction, blend_end)
-    free_fraction = free_fraction or Skull.FREE_FRACTION
-    blend_end = blend_end or Skull.BLEND_END_FRACTION
-    if not finite(elapsed) or not finite(total) or total <= 0 then return 1 end
-    local free = total * free_fraction
-    local finish = total * blend_end
-    if elapsed <= free then return 0 end
-    if elapsed >= finish or finish <= free then return 1 end
-    local progress = (elapsed - free) / (finish - free)
-    return progress * progress
+-- One step of the chase: the drawn skull's velocity is steered toward the
+-- real skull -- the wanted velocity is straight at it at `speed` (or slower
+-- when a full step would overshoot), and the change of velocity this step
+-- is limited to accel * dt -- then the position moves by the new velocity.
+-- Returns the new position, the new velocity, and whether the skull has
+-- caught the real one (within ARRIVED_METRES, in which case the position
+-- returned is the real one's). No dt, no change. 3-arrays. Pure.
+function Skull.chase(position, velocity, real, dt, speed, accel)
+    if type(position) ~= "table" or type(real) ~= "table" then return position, velocity, false end
+    velocity = type(velocity) == "table" and velocity or {0, 0, 0}
+    local d = finite(dt) and dt or 0
+    if d <= 0 then return position, velocity, false end
+    speed = speed or Skull.CHASE_SPEED
+    accel = accel or Skull.CHASE_ACCEL
+    local tx, ty, tz = real[1] - position[1], real[2] - position[2], real[3] - position[3]
+    local distance = math.sqrt(tx * tx + ty * ty + tz * tz)
+    if not finite(distance) then return position, velocity, false end
+    if distance <= Skull.ARRIVED_METRES then return {real[1], real[2], real[3]}, velocity, true end
+    local wanted_speed = math.min(speed, distance / d)
+    local wx, wy, wz = tx / distance * wanted_speed, ty / distance * wanted_speed, tz / distance * wanted_speed
+    local dvx, dvy, dvz = wx - velocity[1], wy - velocity[2], wz - velocity[3]
+    local dv = math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz)
+    local dv_max = accel * d
+    if dv > dv_max then
+        local k = dv_max / dv
+        dvx, dvy, dvz = dvx * k, dvy * k, dvz * k
+    end
+    local v = {velocity[1] + dvx, velocity[2] + dvy, velocity[3] + dvz}
+    local p = {position[1] + v[1] * d, position[2] + v[2] * d, position[3] + v[3] * d}
+    local rx, ry, rz = real[1] - p[1], real[2] - p[2], real[3] - p[3]
+    if rx * rx + ry * ry + rz * rz <= Skull.ARRIVED_METRES * Skull.ARRIVED_METRES then
+        return {real[1], real[2], real[3]}, v, true
+    end
+    return p, v, false
 end
 
 -- Whether a release goes toward the target: the release velocity's
@@ -287,16 +320,6 @@ function Skull.tumbled_angle(angle, rate, weight, dt)
     if not finite(rate) or not finite(dt) or dt <= 0 then return a end
     local w = finite(weight) and math.max(0, math.min(1, weight)) or 0
     return a + rate * (1 - w) * dt
-end
-
--- The drawn position: a free-flight position blended into the real one by
--- weight. `free` is now stepped and swept by the caller rather than evaluated
--- here, so that it can bounce; `Skull.ballistic` remains for the closed form.
--- 3-arrays. Pure.
-function Skull.drawn_position(release, velocity, elapsed, real, weight, free_override)
-    local free = free_override or Skull.ballistic(release, velocity, elapsed)
-    return {free[1] + (real[1] - free[1]) * weight, free[2] + (real[2] - free[2]) * weight,
-        free[3] + (real[3] - free[3]) * weight}
 end
 
 -- The rest offsets with the forward offset replaced, x and z kept. position:
@@ -763,6 +786,7 @@ function Skull.install(mod, presentation)
 
     local skull_motion_lines = 0
     local skull_grab_lines = 0
+    local skull_state_lines = 0
     -- The anchor's lag: where the first-person unit stands (the game's
     -- interpolated timeline) minus the fixed-step component position the
     -- view is built on, as the body mirror measures it. A 3-array, or nil.
@@ -1355,48 +1379,70 @@ function Skull.install(mod, presentation)
                 mod:info("DARKTIDEVR_SKULL_THROW arrived predicted_s=%.2f actual_s=%.2f", throw.total, elapsed)
             end
         end
-        local weight = Skull.blend_weight(elapsed, throw.total)
-        if not flying or elapsed > Skull.MAX_THROW_SECONDS or weight >= 1 then
-            -- THE FLIGHT'S LARGEST DRAWN STEP (19:25, "it teleports" on a
-            -- throw away from the target): the biggest frame-to-frame move
-            -- of the drawn skull over this flight, in metres, with whether
-            -- the throw was away. A teleport is a step of metres; a flight
-            -- is centimetres.
-            mod:info("DARKTIDEVR_SKULL_THROW flight_end away=%s elapsed_s=%.2f max_step_m=%.3f",
-                tostring(throw.away or false), elapsed, throw.max_step or 0)
-            unplace(throw, skull); throw = nil
-            return
-        end
-        -- The tumble eases out with the blend: a skull still spinning as it
-        -- settles onto its real position reads as broken rather than thrown.
-        -- Integrated rather than scaled, so the angle only ever grows, and on
-        -- the axis drawn when this throw started so it is steady for it.
         local dt = throw.tumble_t and (t - throw.tumble_t) or 0
         throw.tumble_t = t
-        local rate = Skull.tumble_rate(throw.thrown or throw.velocity)
-        if rate and throw.tumble_axis then
-            throw.tumble_angle = Skull.tumbled_angle(throw.tumble_angle, rate, weight, dt)
-        end
-        -- Step the free flight and sweep it. The first frame starts it at the
-        -- release with the release velocity; after that it carries its own
-        -- state, because a bounce cannot be recovered from a closed form.
-        -- Every direction alike: the free flight is the hand's, whichever
-        -- way the target lies.
+        -- The free flight starts at the release with the release velocity;
+        -- after that the drawn skull carries its own position and velocity,
+        -- because a bounce cannot be recovered from a closed form. Every
+        -- direction alike: the free flight is the hand's, whichever way the
+        -- target lies.
         if not throw.free_position then
             throw.free_position = {throw.release[1], throw.release[2], throw.release[3]}
             throw.free_velocity = {throw.velocity[1], throw.velocity[2], throw.velocity[3]}
         end
-        local bounced
-        throw.free_position, throw.free_velocity, bounced =
-            swept_step(extension, throw.free_position, throw.free_velocity, dt)
+        local free_seconds = throw.total * Skull.FREE_FRACTION
+        local bounced, caught = false, false
+        if elapsed <= free_seconds then
+            -- Free: stepped under gravity and swept, so it bounces.
+            throw.free_position, throw.free_velocity, bounced =
+                swept_step(extension, throw.free_position, throw.free_velocity, dt)
+        else
+            -- Chasing (Skull.chase): the free velocity carried on and steered
+            -- at the real skull under the acceleration limit, up to the
+            -- speed cap, until it is caught. Not swept: the real skull's own
+            -- straight line is the game's.
+            if not throw.chase_started then
+                throw.chase_started = elapsed
+                local gx, gy, gz = real[1] - throw.free_position[1], real[2] - throw.free_position[2], real[3] - throw.free_position[3]
+                mod:info("DARKTIDEVR_SKULL_THROW chase_start elapsed_s=%.2f gap_m=%.2f speed=%.2f", elapsed,
+                    math.sqrt(gx * gx + gy * gy + gz * gz),
+                    math.sqrt(throw.free_velocity[1] ^ 2 + throw.free_velocity[2] ^ 2 + throw.free_velocity[3] ^ 2))
+            end
+            throw.free_position, throw.free_velocity, caught =
+                Skull.chase(throw.free_position, throw.free_velocity, real, dt)
+        end
+        -- The flight ends when the drawn skull has caught the real one, or
+        -- the real one has left the order (back to following, or gone), or
+        -- it has run too long. Caught is the normal end; the others snap.
+        local in_flight = name == "flamethrower" or name == "flamethrower_shooting"
+        if caught or not in_flight or elapsed > Skull.MAX_THROW_SECONDS then
+            -- THE FLIGHT'S LARGEST DRAWN STEP: the biggest frame-to-frame
+            -- move of the drawn skull over this flight, in metres, and how
+            -- late it caught the real one against the real flight time. A
+            -- teleport is a step of metres; a flight is centimetres.
+            mod:info("DARKTIDEVR_SKULL_THROW flight_end away=%s caught=%s elapsed_s=%.2f late_s=%.2f max_step_m=%.3f",
+                tostring(throw.away or false), tostring(caught), elapsed, elapsed - throw.total, throw.max_step or 0)
+            unplace(throw, skull); throw = nil
+            return
+        end
         if bounced and not throw.bounce_logged then
             throw.bounce_logged = true
             mod:info("DARKTIDEVR_SKULL_THROW bounced elapsed_s=%.3f speed=%.2f", elapsed,
                 math.sqrt(throw.free_velocity[1] ^ 2 + throw.free_velocity[2] ^ 2 +
                     throw.free_velocity[3] ^ 2))
         end
-        local drawn = Skull.drawn_position(throw.release, throw.velocity, elapsed, real, weight,
-            throw.free_position)
+        -- The tumble eases out as the chase closes: a skull still spinning as
+        -- it settles onto its real position reads as broken rather than
+        -- thrown. Integrated rather than scaled, so the angle only ever
+        -- grows, and on the axis drawn when this throw started.
+        local gx, gy, gz = real[1] - throw.free_position[1], real[2] - throw.free_position[2], real[3] - throw.free_position[3]
+        local gap = math.sqrt(gx * gx + gy * gy + gz * gz)
+        local settle = throw.chase_started and math.max(0, 1 - gap / Skull.TUMBLE_SETTLE_METRES) or 0
+        local rate = Skull.tumble_rate(throw.thrown or throw.velocity)
+        if rate and throw.tumble_axis then
+            throw.tumble_angle = Skull.tumbled_angle(throw.tumble_angle, rate, settle, dt)
+        end
+        local drawn = throw.free_position
         if throw.last_drawn then
             local step = math.sqrt((drawn[1] - throw.last_drawn[1]) ^ 2 + (drawn[2] - throw.last_drawn[2]) ^ 2 +
                 (drawn[3] - throw.last_drawn[3]) ^ 2)
@@ -1456,6 +1502,20 @@ function Skull.install(mod, presentation)
                 return func(self, unit, ...)
             end
             local record = record_of(unit)
+            -- EVERY STATE CHANGE OF THE THROWER'S SKULL (user, 20:05, 19
+            -- September: "For a short while there the skulls were no longer
+            -- turning with me"; the log had no module errors, so the module
+            -- had not stood down). The state, and whether the module was
+            -- following, holding or flying it, at each change, budgeted:
+            -- the states during that while say what the module was doing.
+            if thrower and record.state_name ~= name then
+                if skull_state_lines < 300 then
+                    skull_state_lines = skull_state_lines + 1
+                    mod:info("DARKTIDEVR_SKULL_THROW state from=%s to=%s following=%s held=%s throw=%s",
+                        tostring(record.state_name), tostring(name), tostring(following), tostring(held(t)), tostring(throw ~= nil))
+                end
+                record.state_name = name
+            end
             local undo = {tables = {}}
             if following then
                 local ok, feed_err = pcall(feed, self, unit, record, owner, t, thrower, undo)

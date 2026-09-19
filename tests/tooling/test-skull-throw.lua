@@ -5,40 +5,65 @@ near(Skull.flight_time({0,0,0},{0,8,0}),0.8,'8 m at 10 m/s')
 near(Skull.flight_time({1,2,3},{4,6,3}),0.5,'5 m')
 assert(Skull.flight_time(nil,{0,0,0})==nil and Skull.flight_time({0,0,0},{0/0,0,0})==nil)
 -- Free for the first 2/5 of the flight (2/5 of the distance at the real
--- skull's constant speed), uncapped, in every direction; then blended in
--- over the NEXT 2/5, accelerating (the square of the blend's progress), on
--- the real skull from 4/5 on (user, 19:45, 19 September).
+-- skull's constant speed), uncapped, in every direction (user, 19:45, 19
+-- September); then a CHASE, not a blend (20:00: "it absolutely teleports at
+-- the end of the ballistic arc"): the free velocity carried on and steered
+-- at the real skull under an acceleration limit up to a speed cap, until
+-- caught. No blend function remains to land it by a fraction of the flight.
 near(Skull.FREE_FRACTION,0.4,'two fifths free')
-near(Skull.BLEND_END_FRACTION,0.8,'on the real skull from four fifths')
 assert(Skull.FREE_MAX_SECONDS==nil,'no cap: a long throw is free for its two fifths')
-near(Skull.blend_weight(0,1),0)
-near(Skull.blend_weight(0.4,1),0,'free to two fifths of a one second flight')
-near(Skull.blend_weight(0.25,1),0,'no quarter-second cap')
-near(Skull.blend_weight(0.5,1),0.0625,'a quarter into the blend is a sixteenth of the way: it starts gently')
-near(Skull.blend_weight(0.6,1),0.25,'halfway through the blend is a quarter of the way')
-near(Skull.blend_weight(0.7,1),0.5625)
-near(Skull.blend_weight(0.8,1),1,'on the real skull at four fifths'); near(Skull.blend_weight(0.9,1),1); near(Skull.blend_weight(3,1),1)
-near(Skull.blend_weight(0.2,0.5),0,'short throws: the same fractions')
-near(Skull.blend_weight(0.3,0.5),0.25)
-near(Skull.blend_weight(0.1,0),1,'no flight: on the real skull')
--- Accelerating means every step of the blend closes more of the gap than
--- the one before it.
+assert(Skull.blend_weight==nil and Skull.drawn_position==nil and Skull.BLEND_END_FRACTION==nil,'no blend')
+assert(Skull.CHASE_SPEED>Skull.SPEED,'the chase can catch a skull flying at SPEED')
+assert(Skull.CHASE_ACCEL>0 and Skull.CHASE_ACCEL*0.1<=Skull.CHASE_SPEED,'and turns in a few tenths, not in a frame')
 do
-  local last = 0
-  for step = 1, 8 do
-    local w = Skull.blend_weight(0.4 + step * 0.05, 1)
-    local gain = w - Skull.blend_weight(0.4 + (step - 1) * 0.05, 1)
-    assert(gain > last - 1e-12, 'the blend accelerates at step ' .. step)
-    last = gain
+  local dist=function(a,b) return math.sqrt((a[1]-b[1])^2+(a[2]-b[2])^2+(a[3]-b[3])^2) end
+  -- From rest, one step at accel 30 over 0.1 s: 3 m/s straight at it, 0.3 m moved.
+  local p,v,caught=Skull.chase({0,0,0},{0,0,0},{0,10,0},0.1,15,30)
+  near(v[2],3,'accelerated by accel*dt'); near(p[2],0.3,'and moved by the new velocity'); assert(not caught)
+  -- The cap: running at it too fast is pulled down to the cap, never above it.
+  p,v=Skull.chase({0,0,0},{0,20,0},{0,100,0},0.1,15,30)
+  near(v[2],17,'pulled toward the cap by accel*dt')
+  for _=1,10 do p,v=Skull.chase(p,v,{0,100,0},0.1,15,30) end
+  near(v[2],15,'and held at it')
+  -- A throw straight AWAY turns round and catches a real skull that flies
+  -- on to 10 m and stops, with every step a flight-sized move.
+  p,v={0,-2,0},{0,-8,0}
+  local real,t,steps,max_step,caught_at={0,4,0},0,0,0,nil
+  while t<4 do
+    local before={p[1],p[2],p[3]}
+    real={0,math.min(10,real[2]+10*0.01),0}
+    p,v,caught=Skull.chase(p,v,real,0.01)
+    t=t+0.01; steps=steps+1
+    if caught then
+      -- The catching step lands on the real skull: the step plus the reach.
+      assert(dist(before,p)<=Skull.ARRIVED_METRES+Skull.CHASE_SPEED*0.01+1e-9,'the catch is a reach, not a jump')
+      caught_at=t break
+    end
+    max_step=math.max(max_step,dist(before,p))
   end
+  assert(caught_at,'the away throw is caught')
+  assert(caught_at>0.4 and caught_at<2.5,'later than the real flight, not much later: '..caught_at)
+  assert(max_step<=Skull.CHASE_SPEED*0.01+1e-9,'no step faster than the cap: '..max_step)
+  -- Within reach: the step lands on the real skull rather than past it.
+  p,v,caught=Skull.chase({0,9.9,0},{0,15,0},{0,10,0},0.1)
+  assert(caught and p[2]==10,'caught, and drawn on it')
+  p,v,caught=Skull.chase({0,0,0},{0,4,0},{0,0.5,0},0.1)
+  assert(caught and p[2]==0.5,'a full step would overshoot: it lands instead')
+  -- Too fast to stop within the limit: it overshoots, turns, and is caught
+  -- within a few steps rather than jumping onto it.
+  p,v,caught=Skull.chase({0,0,0},{0,15,0},{0,0.5,0},0.1)
+  assert(not caught and p[2]>0.5,'a skull at 15 m/s cannot stop in half a metre')
+  local turns=0
+  while not caught and turns<20 do p,v,caught=Skull.chase(p,v,{0,0.5,0},0.1); turns=turns+1 end
+  assert(caught and turns<10,'and comes back for it: '..turns)
+  -- No time, no move; bad inputs, no move.
+  p,v,caught=Skull.chase({1,2,3},{4,5,6},{0,0,0},0)
+  assert(p[1]==1 and v[1]==4 and not caught,'no dt, no step')
+  assert(Skull.chase(nil,{0,0,0},{0,0,0},0.1)==nil,'nothing to chase from')
 end
--- The free flight arcs now (user, worn: "can we have the skull tumble and
+-- The free flight arcs (user, worn: "can we have the skull tumble and
 -- follow a ballistic arc rather than moving in a straight line?"). Only the
--- DRAWN skull does; the real one still flies straight to its target, and the
--- blend still lands on it.
-local d=Skull.drawn_position({0,0,1},{0,2,0},0.5,{0,4,1},0)
-near(d[1],0); near(d[2],1,'free flight at the release velocity')
-near(d[3],1-0.5*Skull.GRAVITY*0.25,'and falls under gravity')
+-- DRAWN skull does; the real one still flies straight to its target.
 -- Straight up and along: the horizontal is untouched by the drop.
 local arc=Skull.ballistic({0,0,0},{3,0,4},1)
 near(arc[1],3,'horizontal is ballistic-free'); near(arc[2],0)
@@ -138,12 +163,8 @@ assert(Skull.FRICTION > 0 and Skull.FRICTION <= 1, 'sliding is damped, not rever
 local wall = Skull.bounce({-8, 0, 0}, {1, 0, 0}, 0.35)
 assert(wall[1] > 0, 'it comes back off the wall: ' .. wall[1])
 
--- The drawn position takes a stepped free flight when one is given, so a
--- bounced path is what gets blended rather than the closed form.
-local blended = Skull.drawn_position({0,0,0}, {0,0,0}, 0.1, {0, 10, 0}, 0, {0, 3, 0})
-near(blended[2], 3, 'the stepped position is used')
-local without = Skull.drawn_position({0,0,5}, {0,0,0}, 0, {0, 10, 0}, 0)
-near(without[3], 5, 'and the closed form still works without one')
+-- (The blended drawn position is gone with the blend: the stepped free
+-- flight IS the drawn position, and the chase carries it on.)
 
 -- Capped, so a tracking glitch cannot fling the drawn skull somewhere the real
 -- one never goes.
@@ -230,29 +251,23 @@ do
   assert(Skull.toward_target({0, 0, 0}, {0, 0, 0}, {0, 10, 0}) == true, 'no speed is toward')
   assert(Skull.toward_target({0, 5, 0}, {0, 10, 0}, {0, 10, 0}) == true, 'no distance is toward')
   assert(Skull.toward_target(nil, {0, 0, 0}, {0, 10, 0}) == true, 'nothing is toward')
-  -- An away throw drawn by the same rule: free the hand's way for two
-  -- fifths, then closing on the real skull with every step larger than the
-  -- last, on it from four fifths.
-  local release, real = {0, 0, 0}, {0, -10, 0}
-  local free = Skull.drawn_position(release, {0, 8, 0}, 0.4, real, Skull.blend_weight(0.4, 1), Skull.ballistic(release, {0, 8, 0}, 0.4))
-  near(free[2], 3.2, 'two fifths of the way, still the hand\'s way')
-  local last_gap, last_close = nil, 0
-  for step = 0, 8 do
-    local t = 0.4 + step * 0.05
-    local d = Skull.drawn_position(release, {0, 8, 0}, t, real, Skull.blend_weight(t, 1), Skull.ballistic(release, {0, 8, 0}, 0.4))
-    local gap = math.abs(d[2] - real[2])
-    if last_gap then
-      local close = last_gap - gap
-      assert(close >= last_close - 1e-9, 'each step closes more than the last at ' .. t)
-      last_close = close
-    end
-    last_gap = gap
-  end
-  assert(last_gap < 1e-9, 'on the real skull at four fifths')
+  -- The flight in the source: the free velocity is the release velocity in
+  -- every direction; the free flight runs to FREE_FRACTION of the flight
+  -- time and the chase from there; the flight ends when the drawn skull is
+  -- caught, the real one leaves the order, or it runs too long -- never by
+  -- a fraction of the flight; and the order keeps the drawn skull through
+  -- the real one's arrival (flamethrower_shooting), or the chase would snap
+  -- the moment the real skull landed.
   local source = assert(io.open(arg[1], 'rb')):read('*a')
   assert(source:find('velocity = pending%.velocity, thrown = pending%.velocity', 1), 'the free velocity is the release velocity, every direction')
   assert(not source:find('if not throw%.away then', 1), 'the free flight is stepped every frame, every direction')
-  assert(source:find('Skull%.blend_weight%(elapsed, throw%.total%)', 1), 'the blend takes no per-throw fraction')
+  assert(source:find('local free_seconds = throw%.total %* Skull%.FREE_FRACTION', 1), 'free for the fraction of the flight time')
+  assert(source:find('if elapsed <= free_seconds then%s+%-%-[^\n]*\n%s+throw%.free_position, throw%.free_velocity, bounced =%s+swept_step', 1),
+    'the free flight is swept')
+  assert(source:find('Skull%.chase%(throw%.free_position, throw%.free_velocity, real, dt%)', 1), 'then the chase from where the free flight got to')
+  assert(source:find('if caught or not in_flight or elapsed > Skull%.MAX_THROW_SECONDS then', 1), 'the flight ends when caught, not by a fraction')
+  assert(source:find('local in_flight = name == "flamethrower" or name == "flamethrower_shooting"', 1), 'the chase survives the real arrival')
+  assert(not source:find('blend_weight', 1), 'no blend anywhere')
 end
 
-print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed stock_offset lead fed_offset axis_angle rigid_part toward_target')
+print('skull_throw=pass flight_time chase ballistic forward_offsets rest_offsets smoothed stock_offset lead fed_offset axis_angle rigid_part toward_target')

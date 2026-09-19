@@ -1227,6 +1227,44 @@ the fractions, every blend step closing more than the last, an away throw
 drawn by the rule, and a source scan holding the flight to one path. Not
 worn; the `flight_end max_step_m` row measures the largest step either way.
 
+### 1aj. Worn at 20:00 ("it absolutely teleports at the end of the ballistic arc ... It's in free flight, then it's gone"): the blend is replaced by a chase
+
+The 20:00 log's three throws, all away (150, 147 and 94 degrees from the
+target), ended with `max_step_m` 0.62, 0.70 and 0.45: a single-frame move
+of over half a metre, 50 to 80 m/s. That is the accelerating blend's last
+tenth of a second. Any blend that lands on the real skull by a fixed
+fraction of the flight has to cross the gap in the time left, and on an
+away throw the gap is the free flight plus the real skull's own travel, ten
+metres and growing, so the crossing is tens of metres a second whatever
+the curve. The square curve spent it at the very end, which is the skull
+seen vanishing where its arc ended. The user threw upward; nothing hit the
+floor (no `bounced` row either).
+
+Now the free two fifths are unchanged and what follows is a chase
+(`Skull.chase`, pure, tested): the drawn skull carries its free-flight
+velocity on and is steered at the real skull under an acceleration limit
+(`CHASE_ACCEL` 40 m/s²) up to a speed cap (`CHASE_SPEED` 16 m/s, above the
+real skull's 10 so it can catch it), and the flight ends when it is caught
+(within `ARRIVED_METRES`), when the real skull leaves the order, or at
+`MAX_THROW_SECONDS`. The chase survives the real skull's arrival (the
+`flamethrower_shooting` state), or it would snap the moment the real one
+landed. The tumble eases out over the last two metres of the chase. The
+blend and its weight function are gone; the test forbids them.
+
+The trade: on an away throw the drawn skull arrives LATE, by the turn and
+the catch-up, while the real one is already burning at the target. Late is
+a skull seen flying; on time was a skull seen vanishing. Rows: `chase_start
+elapsed_s gap_m speed`, `flight_end away caught elapsed_s late_s
+max_step_m`. Not worn. The test's away throw at 8 m/s is caught within 2.5 s
+with no step above the cap.
+
+**The skulls not turning (user, 20:05: "For a short while there the skulls
+were no longer turning with me").** The 20:00 log has no module error rows,
+so the module had not stood down. Every state change of the thrower's skull
+is now logged (`state from= to= following= held= throw=`, budgeted 300),
+which says what the module was doing during that while. Unmeasured until
+then.
+
 ## 2. The torso turning faster than your head
 
 This one is arithmetic rather than a theory, which is a change from the last

@@ -71,10 +71,13 @@ checklist:
   three constant numbers while held). Worn at 19:40: "grab is locked,
   throwing towards works" (the grab is CLEARED: in_hand did not move a
   millimetre, the bob was node 10 and is frozen). Open: a throw AWAY from
-  the aim point. Test-checklist 1ai: the throw is the same in every
-  direction, free for two fifths, then an accelerating blend to four
-  fifths (`flight ... away= angle_to_target_deg=`, `flight_end
-  max_step_m=`). Not worn.
+  the aim point. Worn at 20:00 on the accelerating blend: "it absolutely
+  teleports at the end of the ballistic arc" (max_step 0.45 to 0.70 m in a
+  frame). Test-checklist 1aj: the blend is replaced by a chase under a
+  speed cap and an acceleration limit; the drawn skull arrives late on an
+  away throw (`chase_start`, `flight_end away caught late_s max_step_m`).
+  Not worn. Also open: "for a short while the skulls were no longer turning
+  with me" (20:05), now logged as `state from= to=` rows.
 - Cloth on the body: still jiggles as of 17:15. Either it settled with the
   smooth anchor and the calibrated camera, or it ships as a known issue.
 
