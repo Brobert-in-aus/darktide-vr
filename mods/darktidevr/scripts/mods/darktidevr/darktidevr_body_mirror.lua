@@ -1934,10 +1934,13 @@ function Mirror.install(mod, presentation, options)
                     Vector3.z(Matrix4x4.transform(root_inverse, Unit.world_position(unit, state.legs.right.ankle)))) / 2
                 state.stretch_chain = (neck_z - ankle_z > 0.5) and (neck_z - ankle_z) or nil
             end
+            -- OFF (17:15 worn run): it ran to its 1.25 cap on a floor gap of
+            -- 0.2-0.5 m that was the neck target's fault, not the legs' --
+            -- the target sat 0.33 m above the rest neck with the lift
+            -- clamped at 0.12 -- and put the feet 6 cm into the floor:
+            -- "torso and legs are all kinds of stretched and messed up".
+            -- Held at 1 until the target is right; the gap still logs.
             local wanted = 1
-            if state.stretch_chain and state.floor_gap then
-                wanted = math.max(1, math.min(Mirror.STRETCH_TO_FLOOR_MAX, 1 + state.floor_gap / state.stretch_chain))
-            end
             local alpha = (type(dt) == "number" and dt > 0) and (1 - math.exp(-dt / 1.0)) or 1
             state.stretch_k = (state.stretch_k or 1) + (wanted - (state.stretch_k or 1)) * alpha
             local k = state.stretch_k
@@ -2481,22 +2484,36 @@ function Mirror.install(mod, presentation, options)
                     -- goes back on the right hand with its grip pose, so the
                     -- flows find what they expect; the grip is measured once
                     -- per weapon, on its first wield, and reused.
-                    state.weapon_grip = state.weapon_grip or {}
-                    local moved = state.weapon_on_left
-                    if moved and Unit.alive(moved) and right_hand and state.weapon_grip[moved] then
-                        local grip = state.weapon_grip[moved]
-                        World.unlink_unit(world, moved)
-                        World.link_unit(world, moved, 1, unit, right_hand)
-                        Unit.set_local_position(moved, 1, grip.position:unbox())
-                        Unit.set_local_rotation(moved, 1, grip.rotation:unbox())
+                    -- The previously mirrored weapon is handed back to the
+                    -- flows before the wield: linked to the right hand at the
+                    -- weapon's own pose, from which the unwield flow holsters
+                    -- it. (Its exact grip is not kept; the flow re-links a
+                    -- freshly wielded weapon itself.)
+                    local previous = state.weapon_mirrored
+                    if previous and previous.unit and Unit.alive(previous.unit) and right_hand then
+                        pcall(World.link_unit, world, previous.unit, 1, unit, right_hand)
                     end
-                    state.weapon_on_left = nil
+                    state.weapon_mirrored = nil
                     state.wielded_slot = slot
                     state.profile_spawner:set_visibility(true)
                     state.profile_spawner:wield_slot(slot)
                     state.weapon_relink = {slot = slot, frames = 2}
                     mod:info("DARKTIDEVR_BODY_MIRROR reflection_wield slot=%s", tostring(slot))
                 end
+                -- THE WEAPON AS THE MIRROR IMAGE OF THE PLAYER'S (17:15 worn
+                -- run: with a half turn about the right axis the melee
+                -- weapon came out turned about the vertical and the gun
+                -- pitched 45 degrees down -- a grip constant fitted to one
+                -- weapon is wrong for the next). The player's own wielded
+                -- weapon unit is held right by the game at the tracked hand.
+                -- Two frames after a wield the reflection's weapon is
+                -- unlinked from its hand, and from then on, every frame, it
+                -- is stood at the player's weapon's pose reflected across
+                -- the mirror plane: the position reflected, the rotation
+                -- rebuilt from the reflected forward and up (a proper
+                -- rotation; the weapon points and stands where the mirror
+                -- image points and stands, the one thing a mirror cannot
+                -- give a chiral object being its handedness).
                 local relink = mirror and state.weapon_relink
                 if relink then
                     relink.frames = relink.frames - 1
@@ -2504,39 +2521,25 @@ function Mirror.install(mod, presentation, options)
                         state.weapon_relink = nil
                         local slot_data = state.data and state.data.slots and state.data.slots[relink.slot]
                         local weapon = slot_data and slot_data.unit_3p
-                        if weapon and Unit.alive(weapon) and right_hand and left_hand then
-                            state.weapon_grip = state.weapon_grip or {}
-                            local grip = state.weapon_grip[weapon]
-                            if not grip then
-                                -- First wield: the flow has just linked it to
-                                -- the right hand, and this is the authored grip.
-                                local in_right = Matrix4x4.multiply(Unit.world_pose(weapon, 1), Matrix4x4.inverse(Unit.world_pose(unit, right_hand)))
-                                grip = {position = Vector3Box(Matrix4x4.translation(in_right)), rotation = QuaternionBox(Matrix4x4.rotation(in_right))}
-                                state.weapon_grip[weapon] = grip
-                            end
-                            local grip_position = grip.position:unbox()
-                            World.unlink_unit(world, weapon)
-                            World.link_unit(world, weapon, 1, unit, left_hand)
-                            Unit.set_local_position(weapon, 1, mirrored_local_position(grip_position, state.hand_mirror))
-                            -- With all three hand axes reversed the grip
-                            -- rotation carries unchanged, and the weapon
-                            -- came out upside-down in the other hand (16:25
-                            -- worn run); a half turn about the unit's forward
-                            -- made it backwards (16:40). Upside-down needs a
-                            -- half turn about the barrel; a half turn about
-                            -- the forward turned it end for end instead, so
-                            -- the barrel is the unit's RIGHT axis, and the
-                            -- half turn goes about that.
-                            Unit.set_local_rotation(weapon, 1, Quaternion.multiply(
-                                mirrored_local_rotation(grip.rotation:unbox(), state.hand_mirror), Quaternion(Vector3.right(), math.pi)))
-                            World.update_unit_and_children(world, unit)
-                            state.weapon_on_left = weapon
-                            mod:info("DARKTIDEVR_BODY_MIRROR reflection_weapon moved_to=j_lefthand slot=%s grip_m=%.3f,%.3f,%.3f signs=%s",
-                                tostring(relink.slot), Vector3.x(grip_position), Vector3.y(grip_position), Vector3.z(grip_position),
-                                state.hand_mirror and string.format("%d,%d,%d", state.hand_mirror.x, state.hand_mirror.y, state.hand_mirror.z) or "none")
+                        if weapon and Unit.alive(weapon) then
+                            pcall(World.unlink_unit, world, weapon)
+                            state.weapon_mirrored = {unit = weapon, slot = relink.slot}
+                            mod:info("DARKTIDEVR_BODY_MIRROR reflection_weapon mirrored slot=%s", tostring(relink.slot))
                         else
                             log_once("relink", "reflection_weapon=no_unit slot=%s", tostring(relink.slot))
                         end
+                    end
+                end
+                local mirrored = mirror and state.weapon_mirrored
+                if mirrored and mirrored.unit and Unit.alive(mirrored.unit) then
+                    local loadout = ScriptUnit.has_extension(avatar, "visual_loadout_system")
+                    local ok_source, source = pcall(function() return loadout and loadout:unit_3p_from_slot(mirrored.slot) end)
+                    if ok_source and source and Unit.alive(source) then
+                        local position = Unit.world_position(source, 1)
+                        local p = reflected({Vector3.x(position), Vector3.y(position), Vector3.z(position)})
+                        Unit.set_local_position(mirrored.unit, 1, Vector3(p[1], p[2], p[3]))
+                        Unit.set_local_rotation(mirrored.unit, 1, reflected_rotation(Unit.world_rotation(source, 1)))
+                        World.update_unit_and_children(world, mirrored.unit)
                     end
                 end
             end)
@@ -2821,6 +2824,28 @@ function Mirror.install(mod, presentation, options)
                 -- eyes, the avatar's hips to the camera (the camera is
                 -- anchored to the avatar model's eye joints, so it is the
                 -- calibrated model's eye height in its normal pose).
+                -- THE EYE STACK (17:15 worn run). The tracked eye read 2.0 m
+                -- above the avatar's root with the player's eyes at 1.73,
+                -- the first-person unit at 1.896 (the game's camera height
+                -- times the character scale), and the frame's scale 0.75.
+                -- Every height between the floor and the tracked eye, in
+                -- world metres, on one line, with the two inputs the frame's
+                -- scale is made of.
+                pcall(function()
+                    local first_person = ScriptUnit.has_extension(avatar, "first_person_system")
+                    local component = first_person and first_person._first_person_component
+                    local tracked = presentation.eye_pose(avatar)
+                    local model_eye = presentation.body_model_eye_anchor and presentation.body_model_eye_anchor(avatar)
+                    local player = Managers.player and Managers.player:local_player(1)
+                    local function fz(v) return v and string.format("%.3f", Vector3.z(v)) or "na" end
+                    mod:info("DARKTIDEVR_BODY_MIRROR eye_stack instance=%s avatar_root_z=%.3f first_person_unit_z=%s component_z=%s tracked_eye_z=%s avatar_model_eye_z=%s copy_eyes_z=%s physical_eye_height_m=%s calibrated_character_scale=%s frame_scale=%s",
+                        is_reflection and "reflection" or "overlay", Vector3.z(Unit.world_position(avatar, 1)),
+                        fz(Unit.world_position(camera, 1)), fz(component and component.position), fz(tracked), fz(model_eye),
+                        eye_z and string.format("%.3f", eye_z + Vector3.z(Unit.world_position(unit, 1))) or "na",
+                        tostring(presentation.physical_eye_height and presentation.physical_eye_height()),
+                        tostring(presentation.calibrated_character_scale and presentation.calibrated_character_scale(player)),
+                        fmt(d.frame_scale))
+                end)
                 -- HIPS DIAGNOSTIC FROM THE STOCK MODEL (begin): a log line,
                 -- the avatar's hips height read for the comparison only.
                 if Unit.has_node(unit, "j_hips") and Unit.has_node(avatar, "j_hips") and eye_z then

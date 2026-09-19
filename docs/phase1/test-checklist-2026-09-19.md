@@ -1005,6 +1005,34 @@ on the floor, and the stretch factor should sit near one. A `torso`
 line beside the height line gives hips-to-eyes for the copy and
 hips-to-camera for the avatar; they should match.
 
+### 1ac. Worn at 17:15: the stretch off, the eye stack on one line, the weapon as the mirror image of yours
+
+Your report: the melee weapon turned 180 degrees about the vertical, the
+gun pitched down 45 degrees; the torso and legs stretched and messed
+up; the feet into the ground.
+
+The log: `torso_rest=stock joints=6` took, and the hips stayed at the
+model's height (`hips_z_m=0.872->0.872`). But the neck target sat 33 cm
+above the rest neck, the lift clamped at 12 cm on every frame, the
+floor gap read 0.2 to 0.5 m from that, and the stretch ran to its 1.25
+cap on it and pushed the feet 6 cm into the floor. The target is the
+fault: `frame_scale=0.753`, the tracked eye 2.0 m above the avatar's
+root against your 1.73, the first-person unit at 1.896, the game's
+camera height times the character scale. Those do not add up, and the
+neck target is built from constants times that scale on that eye.
+
+**This build.** The stretch is held at one (the gap still logs). An
+`eye_stack` line beside the height line puts every height from the
+floor to the tracked eye in world metres on one line, with the two
+inputs the frame's scale is made of, so the next log says which number
+is wrong rather than me tuning around it. And the reflection's weapon
+no longer takes a grip constant: two frames after a wield it is
+unlinked, and from then on every frame it stands at your own wielded
+weapon's pose reflected across the mirror plane, position reflected,
+rotation rebuilt from the reflected forward and up. That is correct
+for any weapon; the one thing a mirror cannot give a chiral object is
+its handedness.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not
