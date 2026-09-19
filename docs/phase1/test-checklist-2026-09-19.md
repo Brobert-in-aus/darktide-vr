@@ -364,6 +364,52 @@ the log and the legs walk from the game's cycles; whether the feet sit on
 the floor; and the flicker as before. The line `prerender calls=...` is
 the check's heartbeat this time.
 
+### 1l. Worn at 13:10: no change, and what the data now excludes
+
+The log, this time complete:
+
+```
+animated_legs=failed error=...: AnimationStateMachine `#ID[...]` does not exist
+prerender calls=108600 checks=9196 drifted=0 skipped=no_copy=28407,other_world=70996
+```
+
+The machine failed on the second call too, this time on a unit whose
+machine instance the disable at ready had taken away, so the gait ran
+again; the knee and toe changes were in, so "no change" on the legs and
+the float is a report on the gait as it stands. The render check ran
+9,196 times and found no drift: between the copy's update and the frame,
+nothing moves its root or its hand. With the probe's smooth root, the flat
+yaws and this, every quantity that can be measured from Lua is steady,
+and you see the body alternate. The one stage between the scene graph and
+the pixels that Lua cannot measure is the skinning, which the engine
+refreshes with the animation update, and this copy's animation has been
+disabled since it was ready, while the weapon is a rigid unit and the
+stock avatar animates every frame.
+
+**Two things in this build, both labelled for what they are.** The machine
+is enabled again before it is set, and both engine calls are tried with
+both errors kept, so the log names the refusal exactly. And when the
+machine still cannot be set, the spawner's own idle stays running and the
+copy's whole solved pose is put back over it at the render boundary. That
+second part is an experiment, not a fix: it is the only way from Lua to
+give the copy an animation update every frame, and whether that is what
+the flicker needs is decided by the observable below, not by me.
+
+**Please record, rather than report, the flicker this time.** In the
+headset, with the mirror up (F8), walk toward and past the reflection for
+five seconds while looking at it, and record it with the headset's own
+video capture. The reflection is a target in the world frame, so a
+recording shows frame by frame whether it moves against the floor plates
+the way your view does or in two steps. I will pull the recording over
+adb from the headset's VideoShots folder and measure it. The viewer's
+eye readback takes one frame per request, a quarter of a second apart,
+so it cannot show an alternation.
+
+**Report** as well: `animated_legs=ready machine=... restore_all=...` and
+any `animated_legs=failed` line from the log, which say which of the two
+paths ran; whether the legs walk from the game's cycles if the machine
+took; and the float.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

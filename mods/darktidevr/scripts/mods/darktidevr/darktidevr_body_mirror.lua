@@ -854,10 +854,23 @@ function Mirror.install(mod, presentation, options)
             -- The game blends a NEW machine onto a unit that has one
             -- (set_animation_state_machine_blend_base_layer). This copy had
             -- its machine disabled at ready, and that call refused it:
-            -- "Unit has no animation state machine" (13:02 worn run, the
-            -- whole session on the gait). The UI spawner's own call sets
-            -- a machine on a unit outright, and that is what a copy needs.
-            Unit.set_animation_state_machine(state.unit, machine)
+            -- "Unit has no animation state machine" (13:02). The spawner's
+            -- own call, set_animation_state_machine, then refused too:
+            -- "AnimationStateMachine does not exist" (13:10) -- on a unit
+            -- whose machine instance the disable had taken away. So the
+            -- machine is enabled again first (the spawner's portrait idle
+            -- comes back for a frame), then replaced; both calls are
+            -- tried and both errors are kept, so the next log says which.
+            pcall(Unit.enable_animation_state_machine, state.unit)
+            local had = Unit.has_animation_state_machine and Unit.has_animation_state_machine(state.unit)
+            local set_ok, set_err = pcall(Unit.set_animation_state_machine, state.unit, machine)
+            if not set_ok then
+                local blend_ok, blend_err = pcall(Unit.set_animation_state_machine_blend_base_layer, state.unit, machine, 0)
+                if not blend_ok then
+                    error(string.format("had_machine=%s set:%s blend:%s", tostring(had),
+                        tostring(set_err):sub(1, 90), tostring(blend_err):sub(1, 90)))
+                end
+            end
             for name, value in pairs(init or {}) do
                 local id = Unit.animation_find_variable(state.unit, name)
                 if id then
@@ -871,8 +884,19 @@ function Mirror.install(mod, presentation, options)
         end)
         if not ok then
             state.machine = nil
+            -- The fallback keeps the spawner's own machine RUNNING and the
+            -- render boundary restores every joint over it (state.restore_all):
+            -- the gait has the legs, and the skin is refreshed every frame
+            -- by an animation update the copy has not had since its machine
+            -- was disabled at ready. That is the test of the one thing the
+            -- measurements cannot see -- 9,196 render checks with no drift,
+            -- every placed quantity smooth, and the drawn body still
+            -- alternating -- which is the skinning.
+            state.restore_all = true
             log_once("machine_" .. tostring(wielded_template and wielded_template.name), "animated_legs=failed error=%s",
-                tostring(err):sub(1, 160))
+                tostring(err):sub(1, 220))
+        else
+            state.restore_all = nil
         end
         return ok
     end
@@ -945,7 +969,7 @@ function Mirror.install(mod, presentation, options)
         -- are its; everything else goes back to the solve, and the drift
         -- compare below then measures what is left after that. Once, per
         -- frame.
-        if state.machine and state.solved and state.solved_stamp == state.render_check.stamp and
+        if (state.machine or state.restore_all) and state.solved and state.solved_stamp == state.render_check.stamp and
                 state.restored_stamp ~= state.render_check.stamp then
             state.restored_stamp = state.render_check.stamp
             local ok = pcall(function()
@@ -1534,12 +1558,20 @@ function Mirror.install(mod, presentation, options)
             -- snapshot and restore), and the machine if a weapon is known.
             -- The machine is not enabled on the copy until it is assigned:
             -- until then the spawner's disabled idle stays frozen.
-            state.machine, state.leg_indices = nil, nil
+            state.machine, state.leg_indices, state.restore_all = nil, nil, nil
             if Mirror.MODES[mode_name].animated_legs and state.legs then
                 local roots = {[state.legs.left.hip] = true, [state.legs.right.hip] = true}
                 state.leg_indices = Mirror.leg_indices(state.count,
                     function(index) return Unit.scene_graph_parent(unit, index) end, roots)
-                assign_machine()
+                -- The machine is enabled again from here on whatever
+                -- happens: the gameplay one if it can be set, the spawner's
+                -- portrait idle otherwise, with every joint restored at the
+                -- render boundary in either case.
+                pcall(Unit.enable_animation_state_machine, unit)
+                if not assign_machine() then state.restore_all = true end
+                mod:info("DARKTIDEVR_BODY_MIRROR animated_legs=ready machine=%s restore_all=%s leg_joints=%d",
+                    tostring(state.machine), tostring(state.restore_all == true),
+                    (function() local n = 0; for _ in pairs(state.leg_indices) do n = n + 1 end; return n end)())
             end
             -- Deferred: see hide_near_eye. The scale eases over about a
             -- second, so the scan waits for it to settle and for a camera.
@@ -1841,10 +1873,13 @@ function Mirror.install(mod, presentation, options)
         -- (the root and the hips included), boxed, so the render boundary
         -- can put it back over what the copy's state machine writes after
         -- this update. The legs are the machine's. Boxes are reused.
-        if state.machine and state.leg_indices then
+        if (state.machine and state.leg_indices) or state.restore_all then
             state.solved = state.solved or {}
+            -- Every joint in the fallback; every joint but the legs when the
+            -- gameplay machine has them.
+            local keep = (state.machine and state.leg_indices) or {}
             for index = 1, state.count do
-                if not state.leg_indices[index] then
+                if not keep[index] then
                     local pose = Unit.local_pose(unit, index)
                     if state.solved[index] then state.solved[index]:store(pose) else state.solved[index] = Matrix4x4Box(pose) end
                 end

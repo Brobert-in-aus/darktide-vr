@@ -584,6 +584,48 @@ equality never held. It consumes a stamp taken at the snapshot now, counts
 every call, keeps a reason for every early return, and writes a summary
 every 600 calls whatever it did. Two silent runs are two too many.
 
+## Worn, 13:10: no change, and what the data excludes
+
+*"no change to anything."* Then: *"For the rest of this session, guessing
+is forbidden. All attempts to solve the problem must be data driven."*
+
+```
+animated_legs=failed error=...: AnimationStateMachine `#ID[178cfbef0b6a177a]` does not exist
+prerender calls=108600 checks=9196 drifted=0 skipped=no_copy=28407,other_world=70996
+```
+
+**The machine.** `Unit.set_animation_state_machine` refused too, on a
+unit whose machine instance `disable_animation_state_machine` had taken
+away at ready. The copy's default is the archetype's portrait machine
+(`portrait_state_machine`, a menu idle with no locomotion), which is why
+the gameplay machine has to replace it. This build enables the machine
+again first, tries both engine calls, and keeps both errors in the log
+line, so the next refusal, if there is one, is named exactly.
+
+**The check ran.** 9,196 checks, no drift: between the copy's update and
+the frame, nothing moves its root or its hand. Together with the probe's
+smooth root (0.90 against the avatar's 0.91) and the trace's flat yaws,
+every quantity Lua can measure on the copy is steady, and the drawn body
+alternates. The stage Lua cannot measure is the skinning: the engine
+refreshes skin matrices with the animation update, this copy's animation
+has been disabled since ready, the weapon is a rigid unit, and the stock
+avatar animates every frame. That is what the data leaves, not a
+conclusion.
+
+**The experiment, labelled.** When the machine cannot be set, the
+spawner's portrait idle stays running and the copy's whole solved pose is
+put back over it at the render boundary (`state.restore_all`): the only
+way from Lua to give the copy an animation update every frame. Its
+observable is a headset video recording of the reflection while walking,
+pulled over adb and measured frame by frame; the viewer's eye readback
+takes one frame per request at 250 ms and cannot show an alternation. The
+recording also answers whether a render-boundary write is skinned in the
+same frame or a frame late, which no log line can.
+
+**The legs and the float** in this report are the gait's again, with the
+twenty-degree knee and the zero toe constant in: "no change" is a report
+on the gait as it now stands, and the recording covers it too.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows
