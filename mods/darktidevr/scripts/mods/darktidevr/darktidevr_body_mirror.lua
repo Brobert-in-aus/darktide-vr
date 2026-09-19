@@ -1239,7 +1239,13 @@ function Mirror.install(mod, presentation, options)
                 local flat = math.sqrt(Vector3.x(to_toe) ^ 2 + Vector3.y(to_toe) ^ 2)
                 rest_pitch = math.atan2(Vector3.z(to_toe), flat)
             end
+            -- 14:20 worn run: the rest pitch read -28 deg and the solved
+            -- pitch +4.7 after a correction that should have set it to
+            -- the rest; whether the toe joint is under the ankle at all in
+            -- this rig's graph is logged with the pitches.
+            local toe_under_ankle = toe and Unit.scene_graph_parent(unit, toe) == ankle
             legs[side] = {side = side, hip = hip, knee = knee, ankle = ankle, toe = toe, rest_pitch = rest_pitch,
+                toe_under_ankle = toe_under_ankle, toe_parent = toe and Unit.scene_graph_parent(unit, toe),
                 upper = Vector3.length(Unit.world_position(unit, knee) - Unit.world_position(unit, hip)),
                 lower = Vector3.length(Unit.world_position(unit, ankle) - Unit.world_position(unit, knee)),
                 ankle_x = Vector3.x(ankle_local), ankle_z = Vector3.z(ankle_local),
@@ -2025,9 +2031,19 @@ function Mirror.install(mod, presentation, options)
                         tostring(Unit.has_animation_state_machine and Unit.has_animation_state_machine(marker)))
                 end
             elseif Unit.alive(state.marker) and Unit.has_node(unit, "j_head") then
+                -- The glove itself (the marker body's left hand joint, where
+                -- the glove item hangs) half a metre ahead of the copy's head
+                -- at head height: the root is moved by whatever the hand is
+                -- off the target, as place_rigid_hand does. The 14:20 run had
+                -- the root at the head and the glove where the rest pose
+                -- hangs it, above and behind.
                 local head = Unit.node(unit, "j_head")
-                Unit.set_local_position(state.marker, 1, Unit.world_position(unit, head) + Vector3(0, 0, 0.35 * (state.scale or 1)))
+                local goal = Unit.world_position(unit, head) + Quaternion.forward(Unit.world_rotation(unit, 1)) * 0.5
                 Unit.set_local_rotation(state.marker, 1, Unit.world_rotation(unit, 1))
+                World.update_unit_and_children(world, state.marker)
+                local anchor = Unit.has_node(state.marker, "j_lefthand") and Unit.world_position(state.marker, Unit.node(state.marker, "j_lefthand"))
+                    or Unit.world_position(state.marker, 1)
+                Unit.set_local_position(state.marker, 1, Unit.local_position(state.marker, 1) + goal - anchor)
                 World.update_unit_and_children(world, state.marker)
             end
         end
@@ -2093,6 +2109,20 @@ function Mirror.install(mod, presentation, options)
                 local neck_now = neck_target
                 local eye_position = presentation.eye_pose and presentation.eye_pose(avatar)
                 local eye_now = eye_position and array(eye_position) or nil
+                -- THE SOLVED JOINTS (14:20 worn run): the marker glove, a
+                -- machine-less unit stood by its root from the copy's head
+                -- joint, flickers like the body, while the rigid gloves
+                -- stood by their roots from the controller do not. So the
+                -- copy's numbers alternate, and the root, the only joint the
+                -- probe read, is not where. The head and hand joints after
+                -- the solve, the hand's recorded target, and the marker's
+                -- root, each stepped against the previous frame: an A-B-A-B
+                -- alternation is a large, constant step every frame.
+                local head_now = Unit.has_node(unit, "j_head") and array(Unit.world_position(unit, Unit.node(unit, "j_head"))) or nil
+                local hand_now = Unit.has_node(unit, "j_righthand") and array(Unit.world_position(unit, Unit.node(unit, "j_righthand"))) or nil
+                local target_position = body_proxy() and body_proxy().hand_pose and body_proxy().hand_pose("right")
+                local target_now = target_position and array(target_position) or nil
+                local marker_now = state.marker and Unit.alive(state.marker) and array(Unit.world_position(state.marker, 1)) or nil
                 local m = state.motion
                 if m then
                     local d_avatar = Mirror.step_m(avatar_now, m.avatar)
@@ -2101,16 +2131,22 @@ function Mirror.install(mod, presentation, options)
                         state.motion_lines = state.motion_lines + 1
                         local function fmt(v) return v and string.format("%.4f", v) or "na" end
                         mod:info("DARKTIDEVR_BODY_MOTION t=%.3f dt=%.4f d_avatar_m=%s d_neck_target_m=%s d_eye_m=%s d_unit_m=%s " ..
-                            "anchor_lag_m=%s avatar=%.3f,%.3f,%.3f unit=%.3f,%.3f,%.3f child_before_m=%s child_after_m=%s child=%s",
+                            "anchor_lag_m=%s avatar=%.3f,%.3f,%.3f unit=%.3f,%.3f,%.3f child_before_m=%s child_after_m=%s child=%s " ..
+                            "d_head_m=%s d_hand_m=%s d_hand_target_m=%s d_marker_m=%s head=%s hand=%s",
                             type(t) == "number" and t or 0, type(dt) == "number" and dt or 0,
                             fmt(d_avatar), fmt(Mirror.step_m(neck_now, m.neck)), fmt(Mirror.step_m(eye_now, m.eye)),
                             fmt(Mirror.step_m(root_now, m.root)),
                             fmt(state.smooth_lag and Vector3.length(state.smooth_lag) or nil),
                             avatar_now[1], avatar_now[2], avatar_now[3], root_now[1], root_now[2], root_now[3],
-                            fmt(state.child_before), fmt(state.child_after), tostring(state.child_before_name))
+                            fmt(state.child_before), fmt(state.child_after), tostring(state.child_before_name),
+                            fmt(Mirror.step_m(head_now, m.head)), fmt(Mirror.step_m(hand_now, m.hand)),
+                            fmt(Mirror.step_m(target_now, m.target)), fmt(Mirror.step_m(marker_now, m.marker)),
+                            head_now and string.format("%.3f,%.3f,%.3f", head_now[1], head_now[2], head_now[3]) or "na",
+                            hand_now and string.format("%.3f,%.3f,%.3f", hand_now[1], hand_now[2], hand_now[3]) or "na")
                     end
                 end
-                state.motion = {avatar = avatar_now, neck = neck_now, eye = eye_now, root = root_now}
+                state.motion = {avatar = avatar_now, neck = neck_now, eye = eye_now, root = root_now,
+                    head = head_now, hand = hand_now, target = target_now, marker = marker_now}
             end)
             if not ok then log_once("motion_probe", "motion_probe=failed") end
         end
@@ -2303,13 +2339,15 @@ function Mirror.install(mod, presentation, options)
                 end
                 local left_pitch, left_rest = pitch("left")
                 local right_pitch, right_rest = pitch("right")
-                mod:info("DARKTIDEVR_BODY_MIRROR gait speed_mps=%.3f ground_hits=%d left=%s right=%s ankle_error_m=%s/%s left_foot=%.3f,%.3f,%.3f right_foot=%.3f,%.3f,%.3f toe_above_ground_m=%s/%s foot_pitch_deg=%s/%s rest_pitch_deg=%s/%s",
+                local left_leg = state.legs and state.legs.left
+                mod:info("DARKTIDEVR_BODY_MIRROR gait speed_mps=%.3f ground_hits=%d left=%s right=%s ankle_error_m=%s/%s left_foot=%.3f,%.3f,%.3f right_foot=%.3f,%.3f,%.3f toe_above_ground_m=%s/%s foot_pitch_deg=%s/%s rest_pitch_deg=%s/%s toe_under_ankle=%s toe_parent=%s ankle=%s",
                     feet.speed or 0, state.ground_hits or 0,
                     feet.left.swinging and "swinging" or "planted", feet.right.swinging and "swinging" or "planted",
                     err("left"), err("right"),
                     feet.left.position[1], feet.left.position[2], feet.left.position[3],
                     feet.right.position[1], feet.right.position[2], feet.right.position[3],
-                    toe_above("left"), toe_above("right"), left_pitch, right_pitch, left_rest, right_rest)
+                    toe_above("left"), toe_above("right"), left_pitch, right_pitch, left_rest, right_rest,
+                    tostring(left_leg and left_leg.toe_under_ankle), tostring(left_leg and left_leg.toe_parent), tostring(left_leg and left_leg.ankle))
             end
             if Mirror.MODES[mode_name].solve_arms then
                 if state.arm_lengths then

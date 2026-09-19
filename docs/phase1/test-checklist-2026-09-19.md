@@ -548,6 +548,37 @@ cm below the camera's with the neck at 1.515 and the shoulders at 1.51-
 feet still float after this, the lever is the leg bones, stretched the
 way the arms are, and the numbers above are what it would be set from.
 
+### 1p. Worn at 14:20: the glove marker flickers, so the copy's numbers alternate; the solved joints go in the probe
+
+Your report: the glove was above and behind you, and it flickers.
+
+That is the bisect answered. The glove is a unit with no animation
+(`marker=ready machine=false`), placed by its root only, from the copy's
+head joint. The rigid gloves of the hands-only mode are placed the same
+way from the controller and are steady; the weapon is steady. So the
+numbers the module computes alternate frame to frame, and the root, the
+one joint the probe has read all day, is not where: it stepped 1.8 cm a
+frame like the avatar. The log also closed every other door: the
+children on the skeleton (0 of 5,630 checks), nothing moved after the
+render (0 of 5,630) or between frames (0 of 5,629), and the machine
+census read the copy and the weapons without a machine and the arms,
+head and cosmetic gear units with one.
+
+**This build measures the solved joints.** Every probe line while you
+move now carries `d_head_m`, `d_hand_m` (the copy's head and right hand
+after the solve), `d_hand_target_m` (the recorded wrist target) and
+`d_marker_m` (the glove's root), each stepped against the previous
+frame. A two-location alternation is a large step every frame, the same
+size, where the root's is 1.8 cm. Whichever column shows it names the
+stage. The glove now hangs half a metre in front of your head at head
+height, placed by its own hand joint the way the gloves are.
+
+**The feet.** The gait line read `rest_pitch_deg=-28 foot_pitch_deg=4.7`
+after a correction that should have made them equal, and the toe joint
+12 cm above the ground point. The line now says whether the toe joint is
+under the ankle in the rig's graph at all (`toe_under_ankle`), which
+decides whether rotating the ankle can move it.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

@@ -849,6 +849,54 @@ copy, with the same `optional_ignore_state_machine`.
   pose's. `foot_pitch_deg=solved/solved rest_pitch_deg=rest/rest` on the
   gait line. Not worn.
 
+## Worn, 14:20: the marker flickers; the copy's numbers alternate
+
+On 9a6e40f. The user: "There's no glove", then "I found the glove, it was
+above and behind me for some reason, and it flickers."
+
+```
+machines avatar_slot_primary=false avatar_slot_secondary=false copy=false slot_body_arms=true slot_body_face=false slot_body_legs=false slot_gear_extra_cosmetic=true slot_gear_head=true slot_gear_lowerbody=false slot_gear_upperbody=false
+marker=ready machine=false
+prerender calls=80400 checks=5630 drifted=0 child_render_over_1mm=0 ... after_render=0/5630 max_m=0.0000 between_frames=0/5629 max_m=0.0000
+gait ... toe_above_ground_m=0.125/0.132 foot_pitch_deg=4.7/4.6 rest_pitch_deg=-28.0/-27.2
+```
+
+The glove was placed by the marker body's root at the copy's head, so
+the glove item, hanging from that body's rest-pose hand, sat above and
+behind. It flickers. It is a unit with no animation state machine, moved
+by its root only, from the copy's head joint; the rigid gloves of the
+hands-only mode are moved by their roots from the controller and are
+steady, as is the weapon. Therefore the numbers the module computes for
+the copy alternate frame to frame. The root does not (the probe's
+`d_unit_m` has been 1.8 cm a frame, the avatar's own step, all day), so
+the alternation is in the solve above the root: the head after the neck
+follow, the torso, the arms. Every within-frame check is closed: the
+children on the skeleton, nothing moved after the render or between
+frames.
+
+The machine census: the copy has none (the disable at ready removes it;
+`had_machine=true` earlier was read after an enable), nor do the
+weapons; the arms, head and extra-cosmetic gear units carry one. With
+the marker result that is not the lead it looked like.
+
+### This build
+
+The probe gains, per moving frame, the step since the previous frame of
+the copy's head joint (`d_head_m`), its right hand joint (`d_hand_m`),
+the recorded wrist target (`d_hand_target_m`) and the marker's root
+(`d_marker_m`), and prints the head and hand positions. An A-B-A-B
+alternation is a large step of the same size every frame. The marker is
+placed by its own hand joint half a metre ahead of the copy's head at
+head height.
+
+The feet: after the pitch correction the solved pitch still read +4.7
+deg against a rest of -28, and the toe joint stood 12 cm above the
+ground point (the ankle target rose 2.9 cm with the spawn height and the
+foot is still pitched up). The gait line now says whether the toe joint
+is a child of the ankle in this rig's scene graph; if it is not, rotating
+the ankle cannot move it and the correction was applied to the wrong
+joint's frame. Not worn.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows
