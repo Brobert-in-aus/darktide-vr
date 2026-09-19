@@ -33,10 +33,15 @@
 -- later), so the feet step under it exactly as they step under stick
 -- locomotion, from the same root motion, with no separate path.
 --
--- Ground. The design raycasts for it; this takes the ground height it is
--- given (the avatar's root, the simulated floor under the player), so on a
--- slope or a step the feet will float or sink by the height difference.
--- Written down as a limit rather than a surprise.
+-- Ground. `ground_at(x, y)` is asked, by the caller's raycast, for the
+-- height of the floor wherever a foot is about to be put down: where it
+-- first plants, and where each step lands. A planted foot keeps the height
+-- it was put down at, so a foot on a step stays on the step while the
+-- other is on the floor, and the legs take up the difference. The swing
+-- carries the foot from the height it left to the height it lands at, with
+-- the arc on top. With no answer (nothing under the foot within reach, or
+-- no callback) the height it is given as `ground_z` -- the simulated floor
+-- under the player -- is used instead.
 local Gait = {}
 
 -- Per foot: farther than this from its ideal place, it steps.
@@ -110,11 +115,16 @@ local function planar_distance(a, b)
 end
 
 -- One frame. root: the copy's root (3-array, world); yaw: its heading;
--- ground_z: the floor under the player; scale: the copy's uniform scale.
+-- ground_z: the floor under the player; scale: the copy's uniform scale;
+-- ground_at(x, y) -> z or nil: the floor where a foot is put down.
 -- Returns, per side, {position = {x,y,z}, yaw, swinging, progress, stepped}
 -- where `stepped` is true on the frame a step started.
-function Gait.update(state, root, yaw, ground_z, t, dt, scale)
+function Gait.update(state, root, yaw, ground_z, t, dt, scale, ground_at)
     if not valid3(root) or not finite(yaw) or not finite(ground_z) or not finite(t) then return nil end
+    local function ground_of(position)
+        local z = type(ground_at) == "function" and ground_at(position[1], position[2]) or nil
+        return finite(z) and z or ground_z
+    end
     -- Root velocity, smoothed, planar. A jump of TELEPORT_M or more in one
     -- frame is not motion: the feet re-plant under the new root and the
     -- velocity starts from nothing.
@@ -143,7 +153,9 @@ function Gait.update(state, root, yaw, ground_z, t, dt, scale)
     for _, side in ipairs(Gait.SIDES) do
         local foot = state.feet[side]
         local ideal = Gait.ideal(root, yaw, state.rest[side], ground_z, scale)
-        if not foot.planted or teleported then foot.planted, foot.yaw, foot.swing = ideal, yaw, nil end
+        if not foot.planted or teleported then
+            foot.planted, foot.yaw, foot.swing = {ideal[1], ideal[2], ground_of(ideal)}, yaw, nil
+        end
         local swing = foot.swing
         if swing then
             local p = (t - swing.t0) / swing.duration
@@ -154,7 +166,7 @@ function Gait.update(state, root, yaw, ground_z, t, dt, scale)
                 local e = Gait.ease(p)
                 out[side] = {position = {swing.from[1] + (swing.to[1] - swing.from[1]) * e,
                     swing.from[2] + (swing.to[2] - swing.from[2]) * e,
-                    ground_z + Gait.arc(p, swing.length)},
+                    swing.from[3] + (swing.to[3] - swing.from[3]) * e + Gait.arc(p, swing.length)},
                     yaw = swing.to_yaw, swinging = true, progress = p, stepped = false}
             end
         end
@@ -183,16 +195,19 @@ function Gait.update(state, root, yaw, ground_z, t, dt, scale)
                     foot.planted[2] + (to[2] - foot.planted[2]) * k, ground_z}
                 length = Gait.MAX_STEP_M
             end
-            foot.swing = {from = {foot.planted[1], foot.planted[2], ground_z}, to = to, to_yaw = yaw,
+            -- The floor where it lands, asked once, here: a step onto a
+            -- step lands on it.
+            to[3] = ground_of(to)
+            foot.swing = {from = {foot.planted[1], foot.planted[2], foot.planted[3]}, to = to, to_yaw = yaw,
                 t0 = t, duration = Gait.duration(speed), length = length}
-            out[best] = {position = {foot.planted[1], foot.planted[2], ground_z}, yaw = yaw,
+            out[best] = {position = {foot.planted[1], foot.planted[2], foot.planted[3]}, yaw = yaw,
                 swinging = true, progress = 0, stepped = true}
         end
     end
     for _, side in ipairs(Gait.SIDES) do
         local foot = state.feet[side]
         if not out[side] then
-            out[side] = {position = {foot.planted[1], foot.planted[2], ground_z}, yaw = foot.yaw,
+            out[side] = {position = {foot.planted[1], foot.planted[2], foot.planted[3]}, yaw = foot.yaw,
                 swinging = false, progress = nil, stepped = false}
         end
     end

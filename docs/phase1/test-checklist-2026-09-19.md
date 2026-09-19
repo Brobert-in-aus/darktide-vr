@@ -151,8 +151,10 @@ and sprint with the stick, then turn on the spot, then crouch.
 **Report**: whether the feet stay planted when you are still, whether a
 small movement gets a small step rather than a stride or a slide, whether
 walking reads as walking, whether the feet turn with you, and whether the
-knees bend the right way when you crouch. The floor is taken as flat, so
-on the Psykhanium's steps the feet will float or sink; say if you see it.
+knees bend the right way when you crouch. The feet are put down on the
+floor a raycast finds under them, so walk up the Psykhanium's steps and
+along its ramps and say whether each foot lands on the step it is over and
+whether a foot ever floats or sinks.
 
 ### The weapon, and why it is still on the stock model
 

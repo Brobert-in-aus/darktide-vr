@@ -8,13 +8,13 @@ local Gait = dofile(assert(arg[1]))
 local rest = {left = {-0.11, 0.02, 0.09}, right = {0.11, -0.02, 0.09}}
 local DT = 1 / 90
 
-local function run(state, path, dt)
+local function run(state, path, dt, ground_at)
     -- path(t) -> root, yaw; steps the gait and records everything.
     local t, frames, out = 0, {}, nil
     while true do
         local root, yaw, done = path(t)
         if done then break end
-        out = assert(Gait.update(state, root, yaw, 0, t, dt or DT, 1))
+        out = assert(Gait.update(state, root, yaw, 0, t, dt or DT, 1, ground_at))
         frames[#frames + 1] = {t = t, root = root, yaw = yaw, out = out, planted = {
             left = {state.feet.left.planted[1], state.feet.left.planted[2]},
             right = {state.feet.right.planted[1], state.feet.right.planted[2]}}}
@@ -158,9 +158,71 @@ for i = 2, #frames do
 end
 assert(longest > 0 and longest <= Gait.MAX_STEP_M + 1e-6, 'a step longer than the cap, or none: ' .. longest)
 
+-- Ground. Each foot is put down at the height the floor has where it
+-- lands, and keeps it while planted; the swing carries the foot between
+-- the heights it leaves and lands at; with no answer under a foot the
+-- simulated floor is used. A slope, then a step.
+local function slope(x, y) return 0.2 * x end
+state = Gait.new(rest)
+frames = run(state, function(t) return {0.8 * t, 0, 1}, 0, t > 3 end, nil, slope)
+local on_slope, checked = true, 0
+for i, f in ipairs(frames) do
+    for _, side in ipairs({'left', 'right'}) do
+        local foot = f.out[side]
+        if not foot.swinging then
+            checked = checked + 1
+            if math.abs(foot.position[3] - slope(foot.position[1], foot.position[2])) > 1e-9 then on_slope = false end
+        end
+    end
+end
+assert(checked > 0 and on_slope, 'a planted foot left the slope')
+assert(frames[1].out.left.position[3] == slope(frames[1].out.left.position[1], 0), 'the first plant ignored the ground')
+-- The swing never dips below the lower of its two ends: the arc is on top
+-- of the climb, not instead of it.
+for i, f in ipairs(frames) do
+    for _, side in ipairs({'left', 'right'}) do
+        local foot = f.out[side]
+        if foot.swinging then
+            local sw = state.feet[side].swing
+            local floor_from = slope(foot.position[1], 0) - 0.16 -- a step of 0.8 m at 0.2 rise is 0.16 m
+            assert(foot.position[3] >= floor_from - 1e-9, side .. ' swung below the slope at frame ' .. i)
+        end
+    end
+end
+-- A 0.3 m step at x = 1: feet before it are on the floor, feet after it are
+-- on the step, and a foot planted on the step stays there while the other
+-- is still on the floor.
+local function stepped_floor(x, y) return x > 1 and 0.3 or 0 end
+state = Gait.new(rest)
+frames = run(state, function(t) return {0.8 * t, 0, 1}, 0, t > 3 end, nil, stepped_floor)
+local mixed = false
+for _, f in ipairs(frames) do
+    for _, side in ipairs({'left', 'right'}) do
+        local foot = f.out[side]
+        if not foot.swinging then
+            assert(foot.position[3] == stepped_floor(foot.position[1], 0), side .. ' planted at the wrong height at x=' .. foot.position[1])
+        end
+    end
+    -- One foot planted on the step while the other is still below it,
+    -- planted on the floor or on its way up.
+    for _, pair in ipairs({{'left', 'right'}, {'right', 'left'}}) do
+        local up, other = f.out[pair[1]], f.out[pair[2]]
+        if not up.swinging and up.position[3] == 0.3 and other.position[3] < 0.3 then mixed = true end
+    end
+end
+assert(mixed, 'no frame had one foot on the step and one on the floor')
+-- The planted records, since a foot may be mid-swing on the last frame.
+assert(state.feet.left.planted[3] == 0.3 and state.feet.right.planted[3] == 0.3, 'both feet should end on the step')
+-- No answer from the ground: the simulated floor.
+state = Gait.new(rest)
+frames = run(state, function(t) return {0.8 * t, 0, 1}, 0, t > 1 end, nil, function() return nil end)
+for _, f in ipairs(frames) do
+    if not f.out.left.swinging then assert(f.out.left.position[3] == 0, 'no ground answer should fall back to the floor') end
+end
+
 -- Bad input is refused rather than stepped on.
 assert(Gait.update(state, nil, 0, 0, 1, DT, 1) == nil)
 assert(Gait.update(state, {0 / 0, 0, 0}, 0, 0, 1, DT, 1) == nil)
 assert(Gait.update(state, {0, 0, 0}, 0 / 0, 0, 1, DT, 1) == nil)
 
-print('body_gait=pass standing small_step walk lead duration arc landing turn cap input')
+print('body_gait=pass standing small_step walk lead duration arc landing turn cap ground input')

@@ -239,6 +239,12 @@ Mirror.ELBOW_HINT_DOWN = 0.10
 -- Added to the rest knee along the heading as the leg's bend hint, so a
 -- straight rest leg still bends forward (a knee never bends backward).
 Mirror.KNEE_HINT_FORWARD = 0.15
+-- The ground under a foot: cast from this far above the simulated floor
+-- to this far below it (whole-body design, step 6: hip height to 0.6 m
+-- below the root), against the static world with the filter the game
+-- grounds the player's own hand IK with.
+Mirror.GROUND_RAY_UP, Mirror.GROUND_RAY_DOWN = 1.0, 0.6
+Mirror.GROUND_FILTER = "filter_player_mover"
 
 local function sub(a, b) return {a[1] - b[1], a[2] - b[2], a[3] - b[3]} end
 local function add(a, b) return {a[1] + b[1], a[2] + b[2], a[3] + b[3]} end
@@ -1274,7 +1280,32 @@ function Mirror.install(mod, presentation, options)
             local heading = state.yaw or Quaternion.yaw(Unit.world_rotation(unit, 1))
             local ground = Vector3.z(Unit.world_position(avatar, 1))
             local scale = state.scale_ratio or 1
-            local feet = Gait.update(state.gait, array(Unit.world_position(unit, 1)), heading, ground, t, dt, scale)
+            -- The floor where a foot is put down, by raycast: from a metre
+            -- above the simulated floor to 0.6 m below it, statics only,
+            -- with the filter the game grounds its own hand IK with
+            -- (player_character_state_ledge_hanging.lua:322). `closest`
+            -- returns result, position, distance, normal, actor -- the order
+            -- the skull module learned the hard way. Asked only where a
+            -- foot plants or lands, so at most one cast a frame. A failed
+            -- cast is logged once and answers nil, which the gait reads as
+            -- the simulated floor.
+            state.physics_world = state.physics_world or World.physics_world(world)
+            local function ground_at(x, y)
+                if not state.physics_world then return nil end
+                local ok, hit, position = pcall(PhysicsWorld.raycast, state.physics_world,
+                    Vector3(x, y, ground + Mirror.GROUND_RAY_UP), Vector3(0, 0, -1),
+                    Mirror.GROUND_RAY_UP + Mirror.GROUND_RAY_DOWN, "closest", "types", "statics",
+                    "collision_filter", Mirror.GROUND_FILTER)
+                if not ok then
+                    log_once("ground_ray", "ground_raycast=failed error=%s", tostring(hit):sub(1, 120))
+                    return nil
+                end
+                if not hit or not position then return nil end
+                state.ground_hits = (state.ground_hits or 0) + 1
+                return Vector3.z(position)
+            end
+            local feet = Gait.update(state.gait, array(Unit.world_position(unit, 1)), heading, ground, t, dt, scale,
+                ground_at)
             if feet then
                 local forward = Vector3(-math.sin(heading), math.cos(heading), 0)
                 for _, side in ipairs(Gait.SIDES) do
@@ -1510,8 +1541,9 @@ function Mirror.install(mod, presentation, options)
                 tostring(mode_name), state.frames, stretch)
             local feet = state.gait_feet
             if feet then
-                mod:info("DARKTIDEVR_BODY_MIRROR gait speed_mps=%.3f left=%s right=%s left_foot=%.3f,%.3f,%.3f right_foot=%.3f,%.3f,%.3f",
-                    feet.speed or 0, feet.left.swinging and "swinging" or "planted", feet.right.swinging and "swinging" or "planted",
+                mod:info("DARKTIDEVR_BODY_MIRROR gait speed_mps=%.3f ground_hits=%d left=%s right=%s left_foot=%.3f,%.3f,%.3f right_foot=%.3f,%.3f,%.3f",
+                    feet.speed or 0, state.ground_hits or 0,
+                    feet.left.swinging and "swinging" or "planted", feet.right.swinging and "swinging" or "planted",
                     feet.left.position[1], feet.left.position[2], feet.left.position[3],
                     feet.right.position[1], feet.right.position[2], feet.right.position[3])
             end
