@@ -1281,6 +1281,40 @@ acceleration, an overshoot landed instead, and the away throw caught
 within 2.5 s. Not worn; the `flight_end` row's `max_step_m` and `late_s`
 measure it.
 
+### 1al. Worn at 20:30 on the chase ("still disappears the instant the ballistic arc ends"): the drawn position never jumped, so the probe follows the eye, and culling is switched off for the flight as the experiment
+
+The 20:30 log, two throws:
+
+| throw | angle to target | chase started | gap then | caught | late | largest step |
+|---|---|---|---|---|---|---|
+| 09:08:27 | 118° | 0.50 s | 6.89 m | 1.33 s | 0.09 s | 0.281 m |
+| 09:08:46 | 90° | 0.45 s | 5.30 m | 1.19 s | 0.08 s | 0.250 m |
+
+The chase ran as built, was caught, and the drawn point's largest single
+move was 28 cm. The blend build vanished at the same moment with a
+different flight. So the disappearance is not a move of the drawn point,
+and the numbers so far say nothing about what was DRAWN or SEEN.
+
+**The probe** (`DARKTIDEVR_SKULL_FLIGHT`, every third frame of a flight,
+budgeted 600): the phase, the drawn point's distance and angle from the
+view's forward, the same for the unit's root, and how far the unit's world
+box centre is from the drawn point. Past about 50 degrees a point is
+outside the headset's view. A skull that vanishes while its drawn angle
+stays small and its box stays on it was culled or hidden, not moved; the
+root's angle at that moment says whether the root left the view.
+
+**The experiment.** The drawn parts are metres from the unit's root, and
+the root, the real skull flying low along the line to the target, is what
+the engine may cull the unit by; a throw upward takes the eye up and the
+root out of the bottom of the view at about the top of the arc. The game
+switches culling off for units it draws away from their bounds
+(`Unit.set_unit_culling(unit, false, true)`: outlines, holograms,
+previews). It is off from the flight's start (`flight ... culling_off=`)
+and back on at the flight's end and on a reset; the test's source scan
+holds the pairing. Observable: the worn report on whether the skull still
+vanishes, read against the probe's root and drawn angles at the moment
+the free flight ends. Not worn.
+
 ## 2. The torso turning faster than your head
 
 This one is arithmetic rather than a theory, which is a change from the last

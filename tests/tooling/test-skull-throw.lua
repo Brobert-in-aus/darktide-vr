@@ -270,6 +270,15 @@ do
   assert(source:find('if caught or not in_flight or elapsed > Skull%.MAX_THROW_SECONDS then', 1), 'the flight ends when caught, not by a fraction')
   assert(source:find('local in_flight = name == "flamethrower" or name == "flamethrower_shooting"', 1), 'the chase survives the real arrival')
   assert(not source:find('blend_weight', 1), 'no blend anywhere')
+  -- The culling experiment (20:30 worn: "still disappears the instant the
+  -- ballistic arc ends"): culling is switched off for the flight and MUST
+  -- come back on at the flight's end and on a reset, or a skull would stay
+  -- unculled for the session.
+  assert(source:find('throw%.culling_off = pcall%(Unit%.set_unit_culling, skull, false, true%)', 1), 'culling off for the flight')
+  assert(source:find('if throw%.culling_off then pcall%(Unit%.set_unit_culling, skull, true, true%) end%s+unplace%(throw, skull%); throw = nil', 1),
+    'and back on at the flight end, before the parts are restored')
+  assert(source:find('pcall%(Unit%.set_unit_culling, throw%.skull, true, true%)%s+end%s+pending = nil; throw = nil', 1),
+    'and back on when a reset abandons the throw')
 end
 
 print('skull_throw=pass flight_time chase ballistic forward_offsets rest_offsets smoothed stock_offset lead fed_offset axis_angle rigid_part toward_target')

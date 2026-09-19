@@ -76,7 +76,12 @@ checklist:
   frame). Test-checklist 1aj and 1ak: the blend is replaced by a chase
   with the acceleration capped, the speed and the deceleration not (the
   user's rule at 20:15); the drawn skull arrives late on an away throw
-  (`chase_start`, `flight_end away caught late_s max_step_m`). Not worn. Also open: "for a short while the skulls were no longer turning
+  (`chase_start`, `flight_end away caught late_s max_step_m`). Worn at
+  20:30: "still disappears the instant the ballistic arc ends" while the
+  drawn point's largest move was 28 cm, so 1al switches the skull's
+  culling off for the flight (experiment) and logs `DARKTIDEVR_SKULL_FLIGHT`
+  rows (drawn and root angles from the view, box on the drawn point). Not
+  worn. Also open: "for a short while the skulls were no longer turning
   with me" (20:05), now logged as `state from= to=` rows.
 - Cloth on the body: still jiggles as of 17:15. Either it settled with the
   smooth anchor and the calibrated camera, or it ships as a known issue.
