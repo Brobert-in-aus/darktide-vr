@@ -166,6 +166,30 @@ function Skull.blend_weight(elapsed, total, free_fraction)
     return (elapsed - free) / (total - free)
 end
 
+-- A THROW AWAY FROM THE TARGET (user, 19:25, 19 September: "if I throw it
+-- away from the target location instead of towards it, it teleports"). The
+-- order flies the real skull to the aimed point whichever way the hand
+-- went; the free flight went the hand's way for up to a quarter second and
+-- the blend then hauled the drawn skull back across the whole gap in what
+-- was left of the flight -- at 10 m/s each way that is a reversal of
+-- several metres in well under a second. Whether a release goes toward the
+-- target: the release velocity's component along the line from the release
+-- point to the target is positive. Returns the answer and the angle in
+-- degrees; an undecidable input (no speed, no distance) is toward. Pure.
+-- A throw away skips the free flight: the drawn skull is held at the hand
+-- and blended straight into the real flight from there, so it leaves the
+-- hand the way the real one goes and never turns round.
+function Skull.toward_target(velocity, release, target)
+    if type(velocity) ~= "table" or type(release) ~= "table" or type(target) ~= "table" then return true, nil end
+    local dx, dy, dz = target[1] - release[1], target[2] - release[2], target[3] - release[3]
+    local distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+    local speed = math.sqrt(velocity[1] * velocity[1] + velocity[2] * velocity[2] + velocity[3] * velocity[3])
+    if not finite(distance) or distance < 1e-6 or not finite(speed) or speed < 1e-6 then return true, nil end
+    local cosine = (velocity[1] * dx + velocity[2] * dy + velocity[3] * dz) / (distance * speed)
+    cosine = math.max(-1, math.min(1, cosine))
+    return cosine > 0, math.deg(math.acos(cosine))
+end
+
 -- The free flight is stepped rather than evaluated, because it now has to be
 -- swept against the world: a thrown skull that paths through the floor and out
 -- the other side of a wall is worse than one that flew straight (user, 18
@@ -1052,13 +1076,19 @@ function Skull.install(mod, presentation)
             local from = array(Unit.world_position(skull, 1))
             local total = pending.target and Skull.flight_time(from, pending.target)
             if total and total > 0.05 then
-                throw = {start = t, total = total, release = pending.position, velocity = pending.velocity,
+                -- Away from the target (Skull.toward_target): no free flight,
+                -- the drawn skull is held at the hand and blended straight
+                -- into the real one. The tumble still spins at the thrown
+                -- speed.
+                local toward, angle = Skull.toward_target(pending.velocity, pending.position, pending.target)
+                throw = {start = t, total = total, release = pending.position,
+                    velocity = toward and pending.velocity or {0, 0, 0}, thrown = pending.velocity, away = not toward,
                 -- One axis per throw, drawn here so it is steady for its whole
                 -- flight rather than re-rolled every frame.
                 tumble_axis = Skull.random_axis(math.random(), math.random()),
                     target = pending.target}
-                mod:info("DARKTIDEVR_SKULL_THROW flight predicted_s=%.2f distance_m=%.2f nodes=%d", total,
-                    total * Skull.SPEED, #child_nodes(skull))
+                mod:info("DARKTIDEVR_SKULL_THROW flight predicted_s=%.2f distance_m=%.2f nodes=%d away=%s angle_to_target_deg=%s", total,
+                    total * Skull.SPEED, #child_nodes(skull), tostring(not toward), angle and string.format("%.0f", angle) or "na")
             end
             pending = nil
         elseif pending and t - pending.t > Skull.RELEASE_WINDOW then
@@ -1156,6 +1186,42 @@ function Skull.install(mod, presentation)
                         mod:info("DARKTIDEVR_SKULL_THROW grabbed offset_in_hand_m=%.3f,%.3f,%.3f distance_m=%.3f",
                             Vector3.x(in_hand), Vector3.y(in_hand), Vector3.z(in_hand), Vector3.length(in_hand))
                     end
+                    -- THE IDLE BOB IS BELOW THE CHILDREN (19:25 worn run,
+                    -- "grab is fixed now - however the idle animation still
+                    -- causes it to move slightly": in_hand cycled about 2 cm
+                    -- either way over 2.6 s while the nine children were
+                    -- written every held frame). A bob that survives those
+                    -- writes is on nodes under them, written by the skull's
+                    -- own machine in the world update, which runs before
+                    -- this post_update. Every node that is not one of the
+                    -- nine has its local pose taken at the grab and written
+                    -- back each held frame before the placement flushes; the
+                    -- nodes found moved before the write are named in the
+                    -- probe (anim_nodes=), which is the measurement of where
+                    -- the bob lives.
+                    local frozen = record.grab.frozen
+                    if not frozen then
+                        frozen = {}
+                        record.grab.frozen = frozen
+                        local ok_count, count = pcall(Unit.num_scene_graph_items, skull)
+                        local children = {}
+                        for _, node in ipairs(record.bridge_nodes.nodes or child_nodes(skull)) do children[node] = true end
+                        for node = 2, (ok_count and count) or 1 do
+                            if not children[node] then
+                                frozen[#frozen + 1] = {node = node, position = Vector3Box(Unit.local_position(skull, node)),
+                                    rotation = QuaternionBox(Unit.local_rotation(skull, node))}
+                            end
+                        end
+                    end
+                    local moved = {}
+                    for _, entry in ipairs(frozen) do
+                        local rest = entry.position:unbox()
+                        local shift = Vector3.distance(Unit.local_position(skull, entry.node), rest)
+                        if shift > 0.001 then moved[#moved + 1] = string.format("%d:%.0fmm", entry.node, shift * 1000) end
+                        Unit.set_local_position(skull, entry.node, rest)
+                        Unit.set_local_rotation(skull, entry.node, entry.rotation:unbox())
+                    end
+                    record.grab.moved = moved
                     local centre = hand + Quaternion.rotate(hand_rotation, record.grab.offset:unbox())
                     local wanted = Quaternion.multiply(Quaternion.multiply(hand_rotation, Quaternion.inverse(record.grab.zero:unbox())), record.grab.base:unbox())
                     local delta = Quaternion.multiply(wanted, Quaternion.inverse(Unit.world_rotation(skull, 1)))
@@ -1241,8 +1307,10 @@ function Skull.install(mod, presentation)
                                 local base = record.bridge_nodes.base and record.bridge_nodes.base[node]
                                 if base then mean = mean + base:unbox(); counted = counted + 1 end
                             end
-                            mod:info("DARKTIDEVR_SKULL_GRAB_DRAWN gear=%s meshes=%s unit_box=%s parts_mean_m=%.3f", gear_text, table.concat(meshes, " "), box_text,
-                                counted > 0 and Vector3.length(mean / counted) or -1)
+                            local moved_now = record.grab.moved
+                            mod:info("DARKTIDEVR_SKULL_GRAB_DRAWN gear=%s meshes=%s unit_box=%s parts_mean_m=%.3f anim_nodes=%s", gear_text, table.concat(meshes, " "), box_text,
+                                counted > 0 and Vector3.length(mean / counted) or -1,
+                                moved_now and #moved_now > 0 and table.concat(moved_now, ",") or "none")
                         end)
                     end
                 else
@@ -1286,8 +1354,15 @@ function Skull.install(mod, presentation)
                 mod:info("DARKTIDEVR_SKULL_THROW arrived predicted_s=%.2f actual_s=%.2f", throw.total, elapsed)
             end
         end
-        local weight = Skull.blend_weight(elapsed, throw.total)
+        local weight = Skull.blend_weight(elapsed, throw.total, throw.away and 0 or nil)
         if not flying or elapsed > Skull.MAX_THROW_SECONDS or weight >= 1 then
+            -- THE FLIGHT'S LARGEST DRAWN STEP (19:25, "it teleports" on a
+            -- throw away from the target): the biggest frame-to-frame move
+            -- of the drawn skull over this flight, in metres, with whether
+            -- the throw was away. A teleport is a step of metres; a flight
+            -- is centimetres.
+            mod:info("DARKTIDEVR_SKULL_THROW flight_end away=%s elapsed_s=%.2f max_step_m=%.3f",
+                tostring(throw.away or false), elapsed, throw.max_step or 0)
             unplace(throw, skull); throw = nil
             return
         end
@@ -1297,30 +1372,39 @@ function Skull.install(mod, presentation)
         -- the axis drawn when this throw started so it is steady for it.
         local dt = throw.tumble_t and (t - throw.tumble_t) or 0
         throw.tumble_t = t
-        local rate = Skull.tumble_rate(throw.velocity)
+        local rate = Skull.tumble_rate(throw.thrown or throw.velocity)
         if rate and throw.tumble_axis then
             throw.tumble_angle = Skull.tumbled_angle(throw.tumble_angle, rate, weight, dt)
         end
         -- Step the free flight and sweep it. The first frame starts it at the
         -- release with the release velocity; after that it carries its own
-        -- state, because a bounce cannot be recovered from a closed form.
+        -- state, because a bounce cannot be recovered from a closed form. A
+        -- throw away from the target has no free flight: the free point is
+        -- the release, held, and the blend runs from there.
         if not throw.free_position then
             throw.free_position = {throw.release[1], throw.release[2], throw.release[3]}
             throw.free_velocity = {throw.velocity[1], throw.velocity[2], throw.velocity[3]}
         end
         local bounced
-        throw.free_position, throw.free_velocity, bounced =
-            swept_step(extension, throw.free_position, throw.free_velocity, dt)
+        if not throw.away then
+            throw.free_position, throw.free_velocity, bounced =
+                swept_step(extension, throw.free_position, throw.free_velocity, dt)
+        end
         if bounced and not throw.bounce_logged then
             throw.bounce_logged = true
             mod:info("DARKTIDEVR_SKULL_THROW bounced elapsed_s=%.3f speed=%.2f", elapsed,
                 math.sqrt(throw.free_velocity[1] ^ 2 + throw.free_velocity[2] ^ 2 +
                     throw.free_velocity[3] ^ 2))
         end
-        place(extension, skull, throw,
-            Skull.drawn_position(throw.release, throw.velocity, elapsed, real, weight,
-                throw.free_position),
-            throw.tumble_axis, throw.tumble_angle)
+        local drawn = Skull.drawn_position(throw.release, throw.velocity, elapsed, real, weight,
+            throw.free_position)
+        if throw.last_drawn then
+            local step = math.sqrt((drawn[1] - throw.last_drawn[1]) ^ 2 + (drawn[2] - throw.last_drawn[2]) ^ 2 +
+                (drawn[3] - throw.last_drawn[3]) ^ 2)
+            if step > (throw.max_step or 0) then throw.max_step = step end
+        end
+        throw.last_drawn = drawn
+        place(extension, skull, throw, drawn, throw.tumble_axis, throw.tumble_angle)
     end
 
     -- One error used to switch this module off for the rest of the session,

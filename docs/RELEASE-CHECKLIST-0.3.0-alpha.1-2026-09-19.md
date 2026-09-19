@@ -68,9 +68,12 @@ checklist:
   Confirmed at 15:50.
 - The flamer skull grab: locked to the palm where grabbed, turning with the
   hand, throw still works (`DARKTIDEVR_SKULL_GRAB_DRAWN ... in_hand=` holds
-  three constant numbers while held). Worn "no change" at 19:10 on the
-  probe build; the held layout's pivot changed after (test-checklist 1ag),
-  not worn.
+  three constant numbers while held). Worn at 19:25: "grab is fixed now",
+  the idle bob still moves it (about 2 cm either way over 2.6 s) and a
+  throw AWAY from the target "teleports". Test-checklist 1ah: the nodes
+  below the nine children are frozen while held (`anim_nodes=` names the
+  bobbing ones) and an away throw has no free flight (`flight ... away=`,
+  `flight_end max_step_m=`). Not worn.
 - Cloth on the body: still jiggles as of 17:15. Either it settled with the
   smooth anchor and the calibrated camera, or it ships as a known issue.
 

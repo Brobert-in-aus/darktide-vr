@@ -197,4 +197,36 @@ do
     'the placement spins about the drawn point when asked')
 end
 
-print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed stock_offset lead fed_offset axis_angle rigid_part')
+-- A throw away from the target (19:25 worn: "it teleports"). Toward is a
+-- positive component along the line to the target; an undecidable input is
+-- toward. With no free flight the blend rises from the release at once, so
+-- the drawn skull leaves the hand on the real skull's line and never turns
+-- round: at every moment it lies between the release and the real one. The
+-- source has to zero the free velocity and hold the free point for an away
+-- throw, or the free flight still runs the hand's way.
+do
+  local toward, angle = Skull.toward_target({0, 5, 0}, {0, 0, 0}, {0, 10, 0})
+  assert(toward and math.abs(angle) < 1e-9, 'straight at it')
+  toward, angle = Skull.toward_target({0, -5, 0}, {0, 0, 0}, {0, 10, 0})
+  assert(not toward and math.abs(angle - 180) < 1e-9, 'straight away')
+  toward, angle = Skull.toward_target({5, 1, 0}, {0, 0, 0}, {0, 10, 0})
+  assert(toward and angle > 78 and angle < 79, 'a sideways throw with a little toward is toward')
+  assert(Skull.toward_target({0, 0, 0}, {0, 0, 0}, {0, 10, 0}) == true, 'no speed is toward')
+  assert(Skull.toward_target({0, 5, 0}, {0, 10, 0}, {0, 10, 0}) == true, 'no distance is toward')
+  assert(Skull.toward_target(nil, {0, 0, 0}, {0, 10, 0}) == true, 'nothing is toward')
+  near(Skull.blend_weight(0.25, 1.0, 0), 0.25, 'no free flight: the blend runs from the release')
+  local release, real = {0, 0, 0}, {0, -6, 0}
+  for step = 0, 10 do
+    local w = Skull.blend_weight(step * 0.1, 1.0, 0)
+    local d = Skull.drawn_position(release, {0, 0, 0}, step * 0.1, real, w, release)
+    assert(d[2] <= 0 and d[2] >= -6 and d[1] == 0 and d[3] == 0, 'between the hand and the real skull: ' .. d[2])
+  end
+  local source = assert(io.open(arg[1], 'rb')):read('*a')
+  assert(source:find('velocity = toward and pending%.velocity or {0, 0, 0}', 1), 'an away throw has no free velocity')
+  assert(source:find('if not throw%.away then%s+throw%.free_position, throw%.free_velocity, bounced =', 1),
+    'an away throw holds its free point at the release')
+  assert(source:find('Skull%.blend_weight%(elapsed, throw%.total, throw%.away and 0 or nil%)', 1),
+    'an away throw blends from the release at once')
+end
+
+print('skull_throw=pass flight_time blend drawn forward_offsets rest_offsets smoothed stock_offset lead fed_offset axis_angle rigid_part toward_target')

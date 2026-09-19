@@ -1166,6 +1166,39 @@ hand joint's frame, and the mean rest offset. Locked to the palm is three
 `in_hand` numbers that do not move while held; `parts_mean_m` is the swing
 the old pivot left in. Not worn. The flight's tumble keeps the mean pivot.
 
+### 1ah. Worn at 19:25 ("grab is fixed now"): the idle bob is below the children; a throw away from the target reversed
+
+**The grab held.** The 19:25 log's `in_hand=` triple stayed within a slow
+cycle of about 2 cm either way on two axes over 2.6 s for the whole hold,
+with `parts_mean_m=0.106`: that cycle is the idle animation the user still
+sees, and the 10.6 cm mean offset is the swing the old pivot had left in.
+
+**The bob.** The nine children under the root are written every held frame,
+so a bob that survives them is on the nodes below, written by the skull's
+own animation machine in the world update. The module's hook is the
+movement extension's `post_update`, which runs after that, so a write from
+here wins. Every node that is not one of the nine has its local pose taken
+at the grab and written back each held frame before the placement flushes.
+The probe row ends `anim_nodes=node:mm,...`: the nodes found moved from
+their grab pose before the write, which names where the bob lives; `none`
+while held means the machine writes nothing under the children and the
+remaining motion is somewhere else. Observable: the `in_hand=` triple
+constant to a few millimetres over a hold.
+
+**The away throw.** The order flies the real skull to the aimed point
+whichever way the hand went. The free flight went the hand's way for up to
+a quarter second and the blend then hauled the drawn skull back across the
+whole gap in what was left of the flight: at 10 m/s each way a reversal of
+several metres in well under a second, which reads as a teleport. No away
+throw is in the 19:25 log (the one flight was toward its target, 2 degrees
+off the preview). `Skull.toward_target` (pure, tested) decides from the
+release velocity's component along the line to the target; an away throw
+has no free flight, the drawn skull is held at the hand and blended straight
+into the real one, so it leaves the hand on the real skull's line. The
+`flight` row carries `away= angle_to_target_deg=`; a new `flight_end` row
+carries `max_step_m`, the largest frame-to-frame move of the drawn skull
+over the flight. A teleport is metres; a flight is centimetres. Not worn.
+
 ## 2. The torso turning faster than your head
 
 This one is arithmetic rather than a theory, which is a change from the last
