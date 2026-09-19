@@ -960,6 +960,48 @@ is now aimed with `aim_joint`, the knees' own path, at the point a flat
 foot's toe occupies: the rest pitch below the ankle along the foot's
 heading. Not worn.
 
+## Worn, 14:36: one timeline in Lua, and the phase
+
+On c0161e8. The user: no change to the flicker; one of the two locations
+is definitely the right one, the other lags behind.
+
+| d_avatar_m | d_eye_m | d_neck_target_m | d_unit_m | d_marker_m | d_hand_target_m | d_unit_rel_eye_m |
+|---|---|---|---|---|---|---|
+| 0.0323 | 0.0744 | 0.0753 | 0.0752 | 0.0752 | 0.0731 | 0.0010 |
+| 0.0326 | 0.0006 | 0.0003 | 0.0003 | 0.0003 | 0.0024 | 0.0006 |
+| 0.0338 | 0.0732 | 0.0747 | 0.0747 | 0.0746 | 0.0735 | 0.0015 |
+| 0.0351 | 0.0008 | 0.0002 | 0.0001 | 0.0002 | 0.0005 | 0.0007 |
+
+Over 4,537 moving lines the root's step against the eye is 0.6 mm mean,
+2.4 cm max, three lines over 2 cm. The copy, the eye and the wrist
+targets step together. The feet: `toe_above_ground_m=0.030/0.040
+foot_pitch_deg=-28.0/-27.2 rest_pitch_deg=-28.0/-27.2
+left_pitch_stages_deg=aim:-16.1 rebase:-11.6 aimed:-28.0`.
+
+What remains is one frame of lag on the frames the anchor advances,
+which is the pre-world pose: `run_scheduled` posed the copy from the
+previous post_update's eye and wrist poses, and the anchor those are
+built on had already moved on for this frame. The rigid gloves and the
+weapon are placed after the refresh in the same post_update and hold
+still; the marker, placed pre-world, flickered.
+
+### The change
+
+The pose returns to the locomotion post_update, after `post.body_ik`;
+the WorldManager hook, `schedule` and `run_scheduled` are removed; the
+between-frames read moves to the top of `api.update`. The copy has no
+state machine (census, 14:20), so joints written there are drawn. The
+render check reads `presentation.eye_pose` at the render boundary
+against the eye the pose was built on (`state.posed_eye`):
+`render_eye_lag=over/checks max_m` in the heartbeat, over 5 mm counted.
+Under the pre-world pose this would have read an anchor step on
+alternate frames; on the frame's own inputs it reads zero. The
+source-scan test now asserts the post_update pose after the body IK and
+the absence of the pre-world hook. Not worn.
+
+The 13:20 fact stands and is narrower than it was read: a running
+machine owns the skin. It was not a rule about the phase.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows

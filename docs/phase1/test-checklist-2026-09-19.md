@@ -625,6 +625,43 @@ below the ankle along the foot's heading. The gait line carries
 `left_pitch_stages_deg=aim:.. rebase:.. aimed:..`; the last should equal
 the rest pitch and `toe_above_ground_m` should read about 0.03.
 
+### 1r. Worn at 14:36: one timeline in Lua, still two places drawn; the pose goes back to post_update
+
+Your report: no change to the flicker; one of the two locations is
+definitely the right one, the other lags behind.
+
+The log: the copy's root now steps exactly with the eye, 0 then 7.4 cm
+on alternate moving frames, the wrist targets with them, and the root's
+step against the eye is 0.6 mm on average over 4,537 moving frames
+(three over 2 cm). The feet: toe 3 cm above the ground point, foot
+pitch -28 against a rest of -28, the aim stage doing what the re-base
+did not.
+
+So in Lua the copy, the eye and the hands are on one timeline, and what
+you see is the copy a step behind the view on alternate frames. That is
+the phase: since 13:38 the copy has been posed from a hook before the
+world update, on the previous post_update's inputs. The body anchor
+that the camera, the hands and the weapon are built on is refreshed in
+the locomotion post_update, and it advances every other frame; on the
+frames it advanced, the copy still stood on the old one. The rigid
+gloves and the weapon are placed in post_update from the frame's own
+anchor and hold still; the marker glove, placed pre-world, flickered.
+
+**The change.** The copy is posed in the locomotion post_update again,
+after the body IK has refreshed the anchor and placed the hands, and
+the pre-world hook is gone. The copy carries no state machine (the
+census), so its joints written there are drawn; the still body at 13:20
+was a machine left running, a different thing. The render check now
+reads the eye at the render boundary against the eye the copy was
+posed from: `render_eye_lag=over/checks max_m` in the heartbeat. It
+would have read an anchor step on alternate frames under the pre-world
+pose; it should read zero now. That is the number that decides this,
+beside your eyes.
+
+The servo-skulls are placed in the flying companion's post_update; if
+that runs before the player's locomotion post_update they have the same
+one-frame lag, which is the next thing to check for them.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

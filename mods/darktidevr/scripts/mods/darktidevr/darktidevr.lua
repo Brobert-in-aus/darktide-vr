@@ -12517,10 +12517,18 @@ mod:hook_safe(
             presentation.rig_scan.update(self._world, player_unit, dt, t)
         end
         if presentation.body_mirror then
-            -- Recorded here, posed before the next world update (the
-            -- WorldManager.update hook below): joints written after the
-            -- world update do not reach the drawn skin (13:20, 19 September).
-            presentation.body_mirror.schedule(self._world, player_unit, dt, t)
+            -- Posed HERE, after post.body_ik has refreshed this frame's body
+            -- anchor and placed the hands: the copy takes the same frame's
+            -- anchor the camera and the weapon take. Between 13:38 and
+            -- 14:36 on 19 September it was posed from a WorldManager.update
+            -- hook, before the world update, from the previous frame's
+            -- anchor; the anchor steps every other frame, so on those
+            -- frames the copy stood a step behind the view and on the
+            -- others where it should: "one of the two locations is
+            -- definitely the right one, the other lags behind". The copy
+            -- carries no state machine, so its joints written here are
+            -- drawn (the still body at 13:20 was a machine left running).
+            presentation.frame_profile.section("draw.body_mirror", presentation.body_mirror.update, self._world, player_unit, dt, t)
         end
         if presentation.pose_trace then
             presentation.pose_trace.sample(player_unit, t)
@@ -14938,22 +14946,6 @@ end
 -- Level stories can animate the menu camera after UIWorldSpawner.update. Copy
 -- the final primary pose at the last reliable boundary before the world is
 -- submitted, so the duplicate cannot lag or remain at its creation pose.
--- The body copy is posed here, before World.update_animations and
--- World.update_scene run for the frame (WorldManager.update is what calls
--- ScriptWorld.update on every world). Its inputs were recorded in the
--- locomotion extension's post_update. The engine's own animation and scene
--- update is the path that carries joint poses to the drawn skin: written
--- after it, in post_update, the copy's joints reached the skin on some
--- frames and not others (the alternation reported all day), and over a
--- running machine they never did (13:20, 19 September). The weapon and the
--- rigid gloves move only a unit root and never had the problem.
-mod:hook(require("scripts/foundation/managers/world/world_manager"), "update", function(func, self, dt, t)
-    if presentation.body_mirror and presentation.body_mirror.run_scheduled then
-        presentation.frame_profile.section("pre.body_mirror", presentation.body_mirror.run_scheduled, dt, t)
-    end
-    return func(self, dt, t)
-end)
-
 mod:hook(ScriptWorld, "render", function(func, world, ...)
     if presentation.render_world_census then presentation.render_world_census.observe(world) end
     if presentation.hud_panel then presentation.hud_panel.observe_render(world) end

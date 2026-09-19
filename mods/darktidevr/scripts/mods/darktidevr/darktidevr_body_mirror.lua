@@ -892,10 +892,9 @@ function Mirror.install(mod, presentation, options)
             -- idle left running and the whole solved pose written back at
             -- the render boundary, the drawn body stood in the idle, still,
             -- with no hand tracking, while the scene graph held the solve
-            -- (17,369 render checks, no drift). Joint poses written after
-            -- the world update do not reach the skin of a unit whose
-            -- machine is running; they must go in before it (see
-            -- api.run_scheduled).
+            -- (17,369 render checks, no drift). A running machine owns the
+            -- skin; with it disabled the joints written in post_update are
+            -- drawn (the days before, and 14:36).
             pcall(Unit.disable_animation_state_machine, state.unit)
             log_once("machine_" .. tostring(wielded_template and wielded_template.name), "animated_legs=failed error=%s",
                 tostring(err):sub(1, 220))
@@ -952,9 +951,12 @@ function Mirror.install(mod, presentation, options)
     local child_render_over, child_render_max, child_render_worst = 0, 0, "none"
     local child_update_over, child_update_max = 0, 0
     -- After the render (check_after_render) and between frames
-    -- (run_scheduled): how often and how far the copy moved.
+    -- (the top of api.update): how often and how far the copy moved.
     local after_checks, after_moved, after_max = 0, 0, 0
     local between_checks, between_moved, between_max = 0, 0, 0
+    -- The eye at the render boundary against the eye the pose was built
+    -- on (render_eye_lag in the heartbeat): the view's lag on the copy.
+    local eye_lag_checks, eye_lag_over, eye_lag_max = 0, 0, 0
     -- THE CHILDREN (19 September, 13:47 worn run). Everything drawn of the
     -- copy is a child unit: the gear, the hands, the head with its eye
     -- lenses, each linked to the copy's skeleton by the profile spawner
@@ -1002,10 +1004,11 @@ function Mirror.install(mod, presentation, options)
         local parts = {}
         for reason, count in pairs(skipped) do parts[#parts + 1] = reason .. "=" .. count end
         table.sort(parts)
-        mod:info("DARKTIDEVR_BODY_MIRROR prerender calls=%d checks=%d drifted=%d child_render_over_1mm=%d child_render_max_m=%.4f child_render_worst=%s child_update_over_1mm=%d child_update_max_m=%.4f after_render=%d/%d max_m=%.4f between_frames=%d/%d max_m=%.4f skipped=%s",
+        mod:info("DARKTIDEVR_BODY_MIRROR prerender calls=%d checks=%d drifted=%d child_render_over_1mm=%d child_render_max_m=%.4f child_render_worst=%s child_update_over_1mm=%d child_update_max_m=%.4f after_render=%d/%d max_m=%.4f between_frames=%d/%d max_m=%.4f render_eye_lag=%d/%d max_m=%.4f skipped=%s",
             calls, checks, drifts, child_render_over, child_render_max, tostring(child_render_worst),
             child_update_over, child_update_max, after_moved, after_checks, after_max,
-            between_moved, between_checks, between_max, #parts > 0 and table.concat(parts, ",") or "none")
+            between_moved, between_checks, between_max, eye_lag_over, eye_lag_checks, eye_lag_max,
+            #parts > 0 and table.concat(parts, ",") or "none")
     end
     function api.check_before_render(world)
         calls = calls + 1
@@ -1022,13 +1025,22 @@ function Mirror.install(mod, presentation, options)
         -- at this boundary; the worn run showed the drawn body ignoring
         -- them (it stood in the idle while these reads held the solve), so
         -- a write here cannot reach the skin, and this is a read-only check
-        -- of what the engine's own world update did to the copy since the
-        -- module posed it before that update.
+        -- of what happened to the copy between the module's pose in
+        -- post_update and the render.
         local root = array(Unit.world_position(unit, 1))
         local hand = array(Unit.world_position(unit, Unit.node(unit, "j_righthand")))
         local d_root = Mirror.step_m(root, state.render_check.root) or 0
         local d_hand = Mirror.step_m(hand, state.render_check.hand) or 0
         checks = checks + 1
+        -- The eye now against the eye the copy was posed from: the lag the
+        -- view sees between the camera's anchor and the copy's.
+        if state.posed_eye and presentation.eye_pose then
+            local eye_now = presentation.eye_pose(state.avatar)
+            local lag = eye_now and Mirror.step_m(array(eye_now), state.posed_eye) or 0
+            eye_lag_checks = eye_lag_checks + 1
+            if lag >= 0.005 then eye_lag_over = eye_lag_over + 1 end
+            if lag > eye_lag_max then eye_lag_max = lag end
+        end
         -- The children, read a third time, after the engine's world update.
         local child_render, child_render_name = measure_children(unit, state.children)
         if child_render >= 0.001 then child_render_over = child_render_over + 1 end
@@ -1825,6 +1837,9 @@ function Mirror.install(mod, presentation, options)
         -- gains the root's step against the eye (d_unit_rel_eye_m), which
         -- is what the view sees: near zero while walking straight.
         state.smooth_lag = smooth_offset(avatar)
+        -- The eye this pose is built on, for the render check's lag read.
+        local posed_eye = presentation.eye_pose and presentation.eye_pose(avatar)
+        state.posed_eye = posed_eye and array(posed_eye) or nil
         local neck_target = frame and Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale)
         if Mirror.MODES[mode_name].follow_neck and Unit.has_node(unit, "j_neck") then
             -- NO SCALING TO THE NECK any more (19 September). The copy's
@@ -2399,48 +2414,6 @@ function Mirror.install(mod, presentation, options)
         end
     end
     function api.update(world, avatar, dt, t)
-        local ok, err = pcall(update, world, avatar, dt, t)
-        if not ok then
-            log_once("failure", "failed=%s", tostring(err):sub(1, 200))
-            destroy_own()
-            enabled = false; poll = 1e9
-        end
-        -- After the overlay, whose final wrist poses the reflection's arms
-        -- are solved to this frame.
-        if reflection then reflection.update(world, avatar, dt, t) end
-    end
-    -- WHEN THE COPY IS POSED (19 September, from the 13:20 worn run). The
-    -- frame, from the game's own source (state_game.lua, world_manager.lua,
-    -- script_world.lua): the gameplay update, then the world update
-    -- (World.update_animations, then World.update_scene), then the
-    -- extensions' post_update -- where the hands, the weapon and this copy
-    -- were all placed -- then the render. The weapon is a rigid unit and
-    -- the gloves of the hands-only mode move only their unit's root; both
-    -- are steady. This copy has its joints written every frame, and the
-    -- drawn body alternated between two positions while the scene graph
-    -- (17,369 render checks) never did. The 13:20 run pinned the stage:
-    -- with a machine running on the copy and the solve written after the
-    -- world update, in post_update and again at the render boundary, the
-    -- drawn body stood in the machine's idle. Joint writes after the world
-    -- update do not reach the skin that frame; the engine's own animation
-    -- and scene update is what carries joints to the skin, and the game
-    -- writes its own procedural joints before it (the scripted flying
-    -- extension's update, not its post_update). So the copy is posed BEFORE
-    -- the world update now: post_update only records the frame's inputs
-    -- (schedule), and the world manager's update hook runs the pose from
-    -- them (run_scheduled) ahead of World.update_animations. The inputs are
-    -- the previous post_update's -- the avatar's root, the recorded wrist
-    -- poses -- one frame old, which the camera's own anchor (the avatar's
-    -- root as it stands in the gameplay update) shares. Observable: the
-    -- worn report and a recording; the probe and render check keep running.
-    local scheduled = {}
-    function api.schedule(world, avatar, dt, t)
-        scheduled.world, scheduled.avatar, scheduled.dt, scheduled.t = world, avatar, dt, t
-        scheduled.pending = true
-    end
-    function api.run_scheduled(dt, t)
-        if not scheduled.pending then return false end
-        scheduled.pending = false
         -- Between frames: the copy as the last render left it against the
         -- copy now, before this frame's pose. A move here is something
         -- other than this module writing the copy between renders.
@@ -2452,10 +2425,34 @@ function Mirror.install(mod, presentation, options)
             if d >= 0.001 then between_moved = between_moved + 1 end
             if d > between_max then between_max = d end
         end
-        api.update(scheduled.world, scheduled.avatar,
-            type(dt) == "number" and dt or scheduled.dt, type(t) == "number" and t or scheduled.t)
-        return true
+        local ok, err = pcall(update, world, avatar, dt, t)
+        if not ok then
+            log_once("failure", "failed=%s", tostring(err):sub(1, 200))
+            destroy_own()
+            enabled = false; poll = 1e9
+        end
+        -- After the overlay, whose final wrist poses the reflection's arms
+        -- are solved to this frame.
+        if reflection then reflection.update(world, avatar, dt, t) end
     end
+    -- WHEN THE COPY IS POSED (19 September). In the locomotion extension's
+    -- post_update, after post.body_ik has refreshed the frame's body anchor
+    -- and placed the hands: the same frame's anchor the camera and the
+    -- weapon are built on. From 13:38 to 14:36 it was posed from a
+    -- WorldManager.update hook, before the world update, on the previous
+    -- post_update's inputs; the anchor advances every other frame (the
+    -- probe's d_eye_m, 0 then 7 cm), so on the frames it advanced the copy
+    -- stood a step behind the view and on the others where it should --
+    -- "one of the two locations is definitely the right one, the other
+    -- lags behind" -- while the rigid gloves and the weapon, placed in
+    -- post_update from the frame's own anchor, held still. The copy has no
+    -- state machine (the census, 14:20), so its joints written after the
+    -- world update are drawn; the still body at 13:20 was a machine left
+    -- running, which is a different thing. The render check reads the eye
+    -- again at the render boundary against the eye the copy was posed from
+    -- (render_eye_lag); it would have read 7 cm on alternate frames under
+    -- the pre-world pose and reads zero when the pose is on the frame's
+    -- own inputs.
     -- After the engine's render call for the copy's world: the copy read
     -- once more. A move between check_before_render and here is the render
     -- itself (or something in the render hook) moving the copy.

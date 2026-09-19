@@ -501,31 +501,26 @@ end
 assert(not Mirror.has_solve_joints(nil), 'no lookup, no rig')
 assert(not Mirror.has_solve_joints(function() return nil end), 'a lookup answering nil is not true')
 
--- WHEN THE COPY IS POSED (19 September, 13:20 worn run). Joint poses written
--- after the world update do not reach the drawn skin: the copy is posed
--- from the world manager's update hook, before World.update_animations, and
--- the locomotion post_update only records the inputs. Nothing is restored
--- at the render boundary any more. Source scans, on both files.
+-- WHEN THE COPY IS POSED (19 September, 14:36 worn run). In the locomotion
+-- post_update, after post.body_ik has refreshed the frame's body anchor: the
+-- same frame's anchor the camera and the weapon take. Posed before the world
+-- update (13:38-14:36) it stood on the previous frame's anchor, a step
+-- behind the view on alternate frames. Nothing is restored at the render
+-- boundary, and no WorldManager hook poses it. Source scans, on both files.
 assert(not source:find('restore_all', 1, true), 'the render-boundary restore is withdrawn')
-assert(source:find('function api.schedule(world, avatar, dt, t)', 1, true), 'api.schedule records the inputs')
-local run_at = source:find('function api.run_scheduled(dt, t)', 1, true)
-assert(run_at, 'api.run_scheduled poses the copy')
-assert(source:find('api.update(scheduled.world, scheduled.avatar', run_at, true), 'run_scheduled runs the recorded update')
+assert(not source:find('function api.run_scheduled', 1, true), 'no deferred pose')
+assert(source:find('state.posed_eye = posed_eye', 1, true), 'the eye the pose is built on is kept for the render check')
+assert(source:find('render_eye_lag=%d/%d', 1, true), 'the render check reports the eye lag')
 local main_path = arg[1]:gsub('darktidevr_body_mirror%.lua$', 'darktidevr.lua')
 local main_file = assert(io.open(main_path, 'rb')); local main = main_file:read('*a'); main_file:close()
 local post_at = main:find('"post_update",', 1, true)
 assert(post_at, 'the locomotion post_update hook')
 local post_end = main:find('\nmod:hook', post_at, true) or #main
 local post_hook = main:sub(post_at, post_end)
-assert(post_hook:find('presentation.body_mirror.schedule(self._world, player_unit, dt, t)', 1, true),
-  'post_update records the copy inputs')
-assert(not post_hook:find('body_mirror.update', 1, true), 'post_update no longer poses the copy')
-local world_at = main:find('mod:hook(require("scripts/foundation/managers/world/world_manager"), "update"', 1, true)
-assert(world_at, 'a hook on WorldManager.update')
-local world_end = main:find('\nend)', world_at, true)
-local world_hook = main:sub(world_at, world_end)
-local run_call = world_hook:find('presentation.body_mirror.run_scheduled, dt, t', 1, true)
-local original = world_hook:find('return func(self, dt, t)', 1, true)
-assert(run_call and original and run_call < original, 'the copy is posed before the world update runs')
+local ik_at = post_hook:find('"post.body_ik"', 1, true)
+local pose_at = post_hook:find('presentation.body_mirror.update, self._world, player_unit, dt, t', 1, true)
+assert(ik_at and pose_at and ik_at < pose_at, 'post_update poses the copy after the body IK refreshed the anchor')
+assert(not main:find('mod:hook(require("scripts/foundation/managers/world/world_manager"), "update"', 1, true),
+  'no WorldManager.update hook poses the copy')
 
 print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace colliders torso_yaw draws_body turn_leak step_m solve_joints separation height_stretch standing_hips')
