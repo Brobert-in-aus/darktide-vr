@@ -15774,6 +15774,51 @@ extern "C" __declspec(dllexport) int dtvr_set_gameplay_ads(int active) {
   gameplay_ads_active.store(active != 0, std::memory_order_relaxed);
   return 0;
 }
+// The aim zoom the game is rendering with, carried in every published sample
+// the same way the ads flag is. A separate entry point rather than another
+// argument on the aim-state exports: those have callers whose signatures
+// would all have to move together, and this needs to reach the viewer from
+// the projection code, which publishes no aim state of its own.
+std::atomic<float> gameplay_zoom_magnification{1.0F};
+// When it was last set. The magnification is written from the render path and
+// carried out by the aim publisher, which is a DIFFERENT subsystem on a
+// different hook -- so the aim sample's own freshness says nothing about
+// whether the zoom is still being refreshed. If the render path stops (an
+// early return in update_stereo, a teardown, a throw) while the aim hook keeps
+// publishing, a latched magnification would ride out on fresh timestamps and
+// hold the viewer's submitted frustum narrow indefinitely, with nothing on
+// screen to explain it (review, 19 September). Silence means no zoom.
+std::atomic<std::uint64_t> gameplay_zoom_set_ns{0};
+constexpr std::uint64_t kGameplayZoomMaximumAgeNs = 100'000'000ULL;
+float current_gameplay_zoom() {
+  const auto set_ns = gameplay_zoom_set_ns.load(std::memory_order_relaxed);
+  if (set_ns == 0) return 1.0F;
+  const auto now_ns = static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count());
+  if (now_ns < set_ns || now_ns - set_ns > kGameplayZoomMaximumAgeNs) {
+    return 1.0F;
+  }
+  return gameplay_zoom_magnification.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) int dtvr_set_gameplay_zoom(
+    float magnification) {
+  // Out of range is refused, not clamped. A wrong magnification here is not a
+  // cosmetic error -- it is the two eyes pulled apart by
+  // 2 * 0.1224 * (m - 1) radians.
+  if (!(magnification >= 1.0F) || !(magnification <= 4.0F)) {
+    return 1;
+  }
+  gameplay_zoom_magnification.store(magnification, std::memory_order_relaxed);
+  gameplay_zoom_set_ns.store(
+      static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now().time_since_epoch())
+              .count()),
+      std::memory_order_relaxed);
+  return 0;
+}
 bool publish_gameplay_aim_state(float distance_metres, bool active, bool hit,
     bool target_point_valid = false, darktidevr::math::Vec3 target_point = {},
     std::uint64_t head_sequence = 0, std::uint64_t head_generation = 0,
@@ -15792,6 +15837,7 @@ bool publish_gameplay_aim_state(float distance_metres, bool active, bool hit,
         active,
         active && hit,
         active && gameplay_ads_active.load(std::memory_order_relaxed),
+        current_gameplay_zoom(),
         0, active && target_point_valid, target_point,
         head_sequence, head_generation, recenter_generation};
     return writer.publish(state);

@@ -712,6 +712,7 @@ local function ensure_ui_native_hooks()
             float panel_qy, float panel_qz, float panel_qw);
         int dtvr_commit_gameplay_generation(unsigned long long generation);
         int dtvr_set_gameplay_ads(int active);
+        int dtvr_set_gameplay_zoom(float magnification);
         int dtvr_set_gameplay_aim_state(int active, int hit,
             float distance_metres);
         int dtvr_set_gameplay_aim_target(int hit, float distance_metres,
@@ -1040,6 +1041,18 @@ local function ensure_ui_native_hooks()
             end
         end
     end
+    -- The aim zoom the cameras are rendering with, sent to the viewer so it
+    -- submits the SAME projection to the runtime. Optional like the target
+    -- transport above: an older capture DLL has no such symbol, and touching
+    -- a missing one through the FFI raises. Without it the zoom stays off
+    -- (see zoom_magnification's own guard), because a zoom the viewer cannot
+    -- be told about is the fault this exists to fix.
+    local zoom_ok, zoom_function = pcall(function()
+        return library.dtvr_set_gameplay_zoom
+    end)
+    presentation.native_gameplay_zoom = zoom_ok and zoom_function or nil
+    mod:info("DARKTIDEVR_AIM zoom_transport=%s",
+        zoom_ok and "ready" or "unavailable")
     local target_ok, target_function = pcall(function()
         return library.dtvr_set_gameplay_aim_target
     end)
@@ -2926,6 +2939,14 @@ local function apply_head_tracking(clean_position, clean_rotation)
         -- Recorded, not yet believed: whether it reaches the cameras is
         -- decided where they are set.
         presentation.ads_zoom_frame = zoom
+        -- NOT published here. This is the zoom that was ASKED for, and the
+        -- cameras only receive it when runtime_projection_matches_target
+        -- holds; when it does not, apply_runtime_recentered_projection never
+        -- runs and copy_projection hands both cameras the stock unzoomed
+        -- projection. Telling the viewer to narrow for a zoom that never
+        -- reached the cameras is this same divergence with its sign flipped
+        -- -- the hazard the comment beside ads_zoom_applied already names.
+        -- It is published from there instead (review, 19 September).
         -- THE OTHER END OF THE FRUSTUM RATIO (19 September). The world is
         -- rendered through THIS frustum; the reticle is placed through the one
         -- the viewer submits. The user reports the reticle sits 1.2x to 1.7x
@@ -5498,6 +5519,15 @@ local function update_stereo(manager)
     -- 18 September).
     presentation.ads_zoom_applied = runtime_projection_matches_target and
         presentation.ads_zoom_frame or 1
+    -- The viewer is told THIS, the magnification the eyes are actually
+    -- rendered with, so the projection it submits to the runtime is the one
+    -- these cameras used. Every frame rather than on change: the producer
+    -- lets the value decay to 1 if it stops hearing, so silence has to mean
+    -- "no zoom" rather than "carry on".
+    if presentation.native_gameplay_zoom then
+        pcall(presentation.native_gameplay_zoom,
+            presentation.ads_zoom_applied or 1)
+    end
     local left_optical_rotation = nil
     local right_optical_rotation = nil
     if runtime_projection_matches_target then
@@ -6614,6 +6644,17 @@ function presentation.ads_zoom_magnification()
     end
     local magnification = presentation.projection_math.zoom_magnification(
         percent, presentation.ads_zoom_blend)
+    -- No transport, no zoom. The viewer has to submit the projection the
+    -- cameras rendered with; if the magnification cannot reach it, zooming
+    -- would pull the player's two eyes apart by 2 * 0.1224 * (m - 1) radians
+    -- and there would be no way for the viewer to undo it (19 September).
+    if not presentation.native_gameplay_zoom then
+        if not presentation.ads_zoom_untransported_logged then
+            presentation.ads_zoom_untransported_logged = true
+            mod:info("DARKTIDEVR_AIM zoom=suppressed reason=no_transport")
+        end
+        return 1
+    end
     if (magnification > 1.0001) ~= (presentation.ads_zoom_logged == true) then
         presentation.ads_zoom_logged = magnification > 1.0001
         mod:info("DARKTIDEVR_AIM zoom=%s magnification=%.3f percent=%s",
@@ -9149,19 +9190,24 @@ function presentation.zoom_corrected_aim_point(world_point)
         local file = io_api and io_api.open(
             "./../mods/darktidevr/darktidevr_zoom_aim_correction.flag", "r")
         if file then file:close() end
-        -- Absent means ON here: the flag exists to switch the correction
-        -- OFF for a comparison, not to arm it.
-        presentation.zoom_aim_correction_flag = file == nil
+        -- Absent means OFF: the flag arms the correction for a comparison
+        -- against a viewer that does not carry the zoom.
+        presentation.zoom_aim_correction_flag = file ~= nil
     end
-    -- Default ON. Square on at a wall the angular half of this does nothing
-    -- -- a centred target has nothing across the view to scale -- and the
-    -- reticle still renders into the wall (user, 19 September). So the fault
-    -- dead ahead is the projection the world is rendered through against the
-    -- one the reticle is composited against, and the radial half below is the
-    -- right shape for it even though 3 per cent is plainly the wrong size.
-    -- The flag turns the whole correction off for an A/B against the
-    -- behaviour that predates the zoom, which was reported correct.
-    if presentation.zoom_aim_correction_flag == false then return world_point end
+    -- OFF by default, and the reason is that its premise stopped being true.
+    -- This correction exists because "the viewer submits the runtime's own
+    -- field of view unchanged -- that is what makes it a zoom". It does not
+    -- any more: the magnification reaches the viewer and it submits the
+    -- zoomed frustum, so the reticle is already composited through the same
+    -- projection the world was rendered in and needs no moving. Left on it
+    -- would push the point outward by about (m-1) of its off-axis angle and
+    -- shrink its range on top -- roughly 1.5 degrees of reticle error at
+    -- m=1.15 and ten degrees off centre, in the very feature being tested
+    -- (review, 19 September).
+    --
+    -- The flag arms it again for an A/B rather than deleting it, because the
+    -- arithmetic is still right for a viewer that does not carry the zoom.
+    if presentation.zoom_aim_correction_flag ~= true then return world_point end
     local magnification = tonumber(presentation.ads_zoom_applied)
     if not world_point or not magnification or magnification <= 1.0001 or
             not controller_observation.head_aim_qw then

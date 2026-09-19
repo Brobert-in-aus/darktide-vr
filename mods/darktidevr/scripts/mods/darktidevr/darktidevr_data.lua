@@ -54,11 +54,13 @@ return {
                                 -- value keeps it: DMF stores the chosen
                                 -- number, and a default only ever applies to
                                 -- a setting that has never been set.
-                                -- OFF by default since 19 September. The
-                                -- zoom narrows the frustum the game's cameras
-                                -- render with, and the viewer -- which never
-                                -- learns of it -- keeps submitting the
-                                -- UNZOOMED projection to the runtime. Each
+                                -- Back on at 5 now that the magnification
+                                -- reaches the viewer (19 September). It was
+                                -- briefly 0 because the zoom narrows the
+                                -- frustum the game's cameras render with and
+                                -- the viewer -- which did not learn of it --
+                                -- kept submitting the UNZOOMED projection to
+                                -- the runtime. Each
                                 -- eye's frustum is asymmetric in the opposite
                                 -- direction, so magnifying each eye's image
                                 -- about its own optical axis pushes the two
@@ -70,14 +72,15 @@ return {
                                 -- converge the reticules". Human fusion gives
                                 -- out around a degree.
                                 --
-                                -- It stays as an option because the fault is
-                                -- the projection the viewer submits, not the
-                                -- zoom itself; when the magnification is
-                                -- carried across to the viewer this can come
-                                -- back on.
+                                -- `dtvr_set_gameplay_zoom` carries it across
+                                -- now and the viewer builds its submitted
+                                -- frustum from the same zoomed one, so the
+                                -- two projections agree by construction. With
+                                -- no transport the Lua refuses to zoom at
+                                -- all rather than diverge.
                                 setting_id = "vr_ads_zoom",
                                 type = "numeric",
-                                default_value = 0,
+                                default_value = 5,
                                 range = {0, 30},
                                 decimals_number = 0,
                                 step_size_value = 1,

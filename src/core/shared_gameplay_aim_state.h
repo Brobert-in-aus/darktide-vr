@@ -7,7 +7,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedGameplayAimStateName[] =
-    L"Local\\DarktideVR-gameplay-aim-state-v5";
+    L"Local\\DarktideVR-gameplay-aim-state-v6";
 
 struct SharedGameplayAimState {
   std::uint64_t sequence{};
@@ -18,6 +18,23 @@ struct SharedGameplayAimState {
   // Aim-down-sights (alternate fire) held on the wielded weapon; the viewer
   // tightens the reticle and draws the focus vignette from it.
   bool aiming_down_sights{};
+  // The aim zoom the GAME is rendering with this frame, as a magnification.
+  //
+  // It has to cross, and this is why. The zoom narrows the frustum the game's
+  // cameras render with (Lua: zoomed_frustum). Until 19 September the viewer
+  // never learned of it and kept submitting the runtime's UNZOOMED field of
+  // view, so the runtime displayed a zoomed image as though it were not. Each
+  // eye's frustum leans the opposite way, so recentring rotates each view onto
+  // its own optical axis 0.1224 rad off the fused forward -- and magnifying
+  // each eye's image about THAT axis moves the two eyes' content in opposite
+  // directions. Divergence is 2 * 0.1224 * (m - 1): 0.42 degrees at three per
+  // cent, 1.93 at fifteen, against a fusion limit near one. Worn, at fifteen:
+  // "so diverged I couldn't visually converge the reticules".
+  //
+  // 1 means no zoom, and anything outside [1, 4] is rejected rather than
+  // clamped -- a bad magnification here pulls the player's eyes apart, so it
+  // must not be guessed at.
+  float zoom_magnification{1.0F};
   std::uint64_t transport_generation{};
   bool target_point_valid{};
   math::Vec3 target_point{}; // OpenXR coordinates relative to the sampled origin

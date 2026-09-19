@@ -1299,6 +1299,12 @@ class OpenXrProbe {
     std::uint64_t presentation_transport_generation{};
     darktidevr::core::SharedGameplayAimStateReader gameplay_aim_state_reader;
     darktidevr::core::SharedGameplayAimState gameplay_aim_state{};
+    // The last magnification read successfully, and when the sample carrying
+    // it was published. Held across a failed read and dropped only once it is
+    // genuinely stale.
+    float held_zoom_magnification = 1.0F;
+    std::uint64_t held_zoom_timestamp_ns = 0;
+    bool zoom_reported_active = false;
     std::uint64_t gameplay_aim_sequence{};
     std::uint64_t gameplay_aim_transport_generation{};
     darktidevr::core::MenuPointerInputState menu_pointer_state;
@@ -3297,6 +3303,54 @@ class OpenXrProbe {
         // presenting the last complete stereo pair during that interval.
         // Falling through to the desktop capture here exposes the engine's
         // transient mono/right-eye presentation in both eyes.
+        // THE AIM ZOOM THE GAME IS RENDERING WITH, read here rather than in
+        // the reticle path. The projection has to be right whether or not the
+        // reticle is enabled, and `gameplay_aim_state` above is only
+        // refreshed inside `derive_gameplay_reticle`, which is gated on it.
+        //
+        // A stale or invalid sample means NO zoom rather than the last one:
+        // keeping a stale magnification after the player leaves the sights
+        // would hold their eyes apart with nothing on screen to explain it.
+        float submitted_zoom_magnification = 1.0F;
+        {
+          darktidevr::core::SharedGameplayAimState zoom_sample{};
+          const auto zoom_now_ns = static_cast<std::uint64_t>(
+              std::chrono::duration_cast<std::chrono::nanoseconds>(
+                  std::chrono::steady_clock::now().time_since_epoch())
+                  .count());
+          constexpr std::uint64_t maximum_zoom_age_ns = 100'000'000ULL;
+          // A read that fails is not news. `read` gives up after four
+          // seqlock attempts and the publisher runs at the fixed update, so a
+          // single lost read is ordinary -- and dropping to 1.0 on it would
+          // yank the eyes by the whole magnification for one frame and back,
+          // 1.93 degrees at m=1.15. The last good value is held until it is
+          // genuinely stale, which keeps "no stale zoom" without the snap
+          // (review, 19 September).
+          if (gameplay_aim_state_reader.read(zoom_sample) &&
+              std::isfinite(zoom_sample.zoom_magnification) &&
+              zoom_sample.zoom_magnification >= 1.0F &&
+              zoom_sample.zoom_magnification <= 4.0F) {
+            held_zoom_magnification = zoom_sample.zoom_magnification;
+            held_zoom_timestamp_ns = zoom_sample.timestamp_ns;
+          }
+          if (held_zoom_timestamp_ns != 0 &&
+              zoom_now_ns >= held_zoom_timestamp_ns &&
+              zoom_now_ns - held_zoom_timestamp_ns <= maximum_zoom_age_ns) {
+            submitted_zoom_magnification = held_zoom_magnification;
+          } else {
+            held_zoom_magnification = 1.0F;
+          }
+          // Logged on entering and leaving a zoom rather than on every float
+          // change: the blend eases over about fifteen frames and each one is
+          // a different number, which is fifteen lines per entry and fifteen
+          // per exit for a value the log already carries elsewhere.
+          const bool zooming_now = submitted_zoom_magnification > 1.0001F;
+          if (zooming_now != zoom_reported_active) {
+            zoom_reported_active = zooming_now;
+            std::cout << "openxr.submitted_zoom=" << submitted_zoom_magnification
+                      << " zooming=" << (zooming_now ? 1 : 0) << '\n';
+          }
+        }
         constexpr std::uint64_t cached_pair_grace_milliseconds = 5000;
         const auto shared_pair_stale_milliseconds =
             static_cast<std::uint64_t>(
@@ -3334,11 +3388,22 @@ class OpenXrProbe {
                     ? submitted_original_view_poses[eye]
                     : (recentered_view_poses_valid ? recentered_view_poses[eye]
                                                    : located_views[eye].pose);
-            const darktidevr::math::Fov runtime_fov{
-                located_views[eye].fov.angleLeft,
-                located_views[eye].fov.angleRight,
-                located_views[eye].fov.angleUp,
-                located_views[eye].fov.angleDown};
+            // Narrowed by the aim zoom the game is rendering with, so the
+            // projection submitted to the runtime is the one the cameras
+            // actually used. Before 19 September the viewer never learned of
+            // the zoom and submitted the unzoomed frustum for a zoomed image:
+            // each eye's content moved outward about its OWN optical axis,
+            // 0.1224 rad off the fused forward, in opposite directions --
+            // 2 * 0.1224 * (m - 1) radians of divergence, 0.42 degrees at
+            // three per cent and 1.93 at fifteen, against a fusion limit near
+            // one degree.
+            const darktidevr::math::Fov runtime_fov =
+                darktidevr::math::zoomed_fov(
+                    {located_views[eye].fov.angleLeft,
+                     located_views[eye].fov.angleRight,
+                     located_views[eye].fov.angleUp,
+                     located_views[eye].fov.angleDown},
+                    submitted_zoom_magnification);
             const auto recentered =
                 darktidevr::math::recentered_symmetric_projection(
                     runtime_fov, render_aspect_ratio);

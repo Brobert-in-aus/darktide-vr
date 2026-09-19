@@ -93,6 +93,20 @@ bool fov_usable(Fov runtime_fov);
 RecenteredProjection recentered_symmetric_projection(
     Fov runtime_fov, float render_aspect);
 
+// The runtime frustum narrowed by an aim-zoom magnification: every edge's
+// TANGENT divided by it, which is what magnifies an image about the view
+// axis.
+//
+// Character for character the same arithmetic as the Lua's
+// Projection.zoomed_frustum, and it has to stay that way. The game's cameras
+// render through the Lua's version and the runtime displays the result
+// through this one; any difference between them is the two eyes pulled apart,
+// because recentring rotates each eye onto its own optical axis 0.1224 rad
+// off the fused forward and a magnification about THAT axis moves the eyes in
+// opposite directions. Out of range or not finite returns the frustum
+// untouched, which is no zoom rather than a guess.
+Fov zoomed_fov(Fov runtime_fov, float magnification);
+
 // Builds a cylindrical billboard basis for Darktide's Z-up world. Camera
 // pitch/roll are deliberately removed. Near a vertical look direction, the
 // previous horizontal right vector prevents an undefined yaw and visible flip.

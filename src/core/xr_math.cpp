@@ -250,6 +250,19 @@ bool fov_usable(Fov runtime_fov) {
          runtime_fov.angle_down < runtime_fov.angle_up;
 }
 
+Fov zoomed_fov(Fov runtime_fov, float magnification) {
+  if (!std::isfinite(magnification) || !(magnification > 1.0001F) ||
+      magnification > 4.0F) {
+    return runtime_fov;
+  }
+  const auto edge = [magnification](float angle) {
+    if (!std::isfinite(angle)) return angle;
+    return std::atan(std::tan(angle) / magnification);
+  };
+  return Fov{edge(runtime_fov.angle_left), edge(runtime_fov.angle_right),
+             edge(runtime_fov.angle_up), edge(runtime_fov.angle_down)};
+}
+
 RecenteredProjection recentered_symmetric_projection(
     Fov runtime_fov, float render_aspect) {
   if (!(render_aspect > 0.0F) || !std::isfinite(render_aspect) ||
