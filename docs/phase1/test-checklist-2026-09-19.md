@@ -662,6 +662,51 @@ The servo-skulls are placed in the flying companion's post_update; if
 that runs before the player's locomotion post_update they have the same
 one-frame lag, which is the next thing to check for them.
 
+### 1s. Worn at 14:44: the flicker is gone; the stock legs on the copy; cloth and skulls
+
+Your report: flicker gone; physics objects (cloth) still wobbling; the
+skulls still flickering; and, with the body working, re-enable the
+original third-person model's legs and attach them to the torso, since
+the custom-IK run animation is bad.
+
+The log: `render_eye_lag=44/22498 max_m=0.0169` (44 frames over 5 mm in
+22,498, the largest 1.7 cm, against an anchor step of 7.4 cm every other
+frame under the pre-world pose), the root within a millimetre of the eye
+on 7,539 moving lines, no drift, nothing moved after the render or
+between frames, feet flat at 3 cm.
+
+**The legs.** In the animated-legs mode (the flag you are running), the
+copy's leg joints, everything under the two upper legs, take their local
+poses from the avatar's animation every frame, so they hang from the
+copy's own hips wherever the solve has put them and run with the game's
+clips; the gait stands down. Nothing above the hips is read; the guard
+in the test cuts the two marked blocks out before it scans for avatar
+reads, so anything else would still fail it. The joints share indices
+because the copy is spawned from the same profile; that is checked by
+name at ready (`animated_legs=ready legs=stock`), and a mismatch keeps
+the gait (`legs=gait`). A `stock_legs` line every 900 frames gives the
+copy's hips and the avatar's hips above the floor and the copy's toes
+above it: those numbers say whether the legs need lowering or the feet
+grounding, and I will not guess at either before they are read.
+
+**Cloth.** The body now steps with the anchor, 0 then 7.4 cm on alternate
+frames while you move, as the camera does. Cloth is simulated against
+that stepping body, so it wobbles where the stock avatar's, on the
+game's interpolated root, does not. That is a property of the anchor's
+cadence, not of the copy; making it smooth means moving the camera, the
+hands and the weapon onto an interpolated anchor together, which is a
+separate piece of work and would take the wobble with it.
+
+**Skulls.** The skull module moves the companion's root children by an
+offset in the flying companion's post_update, which runs after the
+player's locomotion post_update (the systems are registered in that
+order), so it is not the phase the body had. What timeline the offset
+and the companion's own root are on is not known from the code, so this
+build adds a probe: `DARKTIDEVR_SKULL_MOTION` lines while you move, with
+the step of the owner's root, the eye, the skull's own root, the drawn
+offset, and the skull against the eye. The eye steps 0 then 7 cm; the
+column that steps every frame instead is the one on the other timeline.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

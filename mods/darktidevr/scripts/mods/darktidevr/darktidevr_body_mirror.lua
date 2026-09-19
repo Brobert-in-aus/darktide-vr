@@ -1700,20 +1700,35 @@ function Mirror.install(mod, presentation, options)
             -- snapshot and restore), and the machine if a weapon is known.
             -- The machine is not enabled on the copy until it is assigned:
             -- until then the spawner's disabled idle stays frozen.
-            state.machine, state.leg_indices = nil, nil
+            state.machine, state.leg_indices, state.legs_from_avatar = nil, nil, nil
             if Mirror.MODES[mode_name].animated_legs and state.legs then
                 local roots = {[state.legs.left.hip] = true, [state.legs.right.hip] = true}
                 state.leg_indices = Mirror.leg_indices(state.count,
                     function(index) return Unit.scene_graph_parent(unit, index) end, roots)
-                -- The gameplay machine if it can be set (assign_machine
-                -- enables the machine for the attempt and disables it again
-                -- when the engine refuses); the gait otherwise. Nothing is
-                -- restored at the render boundary any more: the 13:20 worn
-                -- run showed that joints written after the world update are
-                -- not drawn over a running machine.
-                assign_machine()
-                mod:info("DARKTIDEVR_BODY_MIRROR animated_legs=ready machine=%s leg_joints=%d",
-                    tostring(state.machine),
+                -- LEGS FROM THE STOCK MODEL (begin). The user, 14:44 on 19
+                -- September, with the flicker gone: "try re-enabling the
+                -- original 3p model legs and attaching them to the torso,
+                -- since the custom-ik run animation is really bad". The
+                -- legs are the one part of the drawn body that now comes
+                -- from the base model's animation: every frame the local
+                -- pose of each joint under the two upper legs is copied
+                -- from the avatar onto the copy, so the legs hang from the
+                -- copy's own hips, wherever the solve has put them, and
+                -- run with the game's clips. Nothing above the hips is
+                -- read. The copy is spawned from the same profile as the
+                -- avatar, so the joints share indices; that is checked here
+                -- by name, and a mismatch keeps the gait.
+                local probes = {"j_hips", "j_leftupleg", "j_leftleg", "j_leftfoot", "j_lefttoebase",
+                    "j_rightupleg", "j_rightleg", "j_rightfoot", "j_righttoebase"}
+                local same = Mirror.same_layout(state.count, Unit.num_scene_graph_items(avatar),
+                    function(name) return Unit.has_node(unit, name) and Unit.node(unit, name) or nil end,
+                    function(name) return Unit.has_node(avatar, name) and Unit.node(avatar, name) or nil end,
+                    probes)
+                state.legs_from_avatar = same or nil
+                if not same then log_once("stock_legs_layout", "stock_legs=refused reason=layout_differs") end
+                -- LEGS FROM THE STOCK MODEL (end).
+                mod:info("DARKTIDEVR_BODY_MIRROR animated_legs=ready legs=%s leg_joints=%d",
+                    same and "stock" or "gait",
                     (function() local n = 0; for _ in pairs(state.leg_indices) do n = n + 1 end; return n end)())
             end
             -- Deferred: see hide_near_eye. The scale eases over about a
@@ -1935,7 +1950,33 @@ function Mirror.install(mod, presentation, options)
         -- INPUTS, which the user chose over its pose; the guard's rule on
         -- joints stands.
         local animated = state.machine ~= nil and state.leg_indices ~= nil
-        if animated then
+        -- LEGS FROM THE STOCK MODEL (begin): see the ready block. The leg
+        -- joints' local poses, from the avatar's animation, onto the copy;
+        -- the gait stands down. Measured on the periodic line below as
+        -- stock_legs: the copy's hips and the avatar's hips above their
+        -- roots, and the copy's toes above the avatar's floor.
+        if state.legs_from_avatar and state.leg_indices then
+            local ok = pcall(function()
+                for index in pairs(state.leg_indices) do
+                    Unit.set_local_pose(unit, index, Unit.local_pose(avatar, index))
+                end
+                World.update_unit(world, unit)
+            end)
+            if ok then animated = true else log_once("stock_legs_copy", "stock_legs=copy_failed") end
+            if state.frames % 900 == 0 and Unit.has_node(unit, "j_hips") and Unit.has_node(avatar, "j_hips") then
+                local floor = Vector3.z(Unit.world_position(avatar, 1))
+                local function toe(side)
+                    local name = "j_" .. side .. "toebase"
+                    return Unit.has_node(unit, name) and string.format("%.3f", Vector3.z(Unit.world_position(unit, Unit.node(unit, name))) - floor) or "na"
+                end
+                mod:info("DARKTIDEVR_BODY_MIRROR stock_legs hips_copy_above_floor_m=%.3f hips_avatar_above_floor_m=%.3f toe_above_floor_m=%s/%s stretch=%.4f",
+                    Vector3.z(Unit.world_position(unit, Unit.node(unit, "j_hips"))) - floor,
+                    Vector3.z(Unit.world_position(avatar, Unit.node(avatar, "j_hips"))) - floor,
+                    toe("left"), toe("right"), state.stretch or 1)
+            end
+        end
+        -- LEGS FROM THE STOCK MODEL (end).
+        if state.machine ~= nil and state.leg_indices ~= nil then
             local ok = pcall(function()
                 for _, name in ipairs({"anim_move_speed", "aim", "climb_time"}) do
                     local ids = state.machine_variables[name]

@@ -407,6 +407,22 @@ assert(Mirror.MOTION_MOVING_M > 0.0005 and Mirror.MOTION_MOVING_M < 0.01, 'movin
 -- every joint and fell back to `Unit.world_position(avatar, arm.hand)`, and
 -- this check refuses both by name.
 local file = assert(io.open(arg[1], 'rb')); local source = file:read('*a'); file:close()
+-- THE LEGS ARE THE EXCEPTION (user, 14:44 on 19 September, with the flicker
+-- gone): "try re-enabling the original 3p model legs and attaching them to
+-- the torso". The reads of the avatar's leg joints live between two markers
+-- and are cut out before the scan, so anything else read from the avatar
+-- still fails here. Each marked block must close, and there must be some.
+local scanned, blocks = source, 0
+while true do
+  local open_at = scanned:find('LEGS FROM THE STOCK MODEL (begin)', 1, true)
+  if not open_at then break end
+  local _, close_at = scanned:find('LEGS FROM THE STOCK MODEL (end).', open_at, true)
+  assert(close_at, 'a stock-legs block that never closes')
+  scanned = scanned:sub(1, open_at - 1) .. scanned:sub(close_at + 1)
+  blocks = blocks + 1
+end
+assert(blocks >= 2, 'the stock-legs blocks (ready and update) are marked')
+assert(source:find('Unit%.local_pose%(avatar, index%)'), 'the stock legs are copied joint by joint from the avatar')
 local forbidden = {
   'Unit%.local_pose%(avatar', 'Unit%.local_position%(avatar', 'Unit%.local_rotation%(avatar',
   'Unit%.local_scale%(avatar', 'Unit%.node%(avatar', 'shoulders%(avatar%)',
@@ -414,9 +430,9 @@ local forbidden = {
   'Unit%.world_position%(avatar,%s*1%d', 'Unit%.world_rotation%(avatar,%s*1%d',
 }
 for _, pattern in ipairs(forbidden) do
-  local at = source:find(pattern)
+  local at = scanned:find(pattern)
   assert(not at, 'the copy reads the avatar beyond its root: ' .. pattern .. ' at ' ..
-    (at and select(2, source:sub(1, at):gsub('\n', '')) + 1 or 0))
+    (at and select(2, scanned:sub(1, at):gsub('\n', '')) + 1 or 0))
 end
 assert(source:find('Unit%.world_position%(avatar, 1%)'), 'the root position is the one allowed read, and it is used')
 

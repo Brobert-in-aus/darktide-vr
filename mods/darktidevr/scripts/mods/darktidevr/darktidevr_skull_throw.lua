@@ -678,6 +678,7 @@ function Skull.install(mod, presentation)
         return stepped, stepped_velocity, false
     end
 
+    local skull_motion_lines = 0
     local function place(extension, skull, record, drawn, axis, angle)
         record.nodes = record.nodes or child_nodes(skull)
         record.base, record.written = record.base or {}, record.written or {}
@@ -736,6 +737,36 @@ function Skull.install(mod, presentation)
             record.written[node] = Vector3Box(desired)
         end
         World.update_unit_and_children(extension._world, skull)
+        -- THE MOTION PROBE (19 September, 14:44: "skulls are still
+        -- flickering" after the body's flicker was found to be two
+        -- timelines -- the view on the fixed-step body anchor, the copy on
+        -- the avatar's interpolated root). While the owner moves, the
+        -- step since the previous frame of: the companion's own root (the
+        -- game's), the drawn offset this module adds, the eye the view is
+        -- built on, and the owner's root. The one whose cadence differs
+        -- from the eye's (0 then a double step on alternate frames) is on
+        -- the other timeline. Budgeted; nothing else changes.
+        local owner = local_player_unit()
+        local eye = owner and presentation.eye_pose and presentation.eye_pose(owner)
+        if owner and eye and skull_motion_lines < 2000 then
+            local root_now = Unit.world_position(skull, 1)
+            local owner_now = Unit.world_position(owner, 1)
+            local drawn_now = Vector3(drawn[1], drawn[2], drawn[3])
+            local probe = record.probe
+            if probe then
+                local d_owner = Vector3.distance(owner_now, probe.owner:unbox())
+                if d_owner > 0.005 then
+                    skull_motion_lines = skull_motion_lines + 1
+                    mod:info("DARKTIDEVR_SKULL_MOTION d_owner_root_m=%.4f d_eye_m=%.4f d_skull_root_m=%.4f d_drawn_m=%.4f d_skull_rel_eye_m=%.4f",
+                        d_owner, Vector3.distance(eye, probe.eye:unbox()), Vector3.distance(root_now, probe.root:unbox()),
+                        Vector3.distance(drawn_now, probe.drawn:unbox()),
+                        Vector3.distance(root_now + drawn_now - eye, probe.root:unbox() + probe.drawn:unbox() - probe.eye:unbox()))
+                end
+                probe.owner:store(owner_now); probe.eye:store(eye); probe.root:store(root_now); probe.drawn:store(drawn_now)
+            else
+                record.probe = {owner = Vector3Box(owner_now), eye = Vector3Box(eye), root = Vector3Box(root_now), drawn = Vector3Box(drawn_now)}
+            end
+        end
     end
     local function unplace(record, skull)
         if not record or not record.nodes or not record.base or not skull or not Unit.alive(skull) then return end

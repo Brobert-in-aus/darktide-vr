@@ -1002,6 +1002,59 @@ the absence of the pre-world hook. Not worn.
 The 13:20 fact stands and is narrower than it was read: a running
 machine owns the skin. It was not a rule about the phase.
 
+## Worn, 14:44: the flicker is gone
+
+On 3391c66. The user: "flicker is gone, however physics objects (cloth
+etc) is still flickering/wobbling and skulls are still flickering. Now
+we've got this working, try re-enabling the original 3p model legs and
+attaching them to the torso, since the custom-ik run animation is really
+bad."
+
+```
+prerender checks=22498 drifted=0 after_render=0/22498 between_frames=0/22497 render_eye_lag=44/22498 max_m=0.0169
+moving lines 7539: d_unit_rel_eye_m mean 0.0006 max 0.0299
+gait ... toe_above_ground_m=0.028/0.030 foot_pitch_deg=-28.0/-27.2   (37 of 40 lines)
+```
+
+The whole day's flicker, in one line: the copy was on a different
+timeline from the view. First on the avatar's interpolated root while
+the view stepped on the fixed-step anchor; then, after the morning's
+shift, on a mix of the two; then, posed before the world update, on the
+anchor but a frame behind it. The view, the hands and the weapon are
+built on the anchor refreshed in the locomotion post_update; the copy
+posed there, after the refresh, from the frame's own eye, holds still
+against them. `render_eye_lag` reads the eye at the render boundary
+against the eye the pose was built on and is the number that says so.
+
+### The stock legs
+
+The user's instruction at 14:44 amends the separation rule for the legs.
+In the animated-legs mode the copy's leg joints (under the two upper
+legs, `Mirror.leg_indices`) take `Unit.local_pose(avatar, index)` every
+frame; the gait stands down. The layout is checked by name at ready
+(`Mirror.same_layout` on the hips, upper legs, lower legs, feet and toes
+of both units); a mismatch keeps the gait. The test's separation scan
+cuts the two marked blocks out before scanning, so every other avatar
+read still fails it. `stock_legs hips_copy_above_floor_m=..
+hips_avatar_above_floor_m=.. toe_above_floor_m=../.. stretch=..` every
+900 frames: whether the legs need lowering or grounding is read off
+that, not guessed. The height stretch scales the hips and feet when the
+calibrated height is outside the settable range; copied local poses
+would overwrite the feet's scale, and the line prints the stretch so a
+run with one is recognisable. Not worn.
+
+### Cloth and the skulls
+
+Cloth is simulated against a body that steps 0 then 7.4 cm every other
+frame: the anchor's cadence, which the camera, the hands and the weapon
+share. It wobbles for that reason; the stock avatar's cloth rides the
+game's interpolated root. Smoothing it is a change to the anchor itself,
+for everything at once. The skulls: their offset is applied in the
+flying companion's post_update, registered after the locomotion system
+(`extension_system_configuration.lua`), so it runs after the anchor
+refresh; which timeline the companion's own root and the offset are on
+is for a probe to say.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows
