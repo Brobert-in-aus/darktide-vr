@@ -169,7 +169,10 @@ Mirror.MODES = {
     -- this module.
     reflection = {distance = 0, facing = false, hide_head = false, solve_arms = true, follow_neck = true,
         clavicles = true, body_yaw = true, protract = true, stretch = true, reflect = true,
-        gait = true, arm_length = {min = 0.6, max = 1.6}},
+        gait = true, arm_length = {min = 0.6, max = 1.6},
+        -- 15:00, 19 September: the stock legs, the head on the headset, the
+        -- fingers from the overlay's hands, the wielded weapon.
+        animated_legs = true, follow_head = true, weapons = true},
     -- "overlay" without the clavicle swing, for A/B (milestone 3).
     overlaystock = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true},
@@ -597,6 +600,33 @@ function Mirror.reflected_root(root, pivot, heading, distance)
     return {2 * pivot[1] - root[1] + fx * distance, 2 * pivot[2] - root[2] + fy * distance, root[3]}
 end
 
+-- A TRUE MIRROR (user, 15:00 on 19 September: "it should be a true mirror,
+-- rather than me but rotated 180 deg"). Until then the reflection was the
+-- solved copy turned about the player and stood ahead: a person facing
+-- you, whose right hand rises when your right does, on your left. A mirror
+-- is a reflection across a plane: the vertical plane half the mirror
+-- distance ahead of the player, perpendicular to their heading, so the
+-- reflection stands the same distance beyond it. Points and directions
+-- reflect across it, a yaw reflects as its direction does, and each side
+-- of the reflection takes the OTHER side's targets. Pure, 3-arrays.
+function Mirror.mirror_plane(pivot, heading, distance)
+    local nx, ny = -math.sin(heading), math.cos(heading)
+    return {nx = nx, ny = ny, px = pivot[1] + nx * distance / 2, py = pivot[2] + ny * distance / 2}
+end
+function Mirror.reflect_point(plane, p)
+    local d = plane.nx * (p[1] - plane.px) + plane.ny * (p[2] - plane.py)
+    return {p[1] - 2 * d * plane.nx, p[2] - 2 * d * plane.ny, p[3]}
+end
+function Mirror.reflect_dir(plane, d)
+    local along = plane.nx * d[1] + plane.ny * d[2]
+    return {d[1] - 2 * along * plane.nx, d[2] - 2 * along * plane.ny, d[3]}
+end
+function Mirror.reflect_yaw(plane, yaw)
+    local d = Mirror.reflect_dir(plane, {-math.sin(yaw), math.cos(yaw), 0})
+    return math.atan2(-d[1], d[2])
+end
+Mirror.OPPOSITE = {left = "right", right = "left"}
+
 -- The mode to run: the dev flag's when it names one; else the mirror while
 -- its key has toggled it on (Psykhanium only); else the full overlay while
 -- the "Full body (experimental)" option is on; else none. The option used to
@@ -670,11 +700,15 @@ end
 
 -- Whether the mirror spawns a slot: body, gear and material slots, plus the
 -- unarmed slot the spawner needs for its wielded-slot plumbing. Pure.
-function Mirror.keeps_slot(slot_name, settings)
+function Mirror.keeps_slot(slot_name, settings, with_weapons)
     if slot_name == "slot_unarmed" then return true end
     if slot_name == "slot_companion_gear_full" then return false end
-    return type(settings) == "table" and Mirror.KEPT_SLOT_TYPES[settings.slot_type] == true and
-        not settings.ignore_character_spawning
+    if type(settings) ~= "table" or settings.ignore_character_spawning then return false end
+    -- The reflection carries the weapons too ("it should have the same
+    -- weapon/item equipped that I do"); the overlay never does, its weapon
+    -- is the stock model's.
+    if with_weapons == true and settings.slot_type == "weapon" then return true end
+    return Mirror.KEPT_SLOT_TYPES[settings.slot_type] == true
 end
 
 -- Node correspondence between the avatar and the mirror: by index when both
@@ -728,6 +762,9 @@ function Mirror.install(mod, presentation, options)
     local ArmLength
     local poll, enabled, mode_name = 0, false, nil
     local state
+    -- The reflection reads the overlay's hands for its fingers (see the
+    -- fingers block in update); this instance's copy is what it reads.
+    if reflection then reflection.overlay = function() return state and state.unit end end
     -- This instance's own copy torn down (a mode change, a lost avatar, an
     -- error); api.destroy also takes the reflection's down.
     local destroy_own
@@ -1377,16 +1414,19 @@ function Mirror.install(mod, presentation, options)
         Unit.set_local_scale(unit, arm.hand, Vector3(1 / sl, 1 / sl, 1 / sl))
         World.update_unit(world, unit)
     end
-    local function solve_arm(world, avatar, unit, arm)
+    local function solve_arm(world, avatar, unit, arm, mirror_pose)
         -- The final visible wrist pose (tracked, gun-aligned or on the support
         -- grip), whatever the mode: the gloves record it when they draw the
         -- hands, the rig records it when the copy does. With no pose recorded
         -- the arm stays at rest. Until 19 September the fallback was the
         -- avatar's animated hand joint, which put the stock animation on the
         -- mirror key's copy; nothing on a drawn body follows the animation.
+        -- In the mirror (mirror_pose given) this arm takes the OTHER hand's
+        -- pose, reflected across the plane.
         local target, target_rotation
         if body_proxy() and body_proxy().hand_pose then
-            target, target_rotation = body_proxy().hand_pose(arm.side)
+            target, target_rotation = body_proxy().hand_pose(mirror_pose and Mirror.OPPOSITE[arm.side] or arm.side)
+            if mirror_pose and target then target, target_rotation = mirror_pose(target, target_rotation) end
         end
         if not target then
             arm.error = nil
@@ -1546,7 +1586,7 @@ function Mirror.install(mod, presentation, options)
     -- September): the base model exists hidden for hit detection, and there
     -- is no relationship between it and the custom-IK body beyond what the
     -- weapon needs.
-    local function place(avatar, unit)
+    local function place(avatar, unit, mirror)
         local mode = Mirror.MODES[mode_name] or Mirror.MODES.mirror
         local rotation = state.yaw and Quaternion(Vector3.up(), state.yaw) or Unit.local_rotation(unit, 1)
         if mode.facing and not state.yaw then
@@ -1554,6 +1594,9 @@ function Mirror.install(mod, presentation, options)
             rotation = Quaternion.multiply(rotation, Quaternion(Vector3.up(), math.pi))
         end
         local position = Unit.world_position(avatar, 1) + Quaternion.forward(rotation) * mode.distance
+        -- The reflection's root is the player's root reflected across the
+        -- mirror plane (Mirror.mirror_plane); its heading is set below.
+        if mirror then position = vector(Mirror.reflect_point(mirror, array(position))) end
         Unit.set_local_position(unit, 1, position)
         Unit.set_local_rotation(unit, 1, mode.facing and
             Quaternion.multiply(rotation, Quaternion(Vector3.up(), math.pi)) or rotation)
@@ -1571,7 +1614,7 @@ function Mirror.install(mod, presentation, options)
         local profile_spawner = UIProfileSpawner:new("DarktideVRBodyMirror", world, nil, unit_spawner, false)
         local kept, ignored = 0, 0
         for slot_name, settings in pairs(ItemSlotSettings) do
-            if Mirror.keeps_slot(slot_name, settings) then kept = kept + 1
+            if Mirror.keeps_slot(slot_name, settings, Mirror.MODES[mode_name].weapons == true) then kept = kept + 1
             else profile_spawner:ignore_slot(slot_name); ignored = ignored + 1 end
         end
         local rotation = Unit.world_rotation(avatar, 1)
@@ -1778,14 +1821,33 @@ function Mirror.install(mod, presentation, options)
         for index = 2, state.count do
             Unit.set_local_pose(unit, index, state.rest[index]:unbox())
         end
-        place(avatar, unit)
-        World.update_unit(world, unit)
         local frame = Mirror.MODES[mode_name].follow_neck and presentation.body_frame and
             presentation.body_frame.sample(avatar, t)
+        -- THE MIRROR PLANE, for the reflection: half the mirror distance
+        -- ahead of the player's neck along their heading. Every input the
+        -- reflection is posed from is reflected across it below (root,
+        -- heading, neck, shoulders, hands, head), and each side takes the
+        -- other side's hand. The legs (the stock model's) are not mirrored:
+        -- the left leg is the player's left leg, which in a mirror would be
+        -- on the other side; that is the one known departure.
+        local mirror = Mirror.MODES[mode_name].reflect and frame and type(frame.yaw) == "number" and frame.neck and
+            Mirror.mirror_plane(Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale), frame.yaw, Mirror.MIRROR_DISTANCE) or nil
+        local function reflected(p) return mirror and p and Mirror.reflect_point(mirror, p) or p end
+        local function reflected_yaw(y) return mirror and type(y) == "number" and Mirror.reflect_yaw(mirror, y) or y end
+        local function reflected_rotation(q)
+            if not mirror or not q then return q end
+            local f, u = Quaternion.forward(q), Quaternion.up(q)
+            local rf = Mirror.reflect_dir(mirror, {Vector3.x(f), Vector3.y(f), Vector3.z(f)})
+            local ru = Mirror.reflect_dir(mirror, {Vector3.x(u), Vector3.y(u), Vector3.z(u)})
+            return Quaternion.look(Vector3(rf[1], rf[2], rf[3]), Vector3(ru[1], ru[2], ru[3]))
+        end
+        place(avatar, unit, mirror)
+        World.update_unit(world, unit)
         if Mirror.MODES[mode_name].body_yaw and frame and type(frame.yaw) == "number" then
-            state.root_yaw_delta = math.deg(math.atan2(math.sin(frame.yaw - Quaternion.yaw(Unit.world_rotation(unit, 1))),
-                math.cos(frame.yaw - Quaternion.yaw(Unit.world_rotation(unit, 1)))))
-            state.yaw = Mirror.smooth_yaw(state.yaw, frame.yaw, dt)
+            local wanted_yaw = reflected_yaw(frame.yaw)
+            state.root_yaw_delta = math.deg(math.atan2(math.sin(wanted_yaw - Quaternion.yaw(Unit.world_rotation(unit, 1))),
+                math.cos(wanted_yaw - Quaternion.yaw(Unit.world_rotation(unit, 1)))))
+            state.yaw = Mirror.smooth_yaw(state.yaw, wanted_yaw, dt)
             Unit.set_local_rotation(unit, 1, Quaternion(Vector3.up(), state.yaw))
             -- No turn-leak correction any more (Mirror.root_yaw_leak stays
             -- for the record and its test). The leak was the avatar's
@@ -1818,7 +1880,9 @@ function Mirror.install(mod, presentation, options)
         -- The eye this pose is built on, for the render check's lag read.
         local posed_eye = presentation.eye_pose and presentation.eye_pose(avatar)
         state.posed_eye = posed_eye and array(posed_eye) or nil
-        local neck_target = frame and Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale)
+        -- The neck target from the frame's neck; in the mirror, from the
+        -- reflected neck point on the reflected head yaw.
+        local neck_target = frame and Mirror.neck_target(reflected(frame.neck), reflected_yaw(frame.head_yaw), frame.scale)
         if Mirror.MODES[mode_name].follow_neck and Unit.has_node(unit, "j_neck") then
             -- NO SCALING TO THE NECK any more (19 September). The copy's
             -- scale is the game's own character height for this profile,
@@ -1880,7 +1944,10 @@ function Mirror.install(mod, presentation, options)
                 -- The estimated shoulders hang from the frame's neck, so they take
                 -- the same extra as the copy's neck, or the clavicles would shrug
                 -- up toward shoulders 10 cm above the lowered body's.
-                local target = Mirror.neck_target(frame["shoulder_" .. side], frame.head_yaw, frame.scale)
+                -- In the mirror each side takes the other side's shoulder,
+                -- reflected.
+                local source_side = mirror and Mirror.OPPOSITE[side] or side
+                local target = Mirror.neck_target(reflected(frame["shoulder_" .. source_side]), reflected_yaw(frame.head_yaw), frame.scale)
                 if target and Unit.has_node(unit, clavicle_name) and Unit.has_node(unit, arm_name) then
                     local clavicle, arm = Unit.node(unit, clavicle_name), Unit.node(unit, arm_name)
                     local before = Vector3.length(Unit.world_position(unit, arm) - vector(target))
@@ -2043,7 +2110,80 @@ function Mirror.install(mod, presentation, options)
             end
         end
         if Mirror.MODES[mode_name].solve_arms then
-            for _, arm in ipairs(state.arms) do solve_arm(world, avatar, unit, arm) end
+            local mirror_pose = mirror and function(position, rotation)
+                local p = reflected({Vector3.x(position), Vector3.y(position), Vector3.z(position)})
+                return Vector3(p[1], p[2], p[3]), reflected_rotation(rotation)
+            end or nil
+            for _, arm in ipairs(state.arms) do solve_arm(world, avatar, unit, arm, mirror_pose) end
+        end
+        -- THE HEAD ON THE HEADSET (15:00, 19 September: "its head should
+        -- follow my headset position (tracked the same way the hands are)").
+        -- The head joint takes the headset's rotation, reflected for the
+        -- mirror, times a constant captured once when the player first looks
+        -- within 20 degrees of the body's heading: the rig's head frame
+        -- relative to the eye frame. The neck follow has already put the
+        -- head where the headset is.
+        if Mirror.MODES[mode_name].follow_head and Unit.has_node(unit, "j_head") and presentation.eye_pose then
+            local _, eye_rotation = presentation.eye_pose(avatar)
+            if eye_rotation then
+                local head = Unit.node(unit, "j_head")
+                if not state.head_follow then
+                    local eye_yaw = Quaternion.yaw(eye_rotation)
+                    local body_yaw = frame and type(frame.yaw) == "number" and frame.yaw or eye_yaw
+                    if math.abs(math.atan2(math.sin(eye_yaw - body_yaw), math.cos(eye_yaw - body_yaw))) < math.rad(20) then
+                        state.head_follow = QuaternionBox(Quaternion.multiply(inverse(Quaternion(Vector3.up(), eye_yaw)),
+                            Quaternion.multiply(inverse(Quaternion(Vector3.up(), Quaternion.yaw(Unit.world_rotation(unit, head)))),
+                                Unit.world_rotation(unit, head))))
+                    end
+                end
+                if state.head_follow then
+                    set_world_rotation(unit, head, Quaternion.multiply(reflected_rotation(eye_rotation), state.head_follow:unbox()))
+                    World.update_unit(world, unit)
+                end
+            end
+        end
+        -- THE FINGERS FROM THE OVERLAY (15:00: "its hand animations should
+        -- match mine"). The reflection has no hand rig of its own; the
+        -- overlay's finger joints, posed this frame before the reflection
+        -- runs, are copied joint for joint, each side from the other side
+        -- for the mirror.
+        local overlay = mirror and api.overlay and api.overlay()
+        if overlay and Unit.alive(overlay) then
+            for _, side in ipairs({"left", "right"}) do
+                local source_side = Mirror.OPPOSITE[side]
+                for _, suffix in ipairs({"handindex", "handmiddle", "handring", "handpinky", "handthumb", "thumb"}) do
+                    for joint = 1, 4 do
+                        for _, number in ipairs({tostring(joint), "0" .. joint}) do
+                            local source_name, name = "j_" .. source_side .. suffix .. number, "j_" .. side .. suffix .. number
+                            if Unit.has_node(overlay, source_name) and Unit.has_node(unit, name) then
+                                Unit.set_local_rotation(unit, Unit.node(unit, name), Unit.local_rotation(overlay, Unit.node(overlay, source_name)))
+                            end
+                        end
+                    end
+                end
+            end
+            World.update_unit(world, unit)
+        end
+        -- THE WEAPON (15:00: "it should have the same weapon/item equipped
+        -- that I do"). The reflection's spawner carries the weapon slots
+        -- (Mirror.keeps_slot with weapons); the slot the player wields, read
+        -- off the avatar's inventory component, is wielded on it whenever it
+        -- changes. The spawner attaches the wielded weapon to the right hand
+        -- as the game does; in a true mirror it would be in the left, which
+        -- is not done here.
+        if Mirror.MODES[mode_name].weapons and state.profile_spawner then
+            local ok_wield = pcall(function()
+                local unit_data = ScriptUnit.has_extension(avatar, "unit_data_system")
+                local inventory = unit_data and unit_data:read_component("inventory")
+                local slot = inventory and inventory.wielded_slot
+                if slot and slot ~= state.wielded_slot then
+                    state.wielded_slot = slot
+                    state.profile_spawner:set_visibility(true)
+                    state.profile_spawner:wield_slot(slot)
+                    mod:info("DARKTIDEVR_BODY_MIRROR reflection_wield slot=%s", tostring(slot))
+                end
+            end)
+            if not ok_wield then log_once("wield", "reflection_wield=failed") end
         end
         -- The fingers, after the arms: the grip curl the gloves had, on the
         -- copy's own hand joints, held per weapon (BodyProxy.pose_rig_fingers).
@@ -2075,16 +2215,9 @@ function Mirror.install(mod, presentation, options)
             -- which increments after this point.
             state.render_check.stamp = (state.render_check.stamp or 0) + 1
         end
-        if Mirror.MODES[mode_name].reflect then
-            -- Posed on the player; now turned about them and stood ahead.
-            local root = Unit.local_position(unit, 1)
-            local heading = state.yaw or Quaternion.yaw(Unit.local_rotation(unit, 1))
-            local pivot = neck_target or array(root)
-            local moved = Mirror.reflected_root(array(root), pivot, heading, Mirror.MIRROR_DISTANCE)
-            Unit.set_local_position(unit, 1, vector(moved))
-            Unit.set_local_rotation(unit, 1, Quaternion.multiply(Quaternion(Vector3.up(), math.pi), Unit.local_rotation(unit, 1)))
-            World.update_unit_and_children(world, unit)
-        end
+        -- (The reflection used to be posed on the player and then turned
+        -- about them and stood ahead here; since 15:00 on 19 September it
+        -- is posed from reflected inputs above, see Mirror.mirror_plane.)
         -- The scale is fixed, so nothing waits for it to settle; the scan
         -- still waits a frame for the camera.
         if state.near_eye_pending and state.frames > 0 then

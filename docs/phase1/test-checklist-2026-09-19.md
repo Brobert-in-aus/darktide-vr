@@ -707,6 +707,51 @@ the step of the owner's root, the eye, the skull's own root, the drawn
 offset, and the skull against the eye. The eye steps 0 then 7 cm; the
 column that steps every frame instead is the one on the other timeline.
 
+### 1t. Worn at 14:57: legs working; the skulls named; the reflection made a true mirror with legs, head, fingers and weapon
+
+Your report: legs working; physics objects still jiggling; skulls still
+flickering. And for the reflection: stock legs, the head following the
+headset, the hand animations matching, the same weapon equipped, and a
+true mirror rather than you rotated 180 degrees.
+
+**The skulls, from the probe.** 40 lines while you moved: the
+companion's own root steps 8.3 cm every frame (never under 2 mm), the
+eye 0 then 3.9 cm on alternate frames (23 of 40 under 2 mm), the skull
+against the eye 17.6 cm a frame. The skull rides the game's
+interpolated root and the view rides the fixed-step anchor: the body's
+fault of the morning, on the skulls. This build pulls the drawn skull
+back by the anchor's lag each frame while it follows you, with the same
+placement the bridge and the throw use, so it steps with the view as the
+hands and the weapon do. The probe stays: `d_skull_rel_eye_m` should
+fall from 17 cm to near zero.
+
+**The stock legs, from the numbers.** `hips_copy_above_floor_m=1.044
+hips_avatar_above_floor_m=0.774..0.864 toe_above_floor_m=0.24..0.56`:
+the stock animation carries its pelvis 18 to 27 cm lower than the copy's
+standing hips, so the copied legs hang that much above the floor. You
+said the legs are working, so nothing is changed there this build; the
+numbers say what grounding them would cost, and that is a separate
+decision (the feet pushed to the floor by the leg solve, or the leg
+bones lengthened, or the hips lowered with the spine stretched).
+
+**The reflection.** In the reflection mode the copy's leg joints take
+the stock animation the same way the overlay's do (`legs=stock` on its
+ready line). Its head takes the headset's rotation, times a constant
+captured the first time you look within 20 degrees of your body's
+heading; look around and it should look around. Its fingers are copied
+joint for joint from the overlay's hands each frame. Its spawner keeps
+the weapon slots, and the slot you wield is wielded on it whenever it
+changes (`reflection_wield slot=...`). And it is a true mirror: the
+mirror plane stands half the mirror distance ahead of your neck across
+your heading, and every input it is posed from is reflected across
+that plane, with each side taking the other side's hand and shoulder.
+Two known departures, both to look for: the legs are not mirrored (the
+reflection's left leg is your left leg, which a mirror would show on
+the other side), and the spawner puts the wielded weapon in the right
+hand as the game does, where a mirror would show it in the left.
+
+**Cloth.** Unchanged, and why is in 1s.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

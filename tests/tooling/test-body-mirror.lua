@@ -165,6 +165,32 @@ assert(reflection.reflect and reflection.solve_arms and reflection.follow_neck a
     not reflection.near_eye and reflection.distance == 0)
 -- Heading 0 faces +y. A root 10 cm behind the pivot ends 10 cm beyond it,
 -- 2.5 m further on; a root to the pivot's left ends on its right.
+-- A true mirror: the plane half the distance ahead along the heading; the
+-- plane's own point reflects to itself, reflecting twice is the identity, a
+-- point a metre before the plane lands a metre beyond it, the heading
+-- reflects to face back, a sideways direction is unchanged, and z never
+-- changes.
+do
+  local plane = Mirror.mirror_plane({1.0, 3.0, 1.4}, 0, 2.5)
+  local point = {plane.px, plane.py, 0.7}
+  local back = Mirror.reflect_point(plane, point)
+  assert(math.abs(back[1] - point[1]) < 1e-9 and math.abs(back[2] - point[2]) < 1e-9 and back[3] == 0.7, 'the plane point is its own image')
+  local p = {1.0, 3.0, 0.5}
+  local q = Mirror.reflect_point(plane, p)
+  assert(math.abs(q[2] - (3.0 + 2.5)) < 1e-9 and math.abs(q[1] - 1.0) < 1e-9 and q[3] == 0.5, 'a point 1.25 m before the plane lands 1.25 m beyond it')
+  local twice = Mirror.reflect_point(plane, q)
+  assert(math.abs(twice[1] - p[1]) < 1e-9 and math.abs(twice[2] - p[2]) < 1e-9, 'reflecting twice is the identity')
+  local yaw = Mirror.reflect_yaw(plane, 0)
+  assert(math.abs(math.abs(yaw) - math.pi) < 1e-9, 'the heading reflects to face back')
+  local side = Mirror.reflect_dir(plane, {1, 0, 0})
+  assert(math.abs(side[1] - 1) < 1e-9 and math.abs(side[2]) < 1e-9, 'a direction along the plane is unchanged')
+  local turned = Mirror.reflect_yaw(plane, math.rad(30))
+  assert(math.abs(math.atan2(math.sin(turned - math.rad(150)), math.cos(turned - math.rad(150)))) < 1e-9, 'a 30 deg turn reflects to 150')
+  assert(Mirror.OPPOSITE.left == 'right' and Mirror.OPPOSITE.right == 'left', 'each side takes the other')
+  assert(Mirror.keeps_slot('slot_primary', {slot_type = 'weapon'}, true), 'the reflection keeps the weapons')
+  assert(not Mirror.keeps_slot('slot_primary', {slot_type = 'weapon'}), 'the overlay does not')
+  assert(Mirror.MODES.reflection.weapons and Mirror.MODES.reflection.follow_head and Mirror.MODES.reflection.animated_legs, 'reflection flags')
+end
 local rr = Mirror.reflected_root({1.2, 3.0 - 0.1, 0.5}, {1.0, 3.0, 1.4}, 0, 2.5)
 assert(math.abs(rr[1] - 0.8) < 1e-9 and math.abs(rr[2] - 5.6) < 1e-9 and rr[3] == 0.5, 'turned about the pivot, stood ahead, height kept')
 rr = Mirror.reflected_root({0, 0, 0}, {0, 0, 0}, math.pi / 2, 2.5)

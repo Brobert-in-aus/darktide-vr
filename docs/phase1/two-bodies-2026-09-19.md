@@ -1055,6 +1055,77 @@ flying companion's post_update, registered after the locomotion system
 refresh; which timeline the companion's own root and the offset are on
 is for a probe to say.
 
+## Worn, 14:57: the skulls named; the reflection becomes a mirror
+
+On 8636182. The user: "legs working, physics objects still jiggling,
+skulls still flicker. Also, the mirror model's legs are still the old
+way, and its head should follow my headset position (tracked the same
+way the hands are). Also, its hand animations should match mine, and it
+should have the same weapon/item equipped that I do. Also, it should be
+a true mirror, rather than me but rotated 180 deg."
+
+```
+SKULL_MOTION (40 lines): d_skull_root_m mean 0.0828 (0 of 40 under 2 mm)  d_eye_m mean 0.0105 (23 of 40 under 2 mm)  d_skull_rel_eye_m mean 0.1757
+stock_legs hips_copy_above_floor_m=1.044 hips_avatar_above_floor_m=0.774 / 0.851 / 0.864 toe_above_floor_m=0.440/0.354, 0.281/0.194, 0.238/0.559
+```
+
+### The skulls
+
+The companion's root moves every frame on the game's interpolated
+timeline; the view steps on the fixed-step anchor. While following, the
+module used to place nothing (the stock update was fed the lazy heading
+and left to move the skull). Now, while following, the drawn skull is
+placed at the real root minus the anchor's lag (first-person unit
+position minus the fixed-step component position, `anchor_lag`), with
+the same `place` the bridge and the throw use, so it steps with the
+view. The real root is untouched and the bridge still starts from it.
+`d_skull_rel_eye_m` is the number.
+
+### The stock legs
+
+The copy's hips stand at 1.044 m; the stock animation carries the
+avatar's at 0.77-0.86, and the copied legs hang the difference above the
+floor (toes 24-56 cm up). The user called the legs working; nothing is
+changed. Grounding them is a decision with three shapes, each with a
+cost the numbers now give: the leg solve pushing the animated feet to
+the floor (straighter legs, the run's knee lift reduced), the leg bones
+lengthened by about a third, or the hips lowered to the animation's
+height with the spine stretched to keep the neck at the headset.
+
+### The reflection
+
+- Stock legs: `animated_legs = true` on the reflection mode; the same
+  copy of the avatar's leg-subtree local poses. Not mirrored: the
+  reflection's left leg is the player's left leg.
+- Head: `follow_head`. The head joint's world rotation is the headset's
+  rotation (reflected for the mirror) times a constant captured once
+  when the player first looks within 20 degrees of the body's heading:
+  the head's rest frame relative to a yaw-only eye frame.
+- Fingers: the parent instance hands the reflection an accessor to its
+  own copy (`reflection.overlay`); each frame the reflection copies the
+  finger joints' local rotations from the overlay's hands, each side
+  from the other side.
+- Weapon: `Mirror.keeps_slot(slot, settings, with_weapons)` keeps the
+  weapon slots for the reflection's spawner; the avatar's inventory
+  component's `wielded_slot` is wielded on the spawner when it changes
+  (`wield_slot`), after `set_visibility(true)`. The spawner attaches it
+  to the right hand as the game does.
+- A true mirror: `Mirror.mirror_plane(pivot, heading, distance)` is the
+  vertical plane half the mirror distance ahead of the neck across the
+  heading; `reflect_point`, `reflect_dir`, `reflect_yaw` reflect across
+  it. The root is the reflected avatar root, the heading the reflected
+  frame yaw, the neck target from the reflected neck point on the
+  reflected head yaw, each shoulder from the other side's reflected
+  shoulder, each arm from the other hand's recorded pose with the
+  position reflected and the rotation rebuilt from its reflected forward
+  and up (a proper rotation; the reflected right hand is a left hand),
+  the head from the reflected headset rotation. The old turn-and-stand
+  block is gone. Tests on the pure helpers: the plane point is its own
+  image, twice is the identity, 1.25 m before lands 1.25 m beyond, the
+  heading reflects to face back, a 30-degree turn to 150.
+
+Not worn.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows

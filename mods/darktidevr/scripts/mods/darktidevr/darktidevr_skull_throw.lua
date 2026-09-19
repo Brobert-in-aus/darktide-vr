@@ -679,6 +679,19 @@ function Skull.install(mod, presentation)
     end
 
     local skull_motion_lines = 0
+    -- The anchor's lag: where the first-person unit stands (the game's
+    -- interpolated timeline) minus the fixed-step component position the
+    -- view is built on, as the body mirror measures it. A 3-array, or nil.
+    local function anchor_lag(owner)
+        if not owner or not Unit.alive(owner) then return nil end
+        local first_person = ScriptUnit.has_extension(owner, "first_person_system")
+        local component = first_person and first_person._first_person_component
+        local eye_unit = first_person and first_person.first_person_unit and first_person:first_person_unit()
+        if not component or not component.position or not eye_unit or not Unit.alive(eye_unit) then return nil end
+        local lag = Unit.world_position(eye_unit, 1) - component.position
+        if Vector3.length(lag) > 0.5 then return nil end
+        return {Vector3.x(lag), Vector3.y(lag), Vector3.z(lag)}
+    end
     local function place(extension, skull, record, drawn, axis, angle)
         record.nodes = record.nodes or child_nodes(skull)
         record.base, record.written = record.base or {}, record.written or {}
@@ -933,7 +946,22 @@ function Skull.install(mod, presentation)
         if not throw then
             record.bridge_nodes = record.bridge_nodes or {}
             if following then
-                unplace(record.bridge_nodes, skull)
+                -- ONE TIMELINE WITH THE VIEW (19 September, 14:57 probe: the
+                -- companion's own root steps 8 cm every frame, the eye 0
+                -- then 4 cm on alternate frames -- the view is on the
+                -- fixed-step body anchor and the skull on the game's
+                -- interpolated root, and "skulls are still flickering").
+                -- The drawn skull is the real one pulled back by the
+                -- anchor's lag this frame (first-person unit minus the
+                -- fixed-step component position), so it steps with the
+                -- view as the hands and the weapon do. The real root is
+                -- untouched; the bridge still starts from it.
+                local lag = anchor_lag(local_player_unit())
+                if lag then
+                    place(extension, skull, record.bridge_nodes, {real[1] - lag[1], real[2] - lag[2], real[3] - lag[3]})
+                else
+                    unplace(record.bridge_nodes, skull)
+                end
                 record.bridge, record.position = nil, real
             else
                 if record.position and not record.bridge then
