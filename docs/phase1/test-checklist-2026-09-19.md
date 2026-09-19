@@ -1090,6 +1090,39 @@ fed the hold so the real root follows; the drawn parts are what the
 hand holds. Released, the grab drops and the throw or the bridge takes
 over as before. `grabbed offset_m=..` logs the vector on each grab.
 
+### 1af. Worn at 17:55: the grab defined and rigid, the idle bob frozen, the cone aimed at the preview, the option on the stock legs
+
+Your reports: the skull is not grabbed in the right place and not fixed
+to the hand, it rotates weirdly; its small idle animation must be
+suppressed while grabbed; in cone mode the attack direction does not
+match the preview. And on the release checklist: what we have after
+today is what the full body ships as.
+
+**The grab.** The log's captured grip vectors were 10 cm along the
+hand's local z, which is where the skull hovered before the grab, not a
+palm on its side; and the turn was applied on top of a root the game
+keeps turning toward its heading. Now the grip is defined: the skull's
+centre sits on the palm side of the wrist (minus the wrist's up axis)
+at the skull's radius and 6 cm along the fingers, and its orientation
+is absolute from the grab, the hand's rotation since the grab applied
+to the skull's world rotation at the grab, whatever the root does.
+
+**The idle bob.** My placement re-reads a node's rest position whenever
+the animation has moved it, so the bob leaked into the drawn parts.
+While grabbed the rest positions are frozen at the grab.
+
+**The cone.** From the game's source: the cone sweeps about the rotation
+the skull has when it arrives at the ordered point, and on the way the
+movement turns it to the owner's look rotation, which in VR is the head
+while the preview is cast from the hand. While the skull flies to its
+point its target rotation is now set to face that point.
+`cone_aim skull_facing_vs_preview_deg=..` logs the facing against the
+player-to-point direction when the burning starts; zero is a match.
+
+**The option.** "Full body (experimental)" now runs the stock-legs
+overlay (`Mirror.OPTION_MODE`), so the dev flag is not needed for the
+shipped behaviour; the flag can still name any mode.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

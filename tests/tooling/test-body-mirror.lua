@@ -199,11 +199,13 @@ assert(math.abs(rr[1] + 2.5) < 1e-9 and math.abs(rr[2]) < 1e-9, 'yaw 90 faces -x
 -- Psykhanium, then the full-body option's overlay.
 assert(Mirror.requested_mode(nil, false, false, false) == nil)
 assert(Mirror.requested_mode("overlayspine", true, true, true) == "overlayspine", 'the dev flag wins')
-assert(Mirror.requested_mode("nonsense", false, false, true) == "overlay", 'an unknown flag mode is no flag')
+assert(Mirror.requested_mode("nonsense", false, false, true) == Mirror.OPTION_MODE, 'an unknown flag mode is no flag')
 assert(Mirror.requested_mode(nil, true, true, true) == "mirror", 'the key shows the mirror in the Psykhanium')
 assert(Mirror.requested_mode(nil, true, false, false) == nil, 'and nowhere else')
-assert(Mirror.requested_mode(nil, true, false, true) == "overlay", 'outside it the option still runs')
-assert(Mirror.requested_mode(nil, false, true, true) == "overlay" and Mirror.MODES[Mirror.OPTION_MODE] ~= nil)
+assert(Mirror.requested_mode(nil, true, false, true) == Mirror.OPTION_MODE, 'outside it the option still runs')
+assert(Mirror.requested_mode(nil, false, true, true) == Mirror.OPTION_MODE and Mirror.MODES[Mirror.OPTION_MODE] ~= nil)
+-- 19 September, 17:55: the option ships the stock-legs overlay.
+assert(Mirror.OPTION_MODE == 'overlayanimated' and Mirror.MODES.overlayanimated.animated_legs, 'the option runs the stock legs')
 -- The yaw chain the trace prints. Degrees, wrapped, and nil rather than a
 -- number when a yaw is missing -- a trace that prints 0 for "not measured"
 -- reads as "did not move", which is the one answer it must never fake.

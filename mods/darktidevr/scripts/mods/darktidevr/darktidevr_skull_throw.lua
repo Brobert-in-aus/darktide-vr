@@ -37,6 +37,9 @@ Skull.GRAB_RADIUS = 0.12
 -- Held: the hand-to-centre distance the grab keeps, so the palm sits on the
 -- skull's side (its drawn radius is about 12 cm) wherever it was taken from.
 Skull.GRAB_HOLD_MIN, Skull.GRAB_HOLD_MAX = 0.10, 0.16
+-- The grip: the skull's centre this far along the fingers from the wrist,
+-- on the palm side at GRAB_RADIUS.
+Skull.GRAB_PALM_FORWARD = 0.06
 
 -- A rotation's axis (3-array, unit) and angle from quaternion elements, for
 -- the placement's world axis and angle; nil axis and zero angle for the
@@ -755,7 +758,14 @@ function Skull.install(mod, presentation)
         for _, node in ipairs(record.nodes) do
             local current = Unit.local_position(skull, node)
             local written = record.written[node]
-            if not record.base[node] or not written or Vector3.distance(current, written:unbox()) >= 1e-5 then
+            -- Frozen while grabbed (18:00 worn run: "a small idle animation
+            -- where it moves around slightly which needs to be suppressed
+            -- when it's grabbed"): the re-read below takes the skull's own
+            -- idle bob as a new rest each frame, and the drawn parts bob
+            -- with it. A held skull keeps the rest it had at the grab.
+            if not record.freeze_base and (not record.base[node] or not written or Vector3.distance(current, written:unbox()) >= 1e-5) then
+                record.base[node] = Vector3Box(current)
+            elseif record.freeze_base and not record.base[node] then
                 record.base[node] = Vector3Box(current)
             end
             -- The rest ROTATION is captured once and never re-read, which is
@@ -958,6 +968,49 @@ function Skull.install(mod, presentation)
     local function after_movement(extension, skull, record, thrower, following, name, t)
         if not thrower then return end
         local flying = name == "flamethrower"
+        -- THE CONE AIMS WHERE THE PREVIEW SHOWED (user, 17:50, 19 September:
+        -- "in 'cone' mode, the flamer skull attack direction doesn't match
+        -- the preview"). From the game's source: the cone sweeps about the
+        -- rotation the skull has when it ARRIVES at the ordered point
+        -- (bt_shoot_flames_around_action, _base_rotation), and on the way
+        -- there the flying movement turns it to the owner's look rotation
+        -- unless the behaviour holds a target rotation. Flat, the look is
+        -- the aim; in VR the aim is the hand and the look is the head, and
+        -- the preview is cast from the aim (the ground decal points from
+        -- the player to the aimed point). So while the skull flies to its
+        -- ordered point, its target rotation is set to face that point,
+        -- and the cone is centred on the preview. Logged once per order,
+        -- with the facing against the player-to-point direction when the
+        -- burning starts, in degrees: zero is a match.
+        if flying and not throw and not held(t) then
+            pcall(function()
+                local blackboard = rawget(_G, "BLACKBOARDS") and BLACKBOARDS[skull]
+                local behavior = blackboard and blackboard.behavior
+                if behavior and behavior.has_move_to_position then
+                    local point = behavior.move_to_position:unbox()
+                    local to_point = Vector3.flat(point - Unit.world_position(skull, 1))
+                    if Vector3.length(to_point) > 0.05 then
+                        local facing = Quaternion.look(Vector3.normalize(to_point), Vector3.up())
+                        behavior.has_target_rotation = true
+                        behavior.target_rotation:store(facing)
+                        record.order_point = record.order_point or Vector3Box(point)
+                        record.order_logged = nil
+                    end
+                end
+            end)
+        elseif name == "flamethrower_shooting" and record.order_point and not record.order_logged then
+            record.order_logged = true
+            pcall(function()
+                local owner = local_player_unit()
+                local point = record.order_point:unbox()
+                local preview = Vector3.flat(point - Unit.world_position(owner, 1))
+                local skull_forward = Vector3.flat(Quaternion.forward(Unit.world_rotation(skull, 1)))
+                local difference = math.deg(Vector3.angle(Vector3.normalize(preview), Vector3.normalize(skull_forward)))
+                mod:info("DARKTIDEVR_SKULL_THROW cone_aim skull_facing_vs_preview_deg=%.1f", difference)
+            end)
+            record.order_point = nil
+        end
+        if not flying and name ~= "flamethrower_shooting" then record.order_point = nil end
         if pending and flying and not throw and t - pending.t <= Skull.RELEASE_WINDOW then
             local from = array(Unit.world_position(skull, 1))
             local total = pending.target and Skull.flight_time(from, pending.target)
@@ -1009,16 +1062,31 @@ function Skull.install(mod, presentation)
                     local hand = Vector3(hand_track.position[1], hand_track.position[2], hand_track.position[3])
                     local hand_rotation = hand_track.rotation:unbox()
                     if not record.grab then
-                        local centre = lag and Vector3(real[1] - lag[1], real[2] - lag[2], real[3] - lag[3]) or Vector3(real[1], real[2], real[3])
-                        local in_hand = Quaternion.rotate(Quaternion.inverse(hand_rotation), centre - hand)
-                        local length = Vector3.length(in_hand)
-                        if length < 1e-3 then in_hand = Vector3(0, 0, Skull.GRAB_RADIUS); length = Skull.GRAB_RADIUS end
-                        in_hand = in_hand * (math.max(Skull.GRAB_HOLD_MIN, math.min(Skull.GRAB_HOLD_MAX, length)) / length)
-                        record.grab = {offset = Vector3Box(in_hand), zero = QuaternionBox(hand_rotation)}
-                        mod:info("DARKTIDEVR_SKULL_THROW grabbed offset_m=%.3f,%.3f,%.3f", Vector3.x(in_hand), Vector3.y(in_hand), Vector3.z(in_hand))
+                        -- THE GRIP IS DEFINED, NOT CAPTURED (17:55 worn run:
+                        -- "isn't grabbed in the right place and isn't fixed
+                        -- to the hand, it rotates weirdly"; the log's
+                        -- captured vectors were 10 cm along the hand's local
+                        -- z, which is where the skull hovered before the
+                        -- grab, not a palm on its side). The skull's centre
+                        -- is on the palm side of the wrist -- minus the
+                        -- wrist's up axis, the back of the hand being up --
+                        -- at the skull's radius, and a little along the
+                        -- fingers so the palm and not the wrist is on it.
+                        -- The orientation is ABSOLUTE from here on: the
+                        -- skull's world rotation at the grab is kept, and
+                        -- every held frame the drawn parts are turned so
+                        -- their world rotation is hand * inverse(zero) *
+                        -- that, whatever the real root does underneath (the
+                        -- game keeps turning it toward its heading, which
+                        -- was the weird rotation when the turn was applied
+                        -- on top of it).
+                        record.grab = {zero = QuaternionBox(hand_rotation), base = QuaternionBox(Unit.world_rotation(skull, 1))}
+                        record.bridge_nodes.freeze_base = true
+                        mod:info("DARKTIDEVR_SKULL_THROW grabbed palm_m=%.2f forward_m=%.2f", Skull.GRAB_RADIUS, Skull.GRAB_PALM_FORWARD)
                     end
-                    local centre = hand + Quaternion.rotate(hand_rotation, record.grab.offset:unbox())
-                    local delta = Quaternion.multiply(hand_rotation, Quaternion.inverse(record.grab.zero:unbox()))
+                    local centre = hand - Quaternion.up(hand_rotation) * Skull.GRAB_RADIUS + Quaternion.forward(hand_rotation) * Skull.GRAB_PALM_FORWARD
+                    local wanted = Quaternion.multiply(Quaternion.multiply(hand_rotation, Quaternion.inverse(record.grab.zero:unbox())), record.grab.base:unbox())
+                    local delta = Quaternion.multiply(wanted, Quaternion.inverse(Unit.world_rotation(skull, 1)))
                     local x, y, z, w = Quaternion.to_elements(delta)
                     local axis, angle = Skull.axis_angle(x, y, z, w)
                     place(extension, skull, record.bridge_nodes, {Vector3.x(centre), Vector3.y(centre), Vector3.z(centre)},
@@ -1026,6 +1094,7 @@ function Skull.install(mod, presentation)
                     grabbed = true
                 else
                     record.grab = nil
+                    record.bridge_nodes.freeze_base = nil
                 end
                 if not grabbed then
                     if lag then

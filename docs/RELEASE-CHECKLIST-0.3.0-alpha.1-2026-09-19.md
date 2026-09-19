@@ -11,6 +11,15 @@ that section becomes. 351 commits sit between the last tag and `ec73ee6`.
 Items are numbered as headings because the reader's viewer renumbers lists.
 Each item says what decides it. Nothing below is done yet unless it says so.
 
+**Progress (19 September, 17:55).** Item 1 decided by the user: "whatever
+we've got to after today's testing is what the full body should be"; the
+option now runs the stock-legs overlay (`Mirror.OPTION_MODE`). Item 3
+reported: "all pass except the flamer skull, which isn't grabbed in the
+right place and isn't fixed to the hand, it rotates weirdly", plus the
+cone attack's direction against its preview; both changed in `ec73ee6`'s
+successor, awaiting the worn clearance. The user's order: once the grab
+and the cone aim are cleared, items 4 to 8 proceed; item 9 waits.
+
 ### 1. Decide what "Full body (experimental)" ships as
 
 The option today runs the overlay with the procedural gait; the dev flag

@@ -659,7 +659,12 @@ Mirror.TRACE_HEARTBEAT_FRAMES = 120
 Mirror.TRACE_MOVED_M = 0.0005
 Mirror.TRACE_MOVED_DEG = 0.1
 Mirror.TRACE_MAX_LINES = 25000
-Mirror.OPTION_MODE = "overlay"
+-- The mode the "Full body (experimental)" option runs (user, 17:55 on 19
+-- September, on the release checklist: "whatever we've got to after today's
+-- testing is what the full body should be"): the overlay with the stock
+-- model's legs and its torso rest from the model's normal pose. The dev
+-- flag can still name any mode.
+Mirror.OPTION_MODE = "overlayanimated"
 function Mirror.requested_mode(flag_mode, mirror_toggled, in_psykhanium, option_on)
     if flag_mode and Mirror.MODES[flag_mode] then return flag_mode end
     if mirror_toggled == true and in_psykhanium == true then return "mirror" end
