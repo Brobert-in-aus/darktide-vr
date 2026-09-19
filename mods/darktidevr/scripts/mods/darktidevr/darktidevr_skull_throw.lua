@@ -1155,6 +1155,36 @@ function Skull.install(mod, presentation)
                             hand_track.position and Vector3.distance(hand, Vector3(hand_track.position[1], hand_track.position[2], hand_track.position[3])) or -1)
                         -- (grip_to_wrist_m is now the controller grip point's
                         -- distance from the avatar's hand joint.)
+                        -- WHAT IS DRAWN, AND WHERE (18:55 worn run, "maybe
+                        -- better, but still not locked in place" while the
+                        -- probe's centre stayed 0.153 m from the hand joint
+                        -- on every row and swung 28 cm with the roll). The
+                        -- skull's visible body is the owner's companion gear
+                        -- item, a separate unit the game links onto the
+                        -- companion; if it hangs off the root and not off
+                        -- one of the nine children this module moves, it
+                        -- rides the fed root. Its position against the
+                        -- centre and the root, and each mesh box of the
+                        -- skull unit itself, say which.
+                        pcall(function()
+                            local loadout = ScriptUnit.has_extension(owner, "visual_loadout_system")
+                            local gear = loadout and loadout:unit_3p_from_slot("slot_companion_gear_full")
+                            local gear_text = "none"
+                            if gear and Unit.alive(gear) then
+                                local g = Unit.world_position(gear, 1)
+                                gear_text = string.format("%.3f,%.3f,%.3f to_centre=%.3f to_root=%.3f", Vector3.x(g), Vector3.y(g), Vector3.z(g),
+                                    Vector3.distance(g, centre), Vector3.distance(g, root))
+                            end
+                            local meshes = {}
+                            for index = 1, math.min(6, Unit.num_meshes(skull)) do
+                                local ok_box, pose = pcall(Mesh.box, Unit.mesh(skull, index))
+                                if ok_box and pose then
+                                    local m = Matrix4x4.translation(pose)
+                                    meshes[#meshes + 1] = string.format("%d:to_centre=%.3f/to_root=%.3f", index, Vector3.distance(m, centre), Vector3.distance(m, root))
+                                end
+                            end
+                            mod:info("DARKTIDEVR_SKULL_GRAB_DRAWN gear=%s meshes=%s", gear_text, table.concat(meshes, " "))
+                        end)
                     end
                 else
                     record.grab = nil
