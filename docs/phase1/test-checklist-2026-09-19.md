@@ -332,6 +332,38 @@ declaration; it fails on the module that shipped at 12:52 by name and
 line. The flag is still set, so the same launch as before tests item 1i
 for real. Sorry for the wasted sitting.
 
+### 1k. Worn at 13:02: the machine refused the copy, so you saw the gait with locked knees
+
+Your report: *"Flicker is back, body is definitely floating, no run
+animation, legs just stay straight and swing forwards together in the
+direction of travel."* The log:
+
+```
+DARKTIDEVR_BODY_MIRROR animated_legs=failed error=...: Unit `#ID[...]` has no animation state machine
+```
+
+The call the game uses blends a new machine onto a unit that already has
+one, and the copy's machine had been disabled at ready, so it refused.
+The gait ran the whole session. Its standing hips left the knee eight
+degrees of bend, one per cent of slack, so with the feet on the floor the
+legs locked straight, and every step, both feet in the air at a run, read
+as a stiff swing. That is the straight legs, and the standing pose in your
+screenshot is the gait at rest. The flicker is the copy's again, since the
+copy was drawn this time; the render check still wrote nothing, because it
+compared the snapshot's frame with a counter that increments after the
+snapshot, so it never ran.
+
+Fixed: the machine is set with the call the UI spawner itself uses; the
+rest bend is twenty degrees; the toe constant is zero, since the feet
+still floated with it; and the check counts every call and writes a
+summary every 600 whatever it did, with the reason for each early return,
+so it cannot be silent again.
+
+**Test**: the same launch. **Report**: whether `animated_legs=live` is in
+the log and the legs walk from the game's cycles; whether the feet sit on
+the floor; and the flicker as before. The line `prerender calls=...` is
+the check's heartbeat this time.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

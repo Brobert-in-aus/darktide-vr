@@ -437,7 +437,11 @@ assert(Mirror.height_stretch(nil, 1.62, 1.40) == 1 and Mirror.height_stretch(1.7
 -- and the legs stretched by the factor; a straight leg is never the
 -- answer, and a missing length is no answer.
 local hips = Mirror.standing_hips_height(0.10, 0.45, 0.42, 1)
-assert(hips and hips < 0.10 + 0.45 + 0.42 and hips > 0.10 + 0.42 + 0.45 * 0.98, 'hips just under the straight leg')
+assert(hips and hips < 0.10 + 0.45 + 0.42, 'hips under the straight leg')
+near(hips, 0.10 + 0.42 + 0.45 * math.cos(Mirror.KNEE_REST_BEND), 1e-12, 'the knee softened by the rest bend')
+-- A visible bend, and room for the gait's arc: at least ten degrees, at
+-- most thirty (past that a standing body reads as crouching).
+assert(Mirror.KNEE_REST_BEND >= math.rad(10) and Mirror.KNEE_REST_BEND <= math.rad(30), 'rest bend between ten and thirty degrees')
 near(Mirror.standing_hips_height(0.10, 0.45, 0.42, 1.1) - 0.10, (hips - 0.10) * 1.1, 1e-12, 'the legs take the stretch, the ankle does not')
 assert(Mirror.standing_hips_height(0.10, 0, 0.42, 1) == nil and Mirror.standing_hips_height(nil, 0.45, 0.42, 1) == nil)
 near(Mirror.standing_hips_height(0.10, 0.45, 0.42, nil), hips, 1e-12, 'no factor is one')

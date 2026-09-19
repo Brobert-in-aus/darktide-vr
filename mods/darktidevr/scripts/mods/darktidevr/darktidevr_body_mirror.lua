@@ -361,10 +361,17 @@ end
 -- height, plus the lower and upper leg (stretched by k) with the knee
 -- softened by KNEE_REST_BEND, so the leg solve always has a little bend to
 -- work from and never starts locked straight. Pure.
-Mirror.KNEE_REST_BEND = math.rad(8)
+-- Eight degrees left the knee one per cent of slack: with the feet on the
+-- floor the legs locked straight and every step read as a stiff swing
+-- (13:02 worn run, "legs just stay straight and swing forwards
+-- together"). Twenty gives about six, a visible bend standing and room
+-- for the gait's arc.
+Mirror.KNEE_REST_BEND = math.rad(20)
 -- How far the ball of the foot (j_*toebase) sits above the sole on a
 -- standing foot: the ankle's height above the floor is measured from it.
-Mirror.TOE_ABOVE_SOLE_M = 0.015
+-- Zero: with 1.5 cm the feet still floated (13:02), and on this rig the
+-- toe joint sits at the sole.
+Mirror.TOE_ABOVE_SOLE_M = 0.0
 function Mirror.standing_hips_height(ankle_z, upper, lower, k)
     if type(ankle_z) ~= "number" or type(upper) ~= "number" or type(lower) ~= "number" then return nil end
     if not (upper > 0) or not (lower > 0) or ankle_z ~= ankle_z then return nil end
@@ -841,12 +848,16 @@ function Mirror.install(mod, presentation, options)
         if not wielded_template then log_once("machine_template", "animated_legs=waiting reason=no_wielded_template"); return false end
         local ok, err = pcall(function()
             local WeaponTemplate = require("scripts/utilities/weapon/weapon_template")
-            local Settings = require("scripts/settings/animation/player_unit_animation_state_machine_settings")
             local breed_name = state.profile and state.profile.archetype and state.profile.archetype.breed or "human"
             local machine, _, init = WeaponTemplate.state_machines(wielded_template, breed_name)
             if not machine then error("no third-person machine for " .. tostring(wielded_template.name)) end
-            local blend = Settings[machine] and Settings[machine].blend_time or 0
-            Unit.set_animation_state_machine_blend_base_layer(state.unit, machine, blend)
+            -- The game blends a NEW machine onto a unit that has one
+            -- (set_animation_state_machine_blend_base_layer). This copy had
+            -- its machine disabled at ready, and that call refused it:
+            -- "Unit has no animation state machine" (13:02 worn run, the
+            -- whole session on the gait). The UI spawner's own call sets
+            -- a machine on a unit outright, and that is what a copy needs.
+            Unit.set_animation_state_machine(state.unit, machine)
             for name, value in pairs(init or {}) do
                 local id = Unit.animation_find_variable(state.unit, name)
                 if id then
@@ -901,19 +912,42 @@ function Mirror.install(mod, presentation, options)
     -- one. Logs the first 200 drifts of a millimetre or more with the frame
     -- they happened on, and a summary every 600 checks either way, so a
     -- clean result is also written down.
-    local checks, drifts, drift_lines = 0, 0, 0
+    -- Every call is counted and every early return has a reason, and the
+    -- summary is written every 600 CALLS whatever they did: two worn runs
+    -- (12:22, 13:02) got silence from this check, the second because it
+    -- compared the snapshot's frame number with a counter that increments
+    -- AFTER the snapshot, so the equality never held. A stamp taken at the
+    -- snapshot and consumed here cannot do that.
+    local checks, drifts, drift_lines, calls = 0, 0, 0, 0
+    local skipped = {}
+    local function skip(reason)
+        skipped[reason] = (skipped[reason] or 0) + 1
+    end
+    local function summary()
+        local parts = {}
+        for reason, count in pairs(skipped) do parts[#parts + 1] = reason .. "=" .. count end
+        table.sort(parts)
+        mod:info("DARKTIDEVR_BODY_MIRROR prerender calls=%d checks=%d drifted=%d skipped=%s",
+            calls, checks, drifts, #parts > 0 and table.concat(parts, ",") or "none")
+    end
     function api.check_before_render(world)
-        if not state or not state.unit or not state.render_check or world ~= state.world then return end
-        if not Unit.alive(state.unit) or state.render_check.frame ~= state.frames then return end
+        calls = calls + 1
+        if calls % 600 == 0 then summary() end
+        if not state or not state.unit then skip("no_copy"); return end
+        if not state.render_check then skip("no_snapshot"); return end
+        if world ~= state.world then skip("other_world"); return end
+        if not Unit.alive(state.unit) then skip("unit_dead"); return end
+        if state.render_check.stamp == state.checked_stamp then skip("already_checked"); return end
+        state.checked_stamp = state.render_check.stamp
         local unit = state.unit
         -- ANIMATED LEGS: the engine's animation update has run since this
         -- module's update and written every joint of the copy. The legs
         -- are its; everything else goes back to the solve, and the drift
         -- compare below then measures what is left after that. Once, per
         -- frame.
-        if state.machine and state.solved and state.solved_frame == state.frames and
-                state.restored_frame ~= state.frames then
-            state.restored_frame = state.frames
+        if state.machine and state.solved and state.solved_stamp == state.render_check.stamp and
+                state.restored_stamp ~= state.render_check.stamp then
+            state.restored_stamp = state.render_check.stamp
             local ok = pcall(function()
                 for index, box in pairs(state.solved) do Unit.set_local_pose(unit, index, box:unbox()) end
                 World.update_unit(world, unit)
@@ -933,9 +967,6 @@ function Mirror.install(mod, presentation, options)
                     state.frames, d_root, d_hand, root[1], root[2], root[3],
                     state.render_check.root[1], state.render_check.root[2], state.render_check.root[3])
             end
-        end
-        if checks % 600 == 0 then
-            mod:info("DARKTIDEVR_BODY_MIRROR prerender checks=%d drifted=%d", checks, drifts)
         end
     end
 
@@ -1802,7 +1833,9 @@ function Mirror.install(mod, presentation, options)
             state.render_check = state.render_check or {}
             state.render_check.root = array(Unit.world_position(unit, 1))
             state.render_check.hand = array(Unit.world_position(unit, Unit.node(unit, "j_righthand")))
-            state.render_check.frame = state.frames
+            -- A stamp the render check consumes: not the frame counter,
+            -- which increments after this point.
+            state.render_check.stamp = (state.render_check.stamp or 0) + 1
         end
         -- ANIMATED LEGS: the solved pose of every joint that is not a leg
         -- (the root and the hips included), boxed, so the render boundary
@@ -1816,7 +1849,7 @@ function Mirror.install(mod, presentation, options)
                     if state.solved[index] then state.solved[index]:store(pose) else state.solved[index] = Matrix4x4Box(pose) end
                 end
             end
-            state.solved_frame = state.frames
+            state.solved_stamp = state.render_check and state.render_check.stamp
         end
         if Mirror.MODES[mode_name].reflect then
             -- Posed on the player; now turned about them and stood ahead.

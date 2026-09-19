@@ -552,6 +552,38 @@ fails at `log_once is called at line 833 before its declaration at line
 before 960. An unattended check would have caught this before the sitting:
 the copy's ready frame is reachable without a headset.
 
+## Worn, 13:02: the machine refused the copy; the gait with locked knees
+
+*"Flicker is back, body is definitely floating, no run animation, legs
+just stay straight and swing forwards together in the direction of
+travel."* The copy was drawn this time, and:
+
+```
+DARKTIDEVR_BODY_MIRROR animated_legs=failed error=...: Unit `#ID[...]` has no animation state machine
+```
+
+`Unit.set_animation_state_machine_blend_base_layer`, the game's call,
+blends a new machine onto a unit that has one; the copy's machine had
+been disabled at ready, and the engine refused. `assign_machine` now uses
+`Unit.set_animation_state_machine`, the UI spawner's own call, which sets
+a machine outright. The gait ran the whole session (46 gait lines, no
+`live`). Its standing hips height softened the knee by eight degrees,
+which is one per cent of slack: with the feet on the floor the legs
+locked straight, and with the run overlap both feet swung at once, which
+is "legs just stay straight and swing forwards together". The rest bend is
+twenty degrees now, about six per cent, a visible standing bend and room
+for the arc. The headset screenshot the user asked me to read shows the
+reflection standing with straight legs and both feet at the symmetric
+ideal places: the gait at rest, exactly. The toe constant is zero, since
+the feet still floated with 1.5 cm on this rig.
+
+The render check wrote nothing for a second time, and this time the reason
+was mine: it compared the snapshot's frame number with `state.frames`,
+which increments at the END of the update, after the snapshot, so the
+equality never held. It consumes a stamp taken at the snapshot now, counts
+every call, keeps a reason for every early return, and writes a summary
+every 600 calls whatever it did. Two silent runs are two too many.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows
