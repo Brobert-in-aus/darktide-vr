@@ -827,6 +827,26 @@ BodyProxy.gun_hand_offsets={}
 -- the gun path set it, so melee keeps the animation.
 BodyProxy.FINGER_SAMPLES=30
 BodyProxy.finger_poses={}
+-- The fingers on a full-profile body that is the hand rig (19 September:
+-- "there are no hand animations"). The glove path takes the curl from the
+-- gameplay rig's grip -- captured once per weapon and held, the animation
+-- exception the user allowed for fingers -- and nothing did the same for
+-- the rig, so its hands stood open at the rest pose. The same function, on
+-- the rig's own hand joints, per side; node lists are per unit and rebuilt
+-- when the rig changes.
+local rig_fingers = {}
+function BodyProxy.pose_rig_fingers()
+    if not hand_rig or not Unit.alive(hand_rig) then return false end
+    for _, side in ipairs({"left", "right"}) do
+        local hand = rig_fingers[side]
+        if not hand or hand.unit ~= hand_rig then
+            hand = {side = side, unit = hand_rig}
+            rig_fingers[side] = hand
+        end
+        copy_gameplay_fingers(hand)
+    end
+    return true
+end
 function BodyProxy.finger_capture_key(side)
     if not state.finger_key or not side then return nil end
     local now=Managers and Managers.time and Managers.time:time('main')

@@ -359,11 +359,74 @@ The motion probe no longer depends on the trace flag, which three
 deployments in an hour each wrote `disabled`; it runs with its own budget
 of 3,000 lines.
 
+## Worn, 11:36: the probe named it
+
+On `565f8e7`: *"arm length is good, no change to flicker, I've also
+noticed there are no hand animations and they're not quite correctly
+aligned with weapons."* And, on the write-up's hedge: *"the weapon does
+NOT flicker with the body. Stop second guessing me."* The one-writer body
+frame was not it. The probe, running without the flag for the first time,
+had 2,767 samples:
+
+```
+dt=0.0071 d_avatar_m=0.0152 d_neck_target_m=0.0484 d_eye_m=0.0484 d_unit_m=0.0484
+dt=0.0070 d_avatar_m=0.0142 d_neck_target_m=0.0000 d_eye_m=0.0001 d_unit_m=0.0002
+dt=0.0071 d_avatar_m=0.0144 d_neck_target_m=0.0392 d_eye_m=0.0392 d_unit_m=0.0392
+dt=0.0079 d_avatar_m=0.0125 d_neck_target_m=0.0001 d_eye_m=0.0001 d_unit_m=0.0001
+dt=0.0067 d_avatar_m=0.0106 d_neck_target_m=0.0001 d_eye_m=0.0001 d_unit_m=0.0001
+dt=0.0079 d_avatar_m=0.0109 d_neck_target_m=0.0303 d_eye_m=0.0303 d_unit_m=0.0303
+                       smoothness (mean min/max of consecutive steps):
+                       avatar 0.866   neck_target 0.121   eye 0.100   unit 0.115
+```
+
+The avatar's root, which the game interpolates every frame, moves about
+1.5 cm every frame. The eye the copy is placed from stands still for two or
+three frames and jumps 3 to 5 cm, and the neck target and the copy's root
+do exactly the same: a 60 Hz fixed-step position read at 140 frames a
+second. The eye is re-based each frame on the body anchor, and the anchor
+is `first_person_component.position`, which the game writes in its fixed
+update. The user's "alternating between two positions each frame" is that
+pattern seen against a view that moves every frame.
+
+**The smooth timeline.** The game's first-person unit carries the same
+point on the interpolated timeline (the interpolated root plus the height,
+set in `update_unit_position` from the root the post-update just wrote).
+The difference between the unit's position and the component's is the
+anchor's lag this frame, and the copy adds it to the neck target and the
+shoulder targets (`smooth_offset`, `shifted`). It is a read of the
+avatar's camera point, not of its animation; the separation scan still
+passes. The probe now prints `anchor_lag_m` so the next log shows the lag
+being taken up.
+
+**Fingers.** The gloves took their curl from the gameplay rig's grip,
+captured once per weapon and held (the animation exception the user
+allowed for fingers), and nothing did the same for the rig, so the copy's
+hands stood open at the rest pose. `BodyProxy.pose_rig_fingers` runs the
+same function on the copy's own hand joints after the arm solve.
+
+**Weapon alignment.** The copy's hand joint is put on the recorded wrist
+pose and its rotation set to the pose's; `hand_angle_deg` in the arm log
+now says how far the drawn hand's rotation is from that pose after the
+write. The weapon is placed from the same pose, so a hand that matches it
+here and still sits wrong on the gun puts the difference in the equipment
+sync's authored basis, which is the next thing to measure.
+
+**Two-handing.** *"I can no longer two-hand ranged weapons by grabbing
+them with my off-hand."* Not code: the sessions at 11:16, 11:31 and 11:36
+have two-hand release lines and every session after the 11:40 crash has
+none, and the restored settings file has `vr_two_hand_support = false`.
+The restore source, `user_settings.vr.config`, dated 14 September, has no
+entry for the key at all. Set back to true in the live file with the game
+closed, and the backup refreshed from it with the old copy kept beside.
+
 ## Limits
 
-- The one-writer body frame is reasoned from the callers and their clocks
-  and reproduces the report exactly; it is not yet worn, and the motion
-  probe will show whether the alternation is gone.
+- The smooth timeline is measured cause and reasoned fix: the probe shows
+  the copy on the fixed-step timeline and the avatar's root on the frame
+  timeline, and the correction is their difference. Not yet worn; the
+  probe's `anchor_lag_m` and `d_unit_m` columns say whether it took.
+- The one-writer body frame stays: it was a real second writer of the
+  frame's yaw, it just was not the one the body was flickering from.
 - The rest pose is now the spawner's first frame made neutral by rule:
   square, upright, hips at standing height. The spine's own curve from that
   frame is kept. Whether it reads as a good standing pose is a worn

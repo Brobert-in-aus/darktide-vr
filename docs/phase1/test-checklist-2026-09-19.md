@@ -213,6 +213,38 @@ close and reach out fully (wrists), walk and strafe (flicker), sprint.
 whether the flicker is gone. The motion probe runs without the trace flag
 now, so the log will show the per-frame steps either way.
 
+### 1g. Worn at 11:36: the probe named the flicker; fingers; two-handing
+
+**Flicker.** The probe ran, and it says: your avatar's root moves 1.5 cm
+every frame, while the eye the copy is placed from stands still for two or
+three frames and then jumps 3 to 5 cm, and the copy does exactly what the
+eye does. That eye is re-based on the body anchor, which is the
+first-person component's position, and the game writes that in its fixed
+update at 60 Hz while you render at 140. The copy now adds the difference
+between the game's smooth first-person unit and that fixed-step position
+to everything it places, so it stands on the same timeline your view does.
+
+**Fingers.** The gloves had a grip curl captured per weapon; the copy's
+hands never got it. They do now, on their own hand joints.
+
+**Weapon alignment.** Not changed yet. The arm log now carries the angle
+between the drawn hand and the recorded wrist pose; if that is near zero
+and the gun still sits wrong, the difference is in the weapon's authored
+basis, which is the next thing to measure.
+
+**Two-handing.** The restore after the crash brought back a settings file
+from 14 September with two-hand support off; every session after it had no
+two-hand lines and the three before it did. It is on again in your
+settings, and the backup the restore uses is refreshed from the corrected
+file, so the next restore keeps it.
+
+**Test**: walk and strafe (flicker), wield a gun and look at your fingers,
+then grab the gun with your off-hand.
+
+**Report**: whether the body now moves with you every frame, whether the
+fingers curl on the grip, and whether two-handing works. The probe's
+`anchor_lag_m` column shows the lag being taken up either way.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

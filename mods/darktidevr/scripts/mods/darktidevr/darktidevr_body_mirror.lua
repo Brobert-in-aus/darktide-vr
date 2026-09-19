@@ -1157,6 +1157,15 @@ function Mirror.install(mod, presentation, options)
         arm.stretch = Vector3.length(target - vector(hand))
         set_world_rotation(unit, arm.hand, target_rotation)
         World.update_unit(world, unit)
+        -- How far the drawn hand's rotation is from the recorded wrist pose
+        -- after the write, for the log ("not quite correctly aligned with
+        -- weapons"): the weapon is placed from the same pose, so a hand
+        -- that matches it here and still sits wrong on the gun puts the
+        -- difference in the equipment sync, not in this solve.
+        local ax, ay, az, aw = Quaternion.to_elements(Unit.world_rotation(unit, arm.hand))
+        local bx, by, bz, bw = Quaternion.to_elements(target_rotation)
+        local dot = math.min(1, math.abs(ax * bx + ay * by + az * bz + aw * bw))
+        arm.angle_error = math.deg(2 * math.acos(dot))
         arm.distance = Vector3.length(target - shoulder)
         if not reachable then
             arm.unreachable = arm.unreachable + 1
@@ -1187,6 +1196,34 @@ function Mirror.install(mod, presentation, options)
         mod:info("DARKTIDEVR_BODY_MIRROR colliders=disabled units=%d actors=%d", disabled, actors)
     end
 
+    -- THE SMOOTH TIMELINE (19 September, from the motion probe). The eye the
+    -- copy is placed from is re-based each frame on the body anchor, and the
+    -- anchor is the first-person component's position, which the game
+    -- writes in its FIXED update: at 140 frames a second it stands still for
+    -- two or three frames and then jumps 3-5 cm, and the probe showed the
+    -- neck target and the copy's root doing exactly that (smoothness 0.12)
+    -- while the avatar's root, which the game interpolates every frame,
+    -- moved 1.5 cm every frame (0.87). "The body is alternating between two
+    -- positions each frame." The game's first-person UNIT carries the same
+    -- point on the smooth timeline (the interpolated root plus the height,
+    -- set in update_unit_position), so the difference between the two is
+    -- the anchor's lag this frame, and adding it to the eye puts the copy on
+    -- the timeline the view is on. It is a read of the avatar's camera
+    -- point, not of its animation.
+    local function smooth_offset(avatar)
+        local first_person = avatar and Unit.alive(avatar) and ScriptUnit.has_extension(avatar, "first_person_system")
+        local component = first_person and first_person._first_person_component
+        local eye_unit = first_person and first_person.first_person_unit and first_person:first_person_unit()
+        if not component or not component.position or not eye_unit or not Unit.alive(eye_unit) then return nil end
+        local lag = Unit.world_position(eye_unit, 1) - component.position
+        -- A step, not a jump: past this the two are not the same point.
+        if Vector3.length(lag) > 0.5 then return nil end
+        return lag
+    end
+    local function shifted(position, lag)
+        if not position or not lag then return position end
+        return {position[1] + Vector3.x(lag), position[2] + Vector3.y(lag), position[3] + Vector3.z(lag)}
+    end
     -- Where the copy stands. The avatar's ROOT POSITION is the one thing
     -- the drawn body takes from it: it is the simulated place the player is,
     -- not animation, and the feet have to be there. Its heading is the body
@@ -1383,7 +1420,10 @@ function Mirror.install(mod, presentation, options)
             state.root_yaw_leak = nil
             World.update_unit(world, unit)
         end
-        local neck_target = frame and Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale)
+        -- Everything placed from the frame this frame is shifted onto the
+        -- smooth timeline by the anchor's lag (see smooth_offset).
+        state.smooth_lag = smooth_offset(avatar)
+        local neck_target = frame and shifted(Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale), state.smooth_lag)
         if Mirror.MODES[mode_name].follow_neck and Unit.has_node(unit, "j_neck") then
             -- NO SCALING TO THE NECK any more (19 September). The copy's
             -- scale is the game's own character height for this profile,
@@ -1445,7 +1485,8 @@ function Mirror.install(mod, presentation, options)
                 -- The estimated shoulders hang from the frame's neck, so they take
                 -- the same extra as the copy's neck, or the clavicles would shrug
                 -- up toward shoulders 10 cm above the lowered body's.
-                local target = Mirror.neck_target(frame["shoulder_" .. side], frame.head_yaw, frame.scale)
+                local target = shifted(Mirror.neck_target(frame["shoulder_" .. side], frame.head_yaw, frame.scale),
+                    state.smooth_lag)
                 if target and Unit.has_node(unit, clavicle_name) and Unit.has_node(unit, arm_name) then
                     local clavicle, arm = Unit.node(unit, clavicle_name), Unit.node(unit, arm_name)
                     local before = Vector3.length(Unit.world_position(unit, arm) - vector(target))
@@ -1530,6 +1571,11 @@ function Mirror.install(mod, presentation, options)
         if Mirror.MODES[mode_name].solve_arms then
             for _, arm in ipairs(state.arms) do solve_arm(world, avatar, unit, arm) end
         end
+        -- The fingers, after the arms: the grip curl the gloves had, on the
+        -- copy's own hand joints, held per weapon (BodyProxy.pose_rig_fingers).
+        if state.hand_rig and body_proxy() and body_proxy().pose_rig_fingers then
+            if body_proxy().pose_rig_fingers() then World.update_unit(world, unit) end
+        end
         if Mirror.MODES[mode_name].reflect then
             -- Posed on the player; now turned about them and stood ahead.
             local root = Unit.local_position(unit, 1)
@@ -1585,10 +1631,11 @@ function Mirror.install(mod, presentation, options)
                         state.motion_lines = state.motion_lines + 1
                         local function fmt(v) return v and string.format("%.4f", v) or "na" end
                         mod:info("DARKTIDEVR_BODY_MOTION t=%.3f dt=%.4f d_avatar_m=%s d_neck_target_m=%s d_eye_m=%s d_unit_m=%s " ..
-                            "avatar=%.3f,%.3f,%.3f unit=%.3f,%.3f,%.3f",
+                            "anchor_lag_m=%s avatar=%.3f,%.3f,%.3f unit=%.3f,%.3f,%.3f",
                             type(t) == "number" and t or 0, type(dt) == "number" and dt or 0,
                             fmt(d_avatar), fmt(Mirror.step_m(neck_now, m.neck)), fmt(Mirror.step_m(eye_now, m.eye)),
                             fmt(Mirror.step_m(root_now, m.root)),
+                            fmt(state.smooth_lag and Vector3.length(state.smooth_lag) or nil),
                             avatar_now[1], avatar_now[2], avatar_now[3], root_now[1], root_now[2], root_now[3])
                     end
                 end
@@ -1766,8 +1813,9 @@ function Mirror.install(mod, presentation, options)
                         state.arms[2] and state.arms[2].length_ratio_upper or -1, state.arms[2] and state.arms[2].length_ratio_lower or -1)
                 end
                 for _, arm in ipairs(state.arms) do
-                    mod:info("DARKTIDEVR_BODY_MIRROR arm side=%s upper_m=%.4f lower_m=%.4f world_upper_m=%.4f world_lower_m=%.4f shoulder_to_target_m=%.4f hand_error_m=%.4f unreachable_frames=%d max_stretch_m=%.4f max_protraction_m=%.4f",
-                        arm.side, arm.upper, arm.lower, arm.world_upper or -1, arm.world_lower or -1, arm.distance or -1, arm.error or -1, arm.unreachable, arm.max_stretch or 0,
+                    mod:info("DARKTIDEVR_BODY_MIRROR arm side=%s upper_m=%.4f lower_m=%.4f world_upper_m=%.4f world_lower_m=%.4f shoulder_to_target_m=%.4f hand_error_m=%.4f hand_angle_deg=%.2f unreachable_frames=%d max_stretch_m=%.4f max_protraction_m=%.4f",
+                        arm.side, arm.upper, arm.lower, arm.world_upper or -1, arm.world_lower or -1, arm.distance or -1, arm.error or -1,
+                        arm.angle_error or -1, arm.unreachable, arm.max_stretch or 0,
                         arm.max_protraction or 0)
                     if arm.max_stretch_ratio then
                         mod:info("DARKTIDEVR_BODY_MIRROR arm side=%s max_stretch_ratio=%.3f", arm.side, arm.max_stretch_ratio)
