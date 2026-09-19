@@ -71,7 +71,6 @@ on in the mod's settings; the rest applies to everyone.
 - The view, your hands and your weapon move smoothly every frame rather
   than stepping at the game's fixed update rate; anything drawn on the
   body, cloth and lenses included, stops wobbling with them.
-
 - The item radial stays open while you hold its control with a gun out, and
   reaching for an interaction works again while a weapon is wielded.
 - The push-to-talk zone at your mouth is a third smaller, so it no longer
