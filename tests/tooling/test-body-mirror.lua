@@ -473,7 +473,8 @@ local function first_line_matching(text, pattern)
   return select(2, text:sub(1, at):gsub('\n', '')) + 1
 end
 for _, helper in ipairs({'log_once', 'array', 'vector', 'inverse', 'set_world_rotation', 'aim_joint',
-    'apply_arm_scales', 'destroy_own', 'body_proxy', 'smooth_offset', 'shifted', 'assign_machine'}) do
+    'apply_arm_scales', 'destroy_own', 'body_proxy', 'smooth_offset', 'shifted', 'assign_machine',
+    'collect_children', 'measure_children'}) do
   local declared = first_line_matching(source, '\n%s*local%s+' .. helper .. '[%s,=]') or
     first_line_matching(source, '\n%s*local%s+function%s+' .. helper .. '%(') or
     first_line_matching(source, '\n%s*local%s+[%w_,%s]*,%s*' .. helper .. '[%s,=]')

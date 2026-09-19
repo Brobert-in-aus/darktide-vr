@@ -739,6 +739,60 @@ offset, and the avatar's root is interpolated by the game every frame
 (`d_avatar_m` smooth). The column measures the sample cadence, not the
 camera, and is not the flicker.
 
+## Worn, 13:47: the pre-world pose changed nothing; the children
+
+On 571524d. The user, strafing while facing the reflection: the flicker
+"extremely obvious", visible in the recording, "between exactly two
+locations, one of which looks like the correct location". Also: the
+character too short and floating, a hand rested on the real shoulder
+5-10 cm above the drawn one, the eyeline above the reflection's.
+
+The log: `Hooking 'update' from [WorldManager]` at start, `posed
+mode=overlayanimated frames=14400`, `prerender checks=14917 drifted=0`,
+`animated_legs=ready machine=nil leg_joints=24`. The copy was posed before
+the world update every frame, its own joints never moved between that and
+the render, and the drawn body still alternated. The write timing is not
+the mechanism.
+
+The recording (13:47:24 local, 30 fps, 1920×1080), the reflection's eye
+lenses tracked as a blue mask and the yellow crate behind it as a yellow
+mask, both centroids per frame:
+
+| | residual vs 5-frame median |
+|---|---|
+| crate x | mean 4.1 px, p90 11 px |
+| lens x | mean 12.0 px, p90 39 px, max 82 px |
+| lens x minus crate x, while the crate moves | mean 16.6 px, p90 48 px |
+
+An earlier pass that correlated column sums read the floor as still while
+the user strafed: the sums were dominated by the HUD, which is fixed in
+the frame. That measurement was wrong; the report was right.
+
+### The children
+
+The copy's drawn surfaces are all child units: the profile spawner links
+each gear unit to the copy's skeleton (`World.link_unit(world, unit, 1,
+parent, node, map_mode)` in `visual_loadout_customization.lua`). The
+render check, the probe and the drift compare have only ever read the
+copy's own joints. The module now collects, at ready, every linked unit
+that carries one of j_head, j_righthand, j_lefthand, j_hips, j_neck, and
+measures the distance between the child's joint and the copy's same joint
+three times a frame: after the solve's last `World.update_unit` on the
+copy alone (`child_before_m`), after `World.update_unit_and_children`
+(`child_after_m`; this call is what the rigid gloves have always used and
+is the labelled experiment), and at the render boundary
+(`child_render_*` in the heartbeat). The reflection's own root move flushes
+its children the same way.
+
+### Height and float, instrumented
+
+At ready, `height camera_eye_root_z=... copy_eye_root_z=... eye_gap_m=...
+neck_root_z=... shoulder_root_z=.../...`: the copy's eyes are the face
+unit's j_lefteye/j_righteye (the face is hidden in the overlay but its
+joints follow the skeleton), all in the root's frame against the camera's
+eye in that frame. The gait line gains `toe_above_ground_m` per side,
+the drawn toe joint against the ground the gait put the foot on.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows

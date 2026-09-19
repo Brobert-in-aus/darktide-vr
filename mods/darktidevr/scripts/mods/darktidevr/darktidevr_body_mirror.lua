@@ -944,6 +944,51 @@ function Mirror.install(mod, presentation, options)
     -- snapshot and consumed here cannot do that.
     local checks, drifts, drift_lines, calls = 0, 0, 0, 0
     local skipped = {}
+    -- The linked children against the skeleton: at the render boundary
+    -- (child_render_*) and as the update left them before its children
+    -- flush (child_update_*, from state.child_before).
+    local child_render_over, child_render_max, child_render_worst = 0, 0, "none"
+    local child_update_over, child_update_max = 0, 0
+    -- THE CHILDREN (19 September, 13:47 worn run). Everything drawn of the
+    -- copy is a child unit: the gear, the hands, the head with its eye
+    -- lenses, each linked to the copy's skeleton by the profile spawner
+    -- (World.link_unit with a node map). The user: the drawn body flickers
+    -- "between exactly two locations, one of which looks like the correct
+    -- location"; the recording's eye lenses jump 12 px on average and up to
+    -- 82 px at 1920 wide against a background moving 4 px. Every check so
+    -- far read the copy's OWN joints, which were always where the solve put
+    -- them. This reads the children: for each linked unit that carries one
+    -- of the named joints, the distance between its joint and the copy's
+    -- same joint. Zero means the child stands where the skeleton is.
+    local CHILD_JOINTS = {"j_head", "j_righthand", "j_lefthand", "j_hips", "j_neck"}
+    local function collect_children(unit, data)
+        local children = {}
+        local function consider(slot_name, child)
+            if not child or child == unit or not Unit.alive(child) then return end
+            for _, name in ipairs(CHILD_JOINTS) do
+                if Unit.has_node(child, name) and Unit.has_node(unit, name) then
+                    children[#children + 1] = {unit = child, node = Unit.node(child, name), parent_node = Unit.node(unit, name),
+                        name = slot_name .. ":" .. name}
+                end
+            end
+        end
+        for slot_name, slot in pairs(data and data.slots or {}) do
+            consider(slot_name, slot.unit_3p)
+            local attachments = slot.unit_3p and slot.attachments_by_unit_3p and slot.attachments_by_unit_3p[slot.unit_3p]
+            for _, attachment in ipairs(attachments or {}) do consider(slot_name .. "/attachment", attachment) end
+        end
+        return children
+    end
+    local function measure_children(unit, children)
+        local worst, worst_name = 0, "none"
+        for _, child in ipairs(children or {}) do
+            if Unit.alive(child.unit) then
+                local d = Vector3.distance(Unit.world_position(child.unit, child.node), Unit.world_position(unit, child.parent_node))
+                if d > worst then worst, worst_name = d, child.name end
+            end
+        end
+        return worst, worst_name
+    end
     local function skip(reason)
         skipped[reason] = (skipped[reason] or 0) + 1
     end
@@ -951,8 +996,9 @@ function Mirror.install(mod, presentation, options)
         local parts = {}
         for reason, count in pairs(skipped) do parts[#parts + 1] = reason .. "=" .. count end
         table.sort(parts)
-        mod:info("DARKTIDEVR_BODY_MIRROR prerender calls=%d checks=%d drifted=%d skipped=%s",
-            calls, checks, drifts, #parts > 0 and table.concat(parts, ",") or "none")
+        mod:info("DARKTIDEVR_BODY_MIRROR prerender calls=%d checks=%d drifted=%d child_render_over_1mm=%d child_render_max_m=%.4f child_render_worst=%s child_update_over_1mm=%d child_update_max_m=%.4f skipped=%s",
+            calls, checks, drifts, child_render_over, child_render_max, tostring(child_render_worst),
+            child_update_over, child_update_max, #parts > 0 and table.concat(parts, ",") or "none")
     end
     function api.check_before_render(world)
         calls = calls + 1
@@ -976,6 +1022,12 @@ function Mirror.install(mod, presentation, options)
         local d_root = Mirror.step_m(root, state.render_check.root) or 0
         local d_hand = Mirror.step_m(hand, state.render_check.hand) or 0
         checks = checks + 1
+        -- The children, read a third time, after the engine's world update.
+        local child_render, child_render_name = measure_children(unit, state.children)
+        if child_render >= 0.001 then child_render_over = child_render_over + 1 end
+        if child_render > child_render_max then child_render_max, child_render_worst = child_render, child_render_name end
+        if (state.child_before or 0) >= 0.001 then child_update_over = child_update_over + 1 end
+        if (state.child_before or 0) > child_update_max then child_update_max = state.child_before end
         if d_root >= 0.001 or d_hand >= 0.001 then
             drifts = drifts + 1
             if drift_lines < 200 then
@@ -1516,6 +1568,10 @@ function Mirror.install(mod, presentation, options)
             state.same_layout = Mirror.has_solve_joints(
                 function(name) return Unit.has_node(unit, name) end)
             state.count = Unit.num_scene_graph_items(unit)
+            state.children = collect_children(unit, data)
+            mod:info("DARKTIDEVR_BODY_MIRROR children linked=%d joints=%s", #state.children,
+                (function() local names = {}; for _, c in ipairs(state.children) do names[#names + 1] = c.name end
+                    table.sort(names); return table.concat(names, ",") end)())
             capture_arms(unit)
             -- THE REST POSE. Every joint below the root, as the spawner left
             -- it on this frame, boxed once. This is the whole of what the
@@ -1848,6 +1904,16 @@ function Mirror.install(mod, presentation, options)
         if state.hand_rig and body_proxy() and body_proxy().pose_rig_fingers then
             if body_proxy().pose_rig_fingers() then World.update_unit(world, unit) end
         end
+        -- The children, measured against the skeleton as the solve left it
+        -- (after World.update_unit on the copy alone), then flushed with the
+        -- call the rigid gloves have always used, World.update_unit_and_children,
+        -- and measured again. The first number says whether update_unit
+        -- leaves the linked units behind; the second whether the children
+        -- call brings them; the render check reads them a third time after
+        -- the engine's world update. The flush is the labelled experiment.
+        state.child_before, state.child_before_name = measure_children(unit, state.children)
+        World.update_unit_and_children(world, unit)
+        state.child_after, state.child_after_name = measure_children(unit, state.children)
         -- What the copy looks like when this update is done, for the
         -- pre-render check (api.check_before_render): the root and the
         -- right hand. The probe (12:07) showed the root as smooth as the
@@ -1871,7 +1937,7 @@ function Mirror.install(mod, presentation, options)
             local moved = Mirror.reflected_root(array(root), pivot, heading, Mirror.MIRROR_DISTANCE)
             Unit.set_local_position(unit, 1, vector(moved))
             Unit.set_local_rotation(unit, 1, Quaternion.multiply(Quaternion(Vector3.up(), math.pi), Unit.local_rotation(unit, 1)))
-            World.update_unit(world, unit)
+            World.update_unit_and_children(world, unit)
         end
         -- The scale is fixed, so nothing waits for it to settle; the scan
         -- still waits a frame for the camera.
@@ -1918,12 +1984,13 @@ function Mirror.install(mod, presentation, options)
                         state.motion_lines = state.motion_lines + 1
                         local function fmt(v) return v and string.format("%.4f", v) or "na" end
                         mod:info("DARKTIDEVR_BODY_MOTION t=%.3f dt=%.4f d_avatar_m=%s d_neck_target_m=%s d_eye_m=%s d_unit_m=%s " ..
-                            "anchor_lag_m=%s avatar=%.3f,%.3f,%.3f unit=%.3f,%.3f,%.3f",
+                            "anchor_lag_m=%s avatar=%.3f,%.3f,%.3f unit=%.3f,%.3f,%.3f child_before_m=%s child_after_m=%s child=%s",
                             type(t) == "number" and t or 0, type(dt) == "number" and dt or 0,
                             fmt(d_avatar), fmt(Mirror.step_m(neck_now, m.neck)), fmt(Mirror.step_m(eye_now, m.eye)),
                             fmt(Mirror.step_m(root_now, m.root)),
                             fmt(state.smooth_lag and Vector3.length(state.smooth_lag) or nil),
-                            avatar_now[1], avatar_now[2], avatar_now[3], root_now[1], root_now[2], root_now[3])
+                            avatar_now[1], avatar_now[2], avatar_now[3], root_now[1], root_now[2], root_now[3],
+                            fmt(state.child_before), fmt(state.child_after), tostring(state.child_before_name))
                     end
                 end
                 state.motion = {avatar = avatar_now, neck = neck_now, eye = eye_now, root = root_now}
@@ -2067,6 +2134,27 @@ function Mirror.install(mod, presentation, options)
             if camera and Mirror.MODES[mode_name].near_eye then
                 local eye = Matrix4x4.transform(Matrix4x4.inverse(Unit.world_pose(unit, 1)), Unit.world_position(camera, 1))
                 mod:info("DARKTIDEVR_BODY_MIRROR live_eye_root_local=%.3f,%.3f,%.3f", Vector3.x(eye), Vector3.y(eye), Vector3.z(eye))
+                -- HEIGHT (13:47 worn run): "my eyeline is above the mirrored
+                -- model eyeline" and a hand rested on the real shoulder sits
+                -- 5-10 cm above the drawn one. The copy's own eyes (the face
+                -- unit's j_lefteye/j_righteye, present though hidden), its
+                -- neck and its shoulder joints, in the root's frame, against
+                -- the camera's eye in the same frame.
+                local root_inverse = Matrix4x4.inverse(Unit.world_pose(unit, 1))
+                local function root_z(child, name)
+                    return child and Unit.alive(child) and Unit.has_node(child, name) and
+                        Vector3.z(Matrix4x4.transform(root_inverse, Unit.world_position(child, Unit.node(child, name)))) or nil
+                end
+                local eye_z
+                for _, slot in pairs(state.data and state.data.slots or {}) do
+                    local left, right = root_z(slot.unit_3p, "j_lefteye"), root_z(slot.unit_3p, "j_righteye")
+                    if left and right then eye_z = (left + right) / 2; break end
+                end
+                local neck_z, shoulder_left, shoulder_right = root_z(unit, "j_neck"), root_z(unit, "j_leftarm"), root_z(unit, "j_rightarm")
+                local function fmt(v) return v and string.format("%.3f", v) or "na" end
+                mod:info("DARKTIDEVR_BODY_MIRROR height camera_eye_root_z=%.3f copy_eye_root_z=%s eye_gap_m=%s neck_root_z=%s shoulder_root_z=%s/%s scale=%.4f",
+                    Vector3.z(eye), fmt(eye_z), fmt(eye_z and Vector3.z(eye) - eye_z), fmt(neck_z), fmt(shoulder_left), fmt(shoulder_right),
+                    state.scale or 1)
             end
             -- How far the hand sits from its forearm joint after the solve
             -- (the stretch). The hand's error against its recorded target is
@@ -2083,12 +2171,21 @@ function Mirror.install(mod, presentation, options)
                     local leg = state.legs and state.legs[side]
                     return leg and leg.error and string.format("%.3f", leg.error) or "na"
                 end
-                mod:info("DARKTIDEVR_BODY_MIRROR gait speed_mps=%.3f ground_hits=%d left=%s right=%s ankle_error_m=%s/%s left_foot=%.3f,%.3f,%.3f right_foot=%.3f,%.3f,%.3f",
+                -- FLOAT (13:47 worn run): the drawn toe against the ground
+                -- the gait put the foot on, per side. Positive is a toe in
+                -- the air above the foot's ground point.
+                local function toe_above(side)
+                    local name = "j_" .. side .. "toebase"
+                    if not Unit.has_node(unit, name) then return "na" end
+                    return string.format("%.3f", Vector3.z(Unit.world_position(unit, Unit.node(unit, name))) - feet[side].position[3])
+                end
+                mod:info("DARKTIDEVR_BODY_MIRROR gait speed_mps=%.3f ground_hits=%d left=%s right=%s ankle_error_m=%s/%s left_foot=%.3f,%.3f,%.3f right_foot=%.3f,%.3f,%.3f toe_above_ground_m=%s/%s",
                     feet.speed or 0, state.ground_hits or 0,
                     feet.left.swinging and "swinging" or "planted", feet.right.swinging and "swinging" or "planted",
                     err("left"), err("right"),
                     feet.left.position[1], feet.left.position[2], feet.left.position[3],
-                    feet.right.position[1], feet.right.position[2], feet.right.position[3])
+                    feet.right.position[1], feet.right.position[2], feet.right.position[3],
+                    toe_above("left"), toe_above("right"))
             end
             if Mirror.MODES[mode_name].solve_arms then
                 if state.arm_lengths then

@@ -455,6 +455,48 @@ them. Both recordings so far walked toward it, and forward motion moves
 it in scale, not across the plates, so they could not show an
 alternation either way.
 
+### 1n. Worn at 13:47: the flicker survived the pre-world pose; the children are measured and flushed
+
+Your report: strafing, the flicker extremely obvious and visible in the
+recording, between exactly two locations, one of which looks correct; the
+character too short and floating; a hand rested on your real shoulder
+sits 5-10 cm above the drawn one; your eyeline is above the reflection's.
+
+The log for that run: the copy was posed before the world update (the
+WorldManager hook was installed, `posed frames=14400` against 14,917
+render checks), no drift, and the flicker stayed. So the timing of the
+joint writes was not it. The recording, measured on the reflection's eye
+lenses against the crate behind it at 1920 wide: the lenses jump 12 px on
+average and up to 82 px frame to frame while the crate moves 4 px. That is
+tens of centimetres, not a one-frame lag.
+
+**What has never been read.** Everything drawn of the copy is a child
+unit linked to its skeleton by the profile spawner: the gear, the hands,
+the head with its lenses. Every check so far read the copy's own joints,
+which were always where the solve put them. This build reads the
+children: for each linked unit carrying a named joint (head, hands, hips,
+neck), the distance between its joint and the copy's same joint, three
+times a frame: as the update left them, after a flush with the call the
+rigid gloves have always used (`World.update_unit_and_children`, the
+labelled experiment), and at the render boundary.
+
+```
+DARKTIDEVR_BODY_MIRROR children linked=N joints=...
+DARKTIDEVR_BODY_MOTION ... child_before_m=... child_after_m=... child=slot:joint
+DARKTIDEVR_BODY_MIRROR prerender ... child_render_over_1mm=N child_render_max_m=... child_update_over_1mm=N ...
+```
+
+A `child_before_m` in the centimetres with `child_after_m` at zero says
+the linked units were being left where the previous flush put them, and
+the flush is the fix. Zero everywhere says the drawn skin is not the
+scene graph and the next measurement has to be of the renderer.
+
+**Height and float, measured this run.** A `height` line at ready gives
+the copy's own eyes (the face unit's eye joints), neck and shoulder
+joints against the camera's eye, all in the root's frame, and the gait
+line gains `toe_above_ground_m` per side. Those numbers, not a guess,
+decide the height and the float.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not
