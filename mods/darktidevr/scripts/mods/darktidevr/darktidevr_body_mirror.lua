@@ -1218,6 +1218,40 @@ function Mirror.install(mod, presentation, options)
                 state.arms[#state.arms + 1] = arm
             end
         end
+        -- THE RIG'S OWN HAND MIRROR (15:26 worn run: with the reflected
+        -- frame's right axis flipped the mirror's hands were "upside-down",
+        -- with its up flipped "facing the wrong way"). A reflected frame is
+        -- left-handed and exactly one axis has to flip to make the other
+        -- hand's proper rotation; which one is the rig's convention, and
+        -- the rig says it: in its rest pose the two hands are mirror images
+        -- across the body's sagittal plane. The right hand's rest axes are
+        -- reflected across that plane and compared with the left hand's:
+        -- the axis whose reflection points the other way is the one the
+        -- rig flips. Logged with the dots, which say how symmetric the
+        -- rest pose is; below 0.8 the rig is not trusted and the frame
+        -- keeps its forward and up.
+        local right_arm, left_arm
+        for _, arm in ipairs(state.arms) do
+            if arm.side == "right" then right_arm = arm elseif arm.side == "left" then left_arm = arm end
+        end
+        if right_arm and left_arm then
+            local n = Quaternion.right(Unit.world_rotation(unit, 1))
+            local function reflect(v) return v - n * (2 * Vector3.dot(n, v)) end
+            local rr, rl = Unit.world_rotation(unit, right_arm.hand), Unit.world_rotation(unit, left_arm.hand)
+            local dots = {
+                x = Vector3.dot(reflect(Quaternion.right(rr)), Quaternion.right(rl)),
+                y = Vector3.dot(reflect(Quaternion.forward(rr)), Quaternion.forward(rl)),
+                z = Vector3.dot(reflect(Quaternion.up(rr)), Quaternion.up(rl)),
+            }
+            local flips, trusted = {}, true
+            for axis, d in pairs(dots) do
+                if math.abs(d) < 0.8 then trusted = false end
+                if d < 0 then flips[#flips + 1] = axis end
+            end
+            state.hand_mirror = trusted and #flips == 1 and flips[1] or nil
+            mod:info("DARKTIDEVR_BODY_MIRROR hand_mirror flip=%s dots=x:%.2f y:%.2f z:%.2f trusted=%s",
+                tostring(state.hand_mirror), dots.x, dots.y, dots.z, tostring(trusted))
+        end
     end
     -- THE REST POSE MADE NEUTRAL, AND THE CALIBRATION APPLIED TO IT (19
     -- September). The spawner's first frame is whatever its idle was doing:
@@ -1834,18 +1868,30 @@ function Mirror.install(mod, presentation, options)
             Mirror.mirror_plane(Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale), frame.yaw, Mirror.MIRROR_DISTANCE) or nil
         local function reflected(p) return mirror and p and Mirror.reflect_point(mirror, p) or p end
         local function reflected_yaw(y) return mirror and type(y) == "number" and Mirror.reflect_yaw(mirror, y) or y end
-        local function reflected_rotation(q)
+        -- A reflected frame is left-handed; a proper rotation needs one axis
+        -- flipped back. For the head, which has no other side, the right
+        -- axis flips (Quaternion.look of the reflected forward and up). For
+        -- a hand, the rig says which axis its other hand flips
+        -- (state.hand_mirror, measured at ready from the rest pose): x is
+        -- the look default, y flips the forward, z flips the up.
+        local function reflected_rotation(q, flip)
             if not mirror or not q then return q end
             local f, u = Quaternion.forward(q), Quaternion.up(q)
             local rf = Mirror.reflect_dir(mirror, {Vector3.x(f), Vector3.y(f), Vector3.z(f)})
             local ru = Mirror.reflect_dir(mirror, {Vector3.x(u), Vector3.y(u), Vector3.z(u)})
-            -- A reflected frame is left-handed; a proper rotation for the
-            -- other hand needs one axis back. With the right axis flipped
-            -- (Quaternion.look of the reflected forward and up) the 15:10
-            -- worn run's hands were "just upside-down": the rig's other
-            -- hand is the mirror turned about its forward axis, so it is
-            -- the up that flips.
-            return Quaternion.look(Vector3(rf[1], rf[2], rf[3]), Vector3(-ru[1], -ru[2], -ru[3]))
+            local sf, su = 1, 1
+            if flip == "y" then sf = -1 elseif flip == "z" then su = -1 end
+            return Quaternion.look(Vector3(sf * rf[1], sf * rf[2], sf * rf[3]), Vector3(su * ru[1], su * ru[2], su * ru[3]))
+        end
+        -- A local rotation carried from one side's joint to the other side's:
+        -- the mirror image of a rotation keeps the component along the
+        -- flipped axis and negates the other two.
+        local function mirrored_local_rotation(q, flip)
+            local x, y, z, w = Quaternion.to_elements(q)
+            if flip == "x" then return Quaternion.from_elements(x, -y, -z, w)
+            elseif flip == "y" then return Quaternion.from_elements(-x, y, -z, w)
+            elseif flip == "z" then return Quaternion.from_elements(-x, -y, z, w) end
+            return q
         end
         place(avatar, unit, mirror)
         World.update_unit(world, unit)
@@ -2028,7 +2074,8 @@ function Mirror.install(mod, presentation, options)
                     local f = Quaternion.forward(Unit.world_rotation(which, node))
                     return math.deg(math.atan2(Vector3.z(f), math.sqrt(Vector3.x(f) ^ 2 + Vector3.y(f) ^ 2)))
                 end
-                mod:info("DARKTIDEVR_BODY_MIRROR stock_legs hips_copy_above_floor_m=%.3f hips_avatar_above_floor_m=%.3f toe_above_floor_m=%s/%s stretch=%.4f hips_pitch_deg=%.1f/%.1f upleg_pitch_deg=%.1f/%.1f",
+                mod:info("DARKTIDEVR_BODY_MIRROR stock_legs instance=%s hips_copy_above_floor_m=%.3f hips_avatar_above_floor_m=%.3f toe_above_floor_m=%s/%s stretch=%.4f hips_pitch_deg=%.1f/%.1f upleg_pitch_deg=%.1f/%.1f",
+                    is_reflection and "reflection" or "overlay",
                     Vector3.z(Unit.world_position(unit, Unit.node(unit, "j_hips"))) - floor,
                     Vector3.z(Unit.world_position(avatar, Unit.node(avatar, "j_hips"))) - floor,
                     toe("left"), toe("right"), state.stretch or 1,
@@ -2143,7 +2190,7 @@ function Mirror.install(mod, presentation, options)
         if Mirror.MODES[mode_name].solve_arms then
             local mirror_pose = mirror and function(position, rotation)
                 local p = reflected({Vector3.x(position), Vector3.y(position), Vector3.z(position)})
-                return Vector3(p[1], p[2], p[3]), reflected_rotation(rotation)
+                return Vector3(p[1], p[2], p[3]), reflected_rotation(rotation, state.hand_mirror)
             end or nil
             for _, arm in ipairs(state.arms) do solve_arm(world, avatar, unit, arm, mirror_pose) end
         end
@@ -2191,7 +2238,8 @@ function Mirror.install(mod, presentation, options)
                         for _, number in ipairs({tostring(joint), "0" .. joint}) do
                             local source_name, name = "j_" .. source_side .. suffix .. number, "j_" .. side .. suffix .. number
                             if Unit.has_node(overlay, source_name) and Unit.has_node(unit, name) then
-                                Unit.set_local_rotation(unit, Unit.node(unit, name), Unit.local_rotation(overlay, Unit.node(overlay, source_name)))
+                                Unit.set_local_rotation(unit, Unit.node(unit, name),
+                                    mirrored_local_rotation(Unit.local_rotation(overlay, Unit.node(overlay, source_name)), state.hand_mirror))
                             end
                         end
                     end
@@ -2487,9 +2535,11 @@ function Mirror.install(mod, presentation, options)
                 end
                 local neck_z, shoulder_left, shoulder_right = root_z(unit, "j_neck"), root_z(unit, "j_leftarm"), root_z(unit, "j_rightarm")
                 local function fmt(v) return v and string.format("%.3f", v) or "na" end
-                mod:info("DARKTIDEVR_BODY_MIRROR height camera_eye_root_z=%.3f copy_eye_root_z=%s eye_gap_m=%s neck_root_z=%s shoulder_root_z=%s/%s scale=%.4f",
+                mod:info("DARKTIDEVR_BODY_MIRROR height instance=%s camera_eye_root_z=%.3f copy_eye_root_z=%s eye_gap_m=%s neck_root_z=%s shoulder_root_z=%s/%s scale=%.4f root_world_z=%.3f avatar_root_world_z=%.3f neck_offset_z=%s",
+                    is_reflection and "reflection" or "overlay",
                     Vector3.z(eye), fmt(eye_z), fmt(eye_z and Vector3.z(eye) - eye_z), fmt(neck_z), fmt(shoulder_left), fmt(shoulder_right),
-                    state.scale or 1)
+                    state.scale or 1, Vector3.z(Unit.world_position(unit, 1)), Vector3.z(Unit.world_position(avatar, 1)),
+                    fmt(state.neck_offset and state.neck_offset[3]))
             end
             -- How far the hand sits from its forearm joint after the solve
             -- (the stretch). The hand's error against its recorded target is

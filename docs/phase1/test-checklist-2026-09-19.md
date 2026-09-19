@@ -794,6 +794,41 @@ and you saw hands upside-down; the rig's other hand is the mirror turned
 about its forward axis, so it is the up that flips. Changed; look for
 palms that match.
 
+### 1v. Worn at 15:26: the anchor is smooth; the skulls were left on the old one; the rig names the hand flip
+
+Your report: skulls flickering again, less than before; the mirror's
+hands still not mirrored, facing the wrong way now instead of
+upside-down.
+
+The log: the eye moves every frame now (`d_eye_m` mean 2.4 cm, one
+frame in 1,917 under 2 mm, where it was 0 then 7 cm), the copy stays
+within 2 mm of it on 1,928 of 2,146 moving frames, and the skull's own
+root moves every frame too. But the skull against the eye still moved
+2.7 cm a frame: the skull module was still subtracting the difference
+between the interpolated unit and the fixed-step component, which put
+the skulls back on the timeline the view had just left. It subtracts
+the difference to the view's actual anchor now, which is zero, and the
+probe's `d_skull_rel_eye_m` should read near zero.
+
+**The mirror's hands.** A reflected frame is left-handed and one axis
+must flip to make the other hand's rotation. Flipping the right gave
+upside-down, flipping the up gave the wrong way; that leaves the
+forward, but rather than take the third guess the rig is asked: in its
+rest pose the two hands are mirror images across the body's midline,
+so the right hand's rest axes are reflected across it and compared with
+the left hand's, and the axis that comes out reversed is the one the
+rig flips. `hand_mirror flip=x|y|z dots=... trusted=...` at ready says
+what it found; the same flip is applied to the finger rotations carried
+across. If the rest pose is not symmetric enough to trust (any dot
+under 0.8), the frame keeps its forward and up and the line says so.
+
+**The mirror's height, in the log.** The reflection's `height` line
+read the camera 1.903 above its root against 1.773 for the overlay:
+the reflection's root stands 13 cm lower. Both instances now print
+which they are, the root's world height, the avatar's, and the neck
+follow's vertical offset, so the next log says where the 13 cm come
+from rather than me guessing.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

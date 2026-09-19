@@ -688,7 +688,16 @@ function Skull.install(mod, presentation)
         local component = first_person and first_person._first_person_component
         local eye_unit = first_person and first_person.first_person_unit and first_person:first_person_unit()
         if not component or not component.position or not eye_unit or not Unit.alive(eye_unit) then return nil end
-        local lag = Unit.world_position(eye_unit, 1) - component.position
+        -- The view's anchor is whatever presentation.anchor_head_position
+        -- says (15:10, 19 September: the first-person unit's interpolated
+        -- position; before that, the fixed-step component's). The lag is
+        -- the interpolated point minus that anchor: zero when the view is
+        -- on the interpolated timeline. The 15:26 worn run had this
+        -- subtracting the component lag after the anchor had moved to the
+        -- unit, which put the skulls back on the fixed-step timeline
+        -- against a smooth view: "skulls are flickering again, but less".
+        local anchor = presentation.anchor_head_position and presentation.anchor_head_position(first_person) or component.position
+        local lag = Unit.world_position(eye_unit, 1) - anchor
         if Vector3.length(lag) > 0.5 then return nil end
         return {Vector3.x(lag), Vector3.y(lag), Vector3.z(lag)}
     end

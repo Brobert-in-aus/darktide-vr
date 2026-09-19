@@ -1154,6 +1154,44 @@ mirrored weapons present.
   `inv(yaw(eye)) * inv(yaw(head)) * head`; it is `inv(yaw(eye)) * head`.
 - **The mirror's hands.** `Quaternion.look(reflected forward, -reflected up)`.
 
+## Worn, 15:26: the anchor is smooth, the skulls were left behind
+
+On d4be24b. The user: skulls flickering again, less; the mirror's hands
+facing the wrong way instead of upside-down.
+
+```
+BODY_MOTION: d_eye_m mean 0.0226 (17 of 2146 under 2 mm)   d_unit_rel_eye_m mean 0.0022 (1928 of 2146 under 2 mm)   anchor_lag_m mean 0.0250
+SKULL_MOTION: d_skull_root_m mean 0.0250 (0 of 1917 under 2 mm)   d_eye_m mean 0.0238   d_skull_rel_eye_m mean 0.0271 (172 of 1917 under 2 mm)
+height camera_eye_root_z=1.903 copy_eye_root_z=1.563..1.687 neck_root_z=1.542      (the reflection; the overlay read 1.773 / 1.660 / 1.515)
+stock_legs hips_copy_above_floor_m=0.905 hips_avatar_above_floor_m=0.848 toe_above_floor_m=0.005/0.003 hips_pitch_deg=20.7/3.2 upleg_pitch_deg=38.6/38.6
+```
+
+The anchor change took: the eye moves every frame and the copy stays
+with it. The skull module's `anchor_lag` still read the interpolated
+unit minus the fixed-step component, 2.5 cm a frame, and subtracted it,
+which put the skulls on the timeline the view had left; it now reads
+the unit minus `presentation.anchor_head_position`, zero by construction.
+
+The upper legs re-based on the avatar's world rotation match it to the
+tenth of a degree; the toes on that line stand on the floor. Which
+instance printed which line was not recorded; both lines now carry
+`instance=`. The reflection's camera-above-root reads 13 cm more than
+the overlay's, so its root stands 13 cm lower; the height line adds the
+root's world z, the avatar's, and the neck follow's vertical offset.
+
+### The hands, from the rig
+
+`capture_arms` now reflects the right hand's rest axes across the
+body's sagittal plane (the root's right axis) and dots each with the
+left hand's; the axis whose dot is negative is the one the rig's other
+hand flips (`state.hand_mirror`, x/y/z), trusted only when every dot is
+at least 0.8 in magnitude and exactly one is negative. `reflected_rotation`
+flips that axis (y: the forward, z: the up, x: the look default) and the
+finger rotations carried from the other hand are conjugated the same
+way (`mirrored_local_rotation`: the component along the flipped axis
+kept, the other two negated). The head keeps the look default.
+`hand_mirror flip=.. dots=.. trusted=..` at ready. Not worn.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows
