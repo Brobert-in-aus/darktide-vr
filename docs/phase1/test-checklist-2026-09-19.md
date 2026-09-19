@@ -134,6 +134,26 @@ move it, whether the torso still leads or drifts on a turn, and whether the
 standing rest pose reads as a reasonable stance -- it is the spawner's first
 frame, and if it is a bad one that is the next thing to fix.
 
+### 1d. The legs walk
+
+A procedural gait ([gait-2026-09-19.md](gait-2026-09-19.md)). Each foot
+stays planted where it is until the body has moved 8 cm from it, or turned
+40°, and then steps -- one foot at a time, the farther first, landing where
+the body will be a quarter of a second on. A small movement is a small, low
+step; a walk is a stride that shortens and quickens with speed. The feet
+come down flat and turned to your heading. Room-scale movement drives the
+feet the same way the stick does, because both move the same root.
+
+**Test**: stand still and lean or shift your weight (a small step or none),
+take one real step across the room and back (a step each way), then walk
+and sprint with the stick, then turn on the spot, then crouch.
+
+**Report**: whether the feet stay planted when you are still, whether a
+small movement gets a small step rather than a stride or a slide, whether
+walking reads as walking, whether the feet turn with you, and whether the
+knees bend the right way when you crouch. The floor is taken as flat, so
+on the Psykhanium's steps the feet will float or sink; say if you see it.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

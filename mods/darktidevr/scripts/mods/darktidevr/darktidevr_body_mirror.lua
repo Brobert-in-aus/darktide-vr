@@ -92,14 +92,14 @@ Mirror.MODES = {
     mirror = {distance = Mirror.MIRROR_DISTANCE, facing = true, hide_head = false,
         solve_arms = true, follow_neck = true,
         scale_to_neck = true, clavicles = true, body_yaw = true,
-        protract = true, stretch = true},
+        protract = true, stretch = true, gait = true},
     overlaycopy = {distance = 0, facing = false, hide_head = true, solve_arms = false, hand_rig = true},
     overlayarms = {distance = 0, facing = false, hide_head = true, solve_arms = true, hand_rig = true},
     overlayfollow = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hand_rig = true,
         follow_neck = true},
     overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hand_rig = true,
         follow_neck = true, scale_to_neck = true, clavicles = true, body_yaw = true,
-        protract = true, stretch = true},
+        protract = true, stretch = true, gait = true},
     -- Milestone 3, spine (step 3): "overlay" with the spine bent so the neck
     -- reaches the body frame's neck, instead of moving the whole copy there;
     -- the root stays over the avatar's feet.
@@ -137,7 +137,7 @@ Mirror.MODES = {
     overlaytrue = {distance = 0, facing = false, hide_head = true, solve_arms = true,
         near_eye = true, hand_rig = true, follow_neck = true, clavicles = true,
         body_yaw = true, spine_bend = true, protract = true, stretch = true,
-        arm_length = {min = 0.70, max = 1.20}},
+        arm_length = {min = 0.70, max = 1.20}, gait = true},
     -- "overlay" with clavicles but the avatar's root yaw, for A/B of the body yaw.
     overlayrootyaw = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true},
@@ -153,7 +153,8 @@ Mirror.MODES = {
     -- never the hand rig: it runs beside the overlay, in its own instance of
     -- this module.
     reflection = {distance = 0, facing = false, hide_head = false, solve_arms = true, follow_neck = true,
-        scale_to_neck = true, clavicles = true, body_yaw = true, protract = true, stretch = true, reflect = true},
+        scale_to_neck = true, clavicles = true, body_yaw = true, protract = true, stretch = true, reflect = true,
+        gait = true},
     -- "overlay" without the clavicle swing, for A/B (milestone 3).
     overlaystock = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true},
@@ -235,6 +236,9 @@ Mirror.ARM_SIDES = {"left", "right"}
 -- Added to the stock elbow as the bend hint, so a straight stock arm still
 -- bends downward.
 Mirror.ELBOW_HINT_DOWN = 0.10
+-- Added to the rest knee along the heading as the leg's bend hint, so a
+-- straight rest leg still bends forward (a knee never bends backward).
+Mirror.KNEE_HINT_FORWARD = 0.15
 
 local function sub(a, b) return {a[1] - b[1], a[2] - b[2], a[3] - b[3]} end
 local function add(a, b) return {a[1] + b[1], a[2] + b[2], a[3] + b[3]} end
@@ -1048,6 +1052,38 @@ function Mirror.install(mod, presentation, options)
             for index = 2, state.count do
                 state.rest[index] = Matrix4x4Box(Unit.local_pose(unit, index))
             end
+            -- THE LEGS. Measured from the copy's own rig at rest: each
+            -- ankle's place in the root's frame (hip-width to the side, a
+            -- little forward or back, and its height off the floor) and the
+            -- foot's rest rotation about the root, so the gait can put the
+            -- feet down flat and turned to the heading. The rest offsets are
+            -- at scale 1; the gait scales them with the copy.
+            state.legs, state.gait = nil, nil
+            local Gait = mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_body_gait")
+            local legs, offsets = {}, {}
+            local root_inverse = Matrix4x4.inverse(Unit.world_pose(unit, 1))
+            local root_rotation_inverse = inverse(Unit.world_rotation(unit, 1))
+            for _, side in ipairs(Gait.SIDES) do
+                local names = {"j_" .. side .. "upleg", "j_" .. side .. "leg", "j_" .. side .. "foot"}
+                if Unit.has_node(unit, names[1]) and Unit.has_node(unit, names[2]) and Unit.has_node(unit, names[3]) then
+                    local leg = {side = side, hip = Unit.node(unit, names[1]), knee = Unit.node(unit, names[2]),
+                        ankle = Unit.node(unit, names[3])}
+                    offsets[side] = array(Matrix4x4.transform(root_inverse, Unit.world_position(unit, leg.ankle)))
+                    leg.rest_foot_rotation = QuaternionBox(Quaternion.multiply(root_rotation_inverse,
+                        Unit.world_rotation(unit, leg.ankle)))
+                    legs[side] = leg
+                end
+            end
+            if legs.left and legs.right then
+                state.legs, state.gait_module = legs, Gait
+                state.gait = Gait.new({left = {offsets.left[1], offsets.left[2], 0},
+                    right = {offsets.right[1], offsets.right[2], 0}})
+                state.ankle_height = {left = offsets.left[3], right = offsets.right[3]}
+                mod:info("DARKTIDEVR_BODY_MIRROR gait=ready left=%.3f,%.3f,%.3f right=%.3f,%.3f,%.3f",
+                    offsets.left[1], offsets.left[2], offsets.left[3], offsets.right[1], offsets.right[2], offsets.right[3])
+            else
+                log_once("legs", "gait=skipped reason=leg_joints_missing")
+            end
             -- Deferred: see hide_near_eye. The scale eases over about a
             -- second, so the scan waits for it to settle and for a camera.
             state.near_eye_pending = Mirror.MODES[mode_name].near_eye or nil
@@ -1223,6 +1259,44 @@ function Mirror.install(mod, presentation, options)
                     end
                     state["shoulder_gap_" .. side] = {before, Vector3.length(Unit.world_position(unit, arm) - vector(target))}
                 end
+            end
+        end
+        -- THE GAIT (19 September). The feet are planted in the world and
+        -- step under the root when it leaves them (darktidevr_body_gait);
+        -- the legs are then two-bone solved from hip to ankle, the knee
+        -- bending the way the rest pose bends it. The root is wherever the
+        -- neck follow put it this frame, so room-scale movement and stick
+        -- movement both reach the feet through the same root. The ground is
+        -- the avatar's root height: the simulated floor under the player, a
+        -- root read.
+        if Mirror.MODES[mode_name].gait and state.legs and state.gait then
+            local Gait = state.gait_module
+            local heading = state.yaw or Quaternion.yaw(Unit.world_rotation(unit, 1))
+            local ground = Vector3.z(Unit.world_position(avatar, 1))
+            local scale = state.scale_ratio or 1
+            local feet = Gait.update(state.gait, array(Unit.world_position(unit, 1)), heading, ground, t, dt, scale)
+            if feet then
+                local forward = Vector3(-math.sin(heading), math.cos(heading), 0)
+                for _, side in ipairs(Gait.SIDES) do
+                    local leg, foot = state.legs[side], feet[side]
+                    local target = vector(foot.position) + Vector3(0, 0, state.ankle_height[side] * scale)
+                    local hip = Unit.world_position(unit, leg.hip)
+                    local knee_rest = Unit.world_position(unit, leg.knee)
+                    local hint = knee_rest + forward * Mirror.KNEE_HINT_FORWARD
+                    local upper = Vector3.length(knee_rest - hip)
+                    local lower = Vector3.length(Unit.world_position(unit, leg.ankle) - knee_rest)
+                    local knee, ankle = Mirror.elbow(array(hip), array(hint), array(target), upper, lower)
+                    if knee then
+                        aim_joint(world, unit, leg.hip, leg.knee, vector(knee))
+                        aim_joint(world, unit, leg.knee, leg.ankle, vector(ankle))
+                        -- Flat, and turned to the foot's planted heading:
+                        -- the rest rotation about the root, re-based.
+                        set_world_rotation(unit, leg.ankle, Quaternion.multiply(
+                            Quaternion(Vector3.up(), foot.yaw), leg.rest_foot_rotation:unbox()))
+                        World.update_unit(world, unit)
+                    end
+                end
+                state.gait_feet = feet
             end
         end
         if Mirror.MODES[mode_name].solve_arms then
@@ -1434,6 +1508,13 @@ function Mirror.install(mod, presentation, options)
                 Unit.world_position(unit, Unit.node(unit, "j_rightforearm"))) or -1
             mod:info("DARKTIDEVR_BODY_MIRROR posed mode=%s frames=%d right_forearm_to_hand_m=%.4f",
                 tostring(mode_name), state.frames, stretch)
+            local feet = state.gait_feet
+            if feet then
+                mod:info("DARKTIDEVR_BODY_MIRROR gait speed_mps=%.3f left=%s right=%s left_foot=%.3f,%.3f,%.3f right_foot=%.3f,%.3f,%.3f",
+                    feet.speed or 0, feet.left.swinging and "swinging" or "planted", feet.right.swinging and "swinging" or "planted",
+                    feet.left.position[1], feet.left.position[2], feet.left.position[3],
+                    feet.right.position[1], feet.right.position[2], feet.right.position[3])
+            end
             if Mirror.MODES[mode_name].solve_arms then
                 if state.arm_lengths then
                     local l = state.arm_lengths
