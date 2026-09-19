@@ -142,6 +142,17 @@ Mirror.MODES = {
         near_eye = true, hand_rig = true, follow_neck = true, clavicles = true,
         body_yaw = true, spine_bend = true, protract = true, stretch = true,
         arm_length = {min = 0.70, max = 1.20}, gait = true},
+    -- ANIMATED LEGS (19 September, dev flag "overlayanimated"): the overlay
+    -- with the copy running the game's own third-person state machine for
+    -- the wielded weapon, fed the same inputs the game feeds the avatar
+    -- (the wield, every third-person event, the move speed each frame), so
+    -- its legs walk from the same clips on its own skeleton. Everything
+    -- above the hips, and the hips and root, are the solve's: put back over
+    -- the machine's output at the render boundary. The gait is the fallback
+    -- for any frame the machine is not live.
+    overlayanimated = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hand_rig = true,
+        follow_neck = true, clavicles = true, body_yaw = true,
+        protract = true, stretch = true, gait = true, arm_length = {min = 0.6, max = 1.6}, animated_legs = true},
     -- "overlay" with clavicles but the avatar's root yaw, for A/B of the body yaw.
     overlayrootyaw = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true},
@@ -670,6 +681,25 @@ function Mirror.same_layout(count_a, count_b, index_of_a, index_of_b, probes)
     return true
 end
 
+-- The scene-graph indices under the leg roots (the two upper legs), by
+-- walking each index's parents: the joints the animated-legs mode leaves to
+-- the copy's own state machine, and the snapshot and restore leave alone.
+-- `parent_of(index)` returns the parent index or nil at the root;
+-- `roots` is a set of indices. Pure over the lookup.
+function Mirror.leg_indices(count, parent_of, roots)
+    local legs = {}
+    if type(count) ~= "number" or type(parent_of) ~= "function" or type(roots) ~= "table" then return legs end
+    for index = 2, count do
+        local at, hops = index, 0
+        while at and hops < 64 do
+            if roots[at] then legs[index] = true; break end
+            at = parent_of(at)
+            hops = hops + 1
+        end
+    end
+    return legs
+end
+
 -- The joints the solve moves by name. A copy without them is hidden rather
 -- than posed (see state.layout_hidden). Pure over the lookup.
 Mirror.SOLVE_JOINTS = {"j_hips", "j_spine", "j_neck", "j_head", "j_leftshoulder", "j_rightshoulder",
@@ -783,6 +813,73 @@ function Mirror.install(mod, presentation, options)
         return Mirror.draws_body(mode_name, has_unit, drawable)
     end
 
+    -- ANIMATED LEGS: the copy's own state machine, fed the game's inputs.
+    -- `wielded` keeps the local player's current weapon template (the game
+    -- picks the third-person machine per weapon, WeaponTemplate.state_machines)
+    -- and puts that machine on a live copy the same way the game puts it on
+    -- the avatar (blend base layer, then the template's initialization
+    -- variables, evaluated for the copy). `forward_anim_event` re-issues each
+    -- third-person event the avatar's animation extension sends, with its
+    -- variables, on the copy. Both are no-ops unless the mode asks for
+    -- animated legs and the copy is ready. Failures fall back to the gait
+    -- and are logged once.
+    local wielded_template
+    local function assign_machine()
+        if not state or not state.unit or not Unit.alive(state.unit) then return false end
+        if not Mirror.MODES[mode_name] or not Mirror.MODES[mode_name].animated_legs then return false end
+        if not wielded_template then log_once("machine_template", "animated_legs=waiting reason=no_wielded_template"); return false end
+        local ok, err = pcall(function()
+            local WeaponTemplate = require("scripts/utilities/weapon/weapon_template")
+            local Settings = require("scripts/settings/animation/player_unit_animation_state_machine_settings")
+            local breed_name = state.profile and state.profile.archetype and state.profile.archetype.breed or "human"
+            local machine, _, init = WeaponTemplate.state_machines(wielded_template, breed_name)
+            if not machine then error("no third-person machine for " .. tostring(wielded_template.name)) end
+            local blend = Settings[machine] and Settings[machine].blend_time or 0
+            Unit.set_animation_state_machine_blend_base_layer(state.unit, machine, blend)
+            for name, value in pairs(init or {}) do
+                local id = Unit.animation_find_variable(state.unit, name)
+                if id then
+                    Unit.animation_set_variable(state.unit, id, type(value) == "function" and value(state.unit) or value)
+                end
+            end
+            state.machine = machine
+            state.machine_variables = {}
+            mod:info("DARKTIDEVR_BODY_MIRROR animated_legs=live machine=%s template=%s", tostring(machine),
+                tostring(wielded_template.name))
+        end)
+        if not ok then
+            state.machine = nil
+            log_once("machine_" .. tostring(wielded_template and wielded_template.name), "animated_legs=failed error=%s",
+                tostring(err):sub(1, 160))
+        end
+        return ok
+    end
+    function api.wielded(weapon_template)
+        wielded_template = weapon_template
+        if state and state.unit then assign_machine() end
+    end
+    function api.forward_anim_event(event_name, method, ...)
+        if not state or not state.machine or not state.unit or not Unit.alive(state.unit) then return end
+        local unit = state.unit
+        -- The variables, captured here: a closure cannot see the vararg.
+        local n, args = select("#", ...), {...}
+        local ok = pcall(function()
+            if method == "anim_event_with_variable_float" or method == "anim_event_with_variable_int" then
+                local name, value = args[1], args[2]
+                local id = name and Unit.animation_find_variable(unit, name)
+                if id and value ~= nil then Unit.animation_set_variable(unit, id, value) end
+            elseif method == "anim_event_with_variable_floats" then
+                for i = 1, n, 2 do
+                    local name, value = args[i], args[i + 1]
+                    local id = name and Unit.animation_find_variable(unit, name)
+                    if id and value ~= nil then Unit.animation_set_variable(unit, id, value) end
+                end
+            end
+            Unit.animation_event(unit, event_name)
+        end)
+        if not ok then log_once("anim_event", "animated_legs=event_failed event=%s", tostring(event_name)) end
+    end
+
     -- THE PRE-RENDER CHECK (19 September). Called from the ScriptWorld.render
     -- hook, the last Lua boundary before the frame is drawn and after the
     -- engine's own world update: reads the copy's root and right hand again
@@ -798,6 +895,20 @@ function Mirror.install(mod, presentation, options)
         if not state or not state.unit or not state.render_check or world ~= state.world then return end
         if not Unit.alive(state.unit) or state.render_check.frame ~= state.frames then return end
         local unit = state.unit
+        -- ANIMATED LEGS: the engine's animation update has run since this
+        -- module's update and written every joint of the copy. The legs
+        -- are its; everything else goes back to the solve, and the drift
+        -- compare below then measures what is left after that. Once, per
+        -- frame.
+        if state.machine and state.solved and state.solved_frame == state.frames and
+                state.restored_frame ~= state.frames then
+            state.restored_frame = state.frames
+            local ok = pcall(function()
+                for index, box in pairs(state.solved) do Unit.set_local_pose(unit, index, box:unbox()) end
+                World.update_unit(world, unit)
+            end)
+            if not ok then log_once("restore", "animated_legs=restore_failed") end
+        end
         local root = array(Unit.world_position(unit, 1))
         local hand = array(Unit.world_position(unit, Unit.node(unit, "j_righthand")))
         local d_root = Mirror.step_m(root, state.render_check.root) or 0
@@ -1377,6 +1488,17 @@ function Mirror.install(mod, presentation, options)
             else
                 log_once("rest", "rest=raw gait=skipped reason=%s", tostring(ok_rest and why or rest):sub(1, 160))
             end
+            -- Animated legs: which indices are the legs (left alone by the
+            -- snapshot and restore), and the machine if a weapon is known.
+            -- The machine is not enabled on the copy until it is assigned:
+            -- until then the spawner's disabled idle stays frozen.
+            state.machine, state.leg_indices = nil, nil
+            if Mirror.MODES[mode_name].animated_legs and state.legs then
+                local roots = {[state.legs.left.hip] = true, [state.legs.right.hip] = true}
+                state.leg_indices = Mirror.leg_indices(state.count,
+                    function(index) return Unit.scene_graph_parent(unit, index) end, roots)
+                assign_machine()
+            end
             -- Deferred: see hide_near_eye. The scale eases over about a
             -- second, so the scan waits for it to settle and for a camera.
             state.near_eye_pending = Mirror.MODES[mode_name].near_eye or nil
@@ -1568,7 +1690,31 @@ function Mirror.install(mod, presentation, options)
         -- movement both reach the feet through the same root. The ground is
         -- the avatar's root height: the simulated floor under the player, a
         -- root read.
-        if Mirror.MODES[mode_name].gait and state.legs and state.gait then
+        -- ANIMATED LEGS, when the machine is live: the per-frame inputs the
+        -- game writes on the avatar every frame -- the three cached
+        -- third-person variables, of which anim_move_speed is the one the
+        -- locomotion blend runs on -- are read off the avatar and set on
+        -- the copy, and the gait stands down. Events arrive through
+        -- api.forward_anim_event. This is a read of the avatar's animation
+        -- INPUTS, which the user chose over its pose; the guard's rule on
+        -- joints stands.
+        local animated = state.machine ~= nil and state.leg_indices ~= nil
+        if animated then
+            local ok = pcall(function()
+                for _, name in ipairs({"anim_move_speed", "aim", "climb_time"}) do
+                    local ids = state.machine_variables[name]
+                    if ids == nil then
+                        local from = Unit.animation_find_variable(avatar, name)
+                        local to = Unit.animation_find_variable(unit, name)
+                        ids = (from and to) and {from, to} or false
+                        state.machine_variables[name] = ids
+                    end
+                    if ids then Unit.animation_set_variable(unit, ids[2], Unit.animation_get_variable(avatar, ids[1])) end
+                end
+            end)
+            if not ok then log_once("machine_variables", "animated_legs=variables_failed") end
+        end
+        if Mirror.MODES[mode_name].gait and state.legs and state.gait and not animated then
             local Gait = state.gait_module
             local heading = state.yaw or Quaternion.yaw(Unit.world_rotation(unit, 1))
             local ground = Vector3.z(Unit.world_position(avatar, 1))
@@ -1646,6 +1792,20 @@ function Mirror.install(mod, presentation, options)
             state.render_check.root = array(Unit.world_position(unit, 1))
             state.render_check.hand = array(Unit.world_position(unit, Unit.node(unit, "j_righthand")))
             state.render_check.frame = state.frames
+        end
+        -- ANIMATED LEGS: the solved pose of every joint that is not a leg
+        -- (the root and the hips included), boxed, so the render boundary
+        -- can put it back over what the copy's state machine writes after
+        -- this update. The legs are the machine's. Boxes are reused.
+        if state.machine and state.leg_indices then
+            state.solved = state.solved or {}
+            for index = 1, state.count do
+                if not state.leg_indices[index] then
+                    local pose = Unit.local_pose(unit, index)
+                    if state.solved[index] then state.solved[index]:store(pose) else state.solved[index] = Matrix4x4Box(pose) end
+                end
+            end
+            state.solved_frame = state.frames
         end
         if Mirror.MODES[mode_name].reflect then
             -- Posed on the player; now turned about them and stood ahead.

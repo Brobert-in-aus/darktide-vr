@@ -275,6 +275,35 @@ ours. The gait here is the legacy approach with the run overlap.
 on the floor. The log's `prerender_drift` and `prerender checks=` lines
 carry the answer to the first either way.
 
+### 1i. Worn at 12:22: the check never ran; the legs can run the game's clips
+
+**The check.** It sat inside a branch of the render hook this build never
+takes, so its silence meant nothing. It is at the top of the hook now and
+runs every frame; the next log carries its summaries.
+
+**Animated legs, behind the flag.** The copy runs the game's own
+third-person state machine for your wielded weapon on its own skeleton,
+fed the same inputs the game feeds the avatar: the wield picks the machine,
+every third-person animation event is re-issued on the copy, and the move
+speed is mirrored each frame. The solve for everything but the legs is put
+back over the machine's output at the render boundary. The gait stands
+down while the machine is live and is the fallback whenever it is not. The
+base model contributes nothing of its pose.
+
+**To try it**: write `overlayanimated` into
+`mods\darktidevr\darktidevr_body_mirror.flag` in the installed mod (the
+file selects the dev mode; delete it to return to the option's overlay).
+
+**Test**: with the flag, wield a gun, stand still, walk, sprint, strafe,
+then swap to melee and back.
+
+**Report**: whether the legs walk and run from the game's cycles, whether
+the upper body still follows you exactly, whether the legs turn with the
+body when you strafe, and whether a weapon swap keeps them going. The log
+line `animated_legs=live machine=...` says the machine took; any
+`animated_legs=failed` or `=waiting` line says why the gait is running
+instead.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

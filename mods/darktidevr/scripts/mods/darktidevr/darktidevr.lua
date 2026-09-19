@@ -14938,6 +14938,17 @@ end
 mod:hook(ScriptWorld, "render", function(func, world, ...)
     if presentation.render_world_census then presentation.render_world_census.observe(world) end
     if presentation.hud_panel then presentation.hud_panel.observe_render(world) end
+    -- The drawn body at the render boundary, after the engine's own world
+    -- update: in the animated-legs mode it puts its solved upper body back
+    -- over what the copy's own state machine wrote, and in every mode it
+    -- checks whether anything moved the copy since its update
+    -- (darktidevr_body_mirror, 19 September). At the top of the hook, for
+    -- every world: the 12:22 worn run had it inside the native-capture
+    -- branch below, which this configuration never takes, so zero checks
+    -- read as a clean result. The module answers only for its own world.
+    if presentation.body_mirror and presentation.body_mirror.check_before_render then
+        pcall(presentation.body_mirror.check_before_render, world)
+    end
     if world == ui_stereo_world and ui_stereo_spawner then
         local ui_mark = presentation.frame_profile.begin()
         update_ui_alternating_full()
@@ -14961,11 +14972,6 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
             ui_native_capture then
         if presentation.body_proxy then
             presentation.body_proxy.check_rigid_hands_before_render()
-        end
-        -- The drawn body's own pre-render check: whether anything moved it
-        -- after its update (darktidevr_body_mirror, 19 September).
-        if presentation.body_mirror and presentation.body_mirror.check_before_render then
-            pcall(presentation.body_mirror.check_before_render, world)
         end
         presentation.update_performance_pass_trace()
         local primary = ScriptWorld.viewport(world, primary_viewport_name)
@@ -16174,6 +16180,37 @@ presentation.gun_aim = mod:io_dofile(
 presentation.body_frame = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_body_frame"
 ).install(mod, presentation, controller_observation)
+-- ANIMATED LEGS (19 September): the drawn body's copy runs the game's own
+-- third-person state machine for the wielded weapon and is fed the same
+-- INPUTS the game feeds the avatar -- the wield that picks the machine and
+-- every third-person animation event -- so its legs walk from the same
+-- clips, evaluated on its own skeleton, with nothing read from the
+-- avatar's pose. The per-frame move speed is mirrored in the module. Each
+-- hook forwards only for the local player's extension.
+mod:hook_safe(
+    require("scripts/extension_systems/animation/player_unit_animation_extension"),
+    "inventory_slot_wielded",
+    function(self, weapon_template)
+        if presentation.body_mirror and presentation.body_mirror.wielded and
+                Managers.player and Managers.player:local_player(1) and
+                self._unit == Managers.player:local_player(1).player_unit then
+            presentation.body_mirror.wielded(weapon_template)
+        end
+    end)
+for _, method in ipairs({"anim_event", "anim_event_with_variable_float",
+        "anim_event_with_variable_floats", "anim_event_with_variable_int"}) do
+    mod:hook_safe(
+        require("scripts/extension_systems/animation/player_unit_animation_extension"),
+        method,
+        function(self, event_name, ...)
+            if presentation.body_mirror and presentation.body_mirror.forward_anim_event and
+                    Managers.player and Managers.player:local_player(1) and
+                    self._unit == Managers.player:local_player(1).player_unit then
+                presentation.body_mirror.forward_anim_event(event_name, method, ...)
+            end
+        end)
+end
+
 presentation.body_mirror = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_body_mirror"
 ).install(mod, presentation)

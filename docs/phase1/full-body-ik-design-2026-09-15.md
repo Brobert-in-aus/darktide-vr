@@ -210,6 +210,14 @@ animated, as today.
    and there is no relationship between the two beyond the root position
    and what the weapon needs. The legs hold the rest pose until a
    procedural gait (step 6) exists. See two-bodies-2026-09-19.md.
+   **Revised the same day, on the user's instruction**, with the base model
+   still contributing nothing of its pose: the copy runs the game's own
+   third-person state machine for the wielded weapon on its own skeleton,
+   fed the same inputs the game feeds the avatar (the wield, every
+   third-person event, the move speed each frame), and the solve is put back
+   over everything but the legs at the render boundary. Dev flag mode
+   `overlayanimated`; the gait stays as the fallback. Same doc, "Worn,
+   12:22".
    - Copy local rotations for `j_hips`' leg chains (`j_*upleg`, `j_*leg`,
      `j_*foot`, toes) from the stock avatar.
    - The avatar's leg animation already follows sim velocity, crouch, sprint,

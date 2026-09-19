@@ -305,8 +305,15 @@ local on_the_player = {
   overlay = true, overlaycopy = true, overlayarms = true, overlayfollow = true,
   overlayspine = true, overlayreach = true, overlayarmlength = true,
   overlayprotract = true, overlayswing = true, overlaytrue = true,
-  overlayrootyaw = true, overlaystock = true,
+  overlayrootyaw = true, overlaystock = true, overlayanimated = true,
 }
+-- The animated-legs mode is the overlay with its legs on the copy's own
+-- state machine: it draws the body, keeps the gait as its fallback, and
+-- keeps every flag the overlay has.
+assert(Mirror.MODES.overlayanimated.animated_legs and Mirror.MODES.overlayanimated.gait, 'animated legs with the gait behind them')
+for flag, value in pairs(Mirror.MODES.overlay) do
+  assert(Mirror.MODES.overlayanimated[flag] ~= nil, 'overlayanimated carries the overlay flag ' .. flag)
+end
 for name in pairs(Mirror.MODES) do
   local drawn = Mirror.draws_body(name, true, true)
   assert(drawn == (on_the_player[name] == true),
@@ -434,6 +441,19 @@ assert(hips and hips < 0.10 + 0.45 + 0.42 and hips > 0.10 + 0.42 + 0.45 * 0.98, 
 near(Mirror.standing_hips_height(0.10, 0.45, 0.42, 1.1) - 0.10, (hips - 0.10) * 1.1, 1e-12, 'the legs take the stretch, the ankle does not')
 assert(Mirror.standing_hips_height(0.10, 0, 0.42, 1) == nil and Mirror.standing_hips_height(nil, 0.45, 0.42, 1) == nil)
 near(Mirror.standing_hips_height(0.10, 0.45, 0.42, nil), hips, 1e-12, 'no factor is one')
+
+-- The leg subtree by index: everything under either upper leg, found by
+-- walking parents, and nothing else. A rig: 1 root, 2 hips, 3 spine, 4 neck,
+-- 5 left upleg, 6 left leg, 7 left foot, 8 right upleg, 9 right leg, 10 right
+-- foot, 11 right toe (child of 10).
+local parents = {[2] = 1, [3] = 2, [4] = 3, [5] = 2, [6] = 5, [7] = 6, [8] = 2, [9] = 8, [10] = 9, [11] = 10}
+local legs = Mirror.leg_indices(11, function(i) return parents[i] end, {[5] = true, [8] = true})
+for _, i in ipairs({5, 6, 7, 8, 9, 10, 11}) do assert(legs[i], 'leg joint ' .. i) end
+for _, i in ipairs({1, 2, 3, 4}) do assert(not legs[i], 'not a leg joint ' .. i) end
+assert(next(Mirror.leg_indices(11, function(i) return parents[i] end, {})) == nil, 'no roots, no legs')
+assert(next(Mirror.leg_indices(nil, nil, nil)) == nil, 'bad input, no legs')
+-- A cycle in the lookup cannot hang it.
+assert(next(Mirror.leg_indices(3, function(i) return i end, {[9] = true})) == nil, 'a self-parent terminates')
 
 -- The copy is posed by its own named joints. It draws when it has them all,
 -- whatever the avatar's rig looks like.

@@ -468,6 +468,60 @@ are authored animation, which the separation rule keeps off this body
 unless they are the mod's own; the procedural gait here is the legacy
 approach with the run overlap added to keep it from falling behind.
 
+## Worn, 12:22: the check never ran; the legs get the game's own clips
+
+On `ed3cfe7`: *"flicker still exists in the latest run."* And the
+pre-render check's answer was silence: zero summaries, zero drifts. It sat
+inside the render hook's native-capture branch, which this configuration
+never takes, so it never ran. It is at the top of the hook now, for every
+world, and the module answers only for its own. The rest line confirms the
+toe measure took (`ankle_z_m=0.089 spawn_ankle_z_m=0.101 toe_z_m=0.027`).
+The next log has the check's summaries, and either names a writer or
+clears this path for good.
+
+### Animated legs, behind the mode flag
+
+*"Surely the animations are stored somewhere and we can hook into them
+rather than grabbing them from the loaded 3p model?"* They are: the walk,
+run and idle cycles live in a third-person animation state machine that the
+game picks per wielded weapon (`WeaponTemplate.state_machines`) and puts on
+the avatar with one engine call, and the game drives it through per-unit
+events from the animation extension and a move-speed variable the
+locomotion writes every frame. The copy is a character of the same rig, so
+it runs that machine itself, fed the same inputs:
+
+- **The wield.** `inventory_slot_wielded` on the local player's animation
+  extension is hooked; the template is kept and, on a live copy, the same
+  machine is set the way the game sets it (blend base layer, then the
+  template's initialization variables, evaluated for the copy).
+- **The events.** The four third-person `anim_event*` methods are hooked
+  for the local player and re-issued on the copy with their variables.
+- **The move speed.** Each frame the three cached third-person variables
+  (`anim_move_speed`, `aim`, `climb_time`) are read off the avatar with
+  the engine's own `animation_get_variable` and set on the copy.
+
+The machine writes every joint of the copy after the Lua update, so the
+solve for the root, the hips and everything above them is boxed at the end
+of the copy's update and put back over the machine's output at the render
+boundary, in the same call as the drift check, which then measures what is
+left. The legs, found by index under the two upper legs
+(`Mirror.leg_indices`), are the machine's. The gait stands down while the
+machine is live and is the fallback for any frame it is not: no weapon yet,
+a machine the template does not have, an engine call that fails, each
+logged once.
+
+Dev flag mode `overlayanimated`: write it into
+`darktidevr_body_mirror.flag` in the installed mod. The default overlay is
+unchanged. Not worn.
+
+**Known limits of this first cut.** The legs strafe relative to the copy's
+heading (the body frame) rather than the avatar's (the aim), a difference
+inside the body frame's dead zone most of the time; no raycast correction
+of the animated feet yet, which the Psykhanium's flat floor does not need;
+and the machine's idle stance is the character's, staggered, under a square
+torso. The base model contributes nothing of its pose; the guard's rule on
+its joints stands, and the one new read of it is its animation variables.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows
