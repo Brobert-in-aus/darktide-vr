@@ -378,4 +378,38 @@ assert(Mirror.step_m({0 / 0, 0, 0}, {0, 0, 0}) == nil, 'a nan sample is no step'
 assert(Mirror.step_m({0, 0}, {0, 0, 0}) == nil, 'a short array is no step')
 assert(Mirror.MOTION_MOVING_M > 0.0005 and Mirror.MOTION_MOVING_M < 0.01, 'moving threshold between breathing and a walking step')
 
-print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace colliders torso_yaw draws_body turn_leak step_m')
+-- THE SEPARATION RULE (user, 19 September): the base model exists hidden for
+-- hit detection, the custom-IK body is the whole of what is drawn, and
+-- nothing on it comes from the base model's animation -- not the idle sway,
+-- not the stance in the sights, not the legs. The one read allowed is the
+-- avatar's root (index 1): the simulated place the player stands. This scans
+-- the module's source for any other read of an avatar joint. Before the
+-- rule was applied the module copied `Unit.local_pose(avatar, index)` for
+-- every joint and fell back to `Unit.world_position(avatar, arm.hand)`, and
+-- this check refuses both by name.
+local file = assert(io.open(arg[1], 'rb')); local source = file:read('*a'); file:close()
+local forbidden = {
+  'Unit%.local_pose%(avatar', 'Unit%.local_position%(avatar', 'Unit%.local_rotation%(avatar',
+  'Unit%.local_scale%(avatar', 'Unit%.node%(avatar', 'shoulders%(avatar%)',
+  'Unit%.world_position%(avatar,%s*[^1%s]', 'Unit%.world_rotation%(avatar,%s*[^1%s]',
+  'Unit%.world_position%(avatar,%s*1%d', 'Unit%.world_rotation%(avatar,%s*1%d',
+}
+for _, pattern in ipairs(forbidden) do
+  local at = source:find(pattern)
+  assert(not at, 'the copy reads the avatar beyond its root: ' .. pattern .. ' at ' ..
+    (at and select(2, source:sub(1, at):gsub('\n', '')) + 1 or 0))
+end
+assert(source:find('Unit%.world_position%(avatar, 1%)'), 'the root position is the one allowed read, and it is used')
+
+-- The copy is posed by its own named joints. It draws when it has them all,
+-- whatever the avatar's rig looks like.
+local full = {}
+for _, name in ipairs(Mirror.SOLVE_JOINTS) do full[name] = true end
+assert(Mirror.has_solve_joints(function(name) return full[name] end), 'every solve joint present')
+for _, missing in ipairs({'j_hips', 'j_neck', 'j_leftforearm', 'j_righthand'}) do
+  assert(not Mirror.has_solve_joints(function(name) return name ~= missing and full[name] end), missing .. ' missing')
+end
+assert(not Mirror.has_solve_joints(nil), 'no lookup, no rig')
+assert(not Mirror.has_solve_joints(function() return nil end), 'a lookup answering nil is not true')
+
+print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles yaw_trace colliders torso_yaw draws_body turn_leak step_m solve_joints separation')

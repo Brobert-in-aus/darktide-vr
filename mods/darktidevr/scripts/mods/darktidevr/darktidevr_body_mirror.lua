@@ -2,8 +2,13 @@
 -- design, milestone 2, 15 September). Spawns a presentation-only copy of the
 -- player's whole character profile (every body, gear and material slot, no
 -- weapons) with the body proxy's UIProfileSpawner, stops its own animation
--- the moment it is ready (scan2: that freezes the pose), and every frame
--- copies every joint's local pose from the gameplay avatar onto it. It stands
+-- the moment it is ready (scan2: that freezes the pose), boxes that pose as
+-- the rest pose, and every frame starts from it and moves only what the
+-- tracking says to move. Since 19 September NOTHING on the copy is read from
+-- the avatar's joints: the user's rule is that the base model exists hidden
+-- for hit detection, the custom-IK body is the whole of what is drawn, and
+-- the two have no relationship beyond the root position (where the player
+-- stands) and what the weapon needs. It stands
 -- MIRROR_DISTANCE ahead of the avatar, facing it, so an eye render shows
 -- whether the full profile spawns with its cosmetics and follows the avatar's
 -- pose. Nothing else changes: the avatar, gloves, proxy and visibility code
@@ -612,6 +617,18 @@ function Mirror.same_layout(count_a, count_b, index_of_a, index_of_b, probes)
     return true
 end
 
+-- The joints the solve moves by name. A copy without them is hidden rather
+-- than posed (see state.layout_hidden). Pure over the lookup.
+Mirror.SOLVE_JOINTS = {"j_hips", "j_spine", "j_neck", "j_head", "j_leftshoulder", "j_rightshoulder",
+    "j_leftarm", "j_rightarm", "j_leftforearm", "j_rightforearm", "j_lefthand", "j_righthand"}
+function Mirror.has_solve_joints(has_node)
+    if type(has_node) ~= "function" then return false end
+    for _, name in ipairs(Mirror.SOLVE_JOINTS) do
+        if has_node(name) ~= true then return false end
+    end
+    return true
+end
+
 function Mirror.install(mod, presentation, options)
     local api = {}
     -- The mirror key's copy is a second instance with its own state, run by
@@ -841,13 +858,18 @@ function Mirror.install(mod, presentation, options)
     end
     local function solve_arm(world, avatar, unit, arm)
         -- The final visible wrist pose (tracked, gun-aligned or on the support
-        -- grip); the avatar's hand joint only when no pose is recorded.
+        -- grip), whatever the mode: the gloves record it when they draw the
+        -- hands, the rig records it when the copy does. With no pose recorded
+        -- the arm stays at rest. Until 19 September the fallback was the
+        -- avatar's animated hand joint, which put the stock animation on the
+        -- mirror key's copy; nothing on a drawn body follows the animation.
         local target, target_rotation
-        if (state.hand_rig or Mirror.MODES[mode_name].reflect) and body_proxy() and body_proxy().hand_pose then
+        if body_proxy() and body_proxy().hand_pose then
             target, target_rotation = body_proxy().hand_pose(arm.side)
         end
         if not target then
-            target, target_rotation = Unit.world_position(avatar, arm.hand), Unit.world_rotation(avatar, arm.hand)
+            arm.error = nil
+            return
         end
         Unit.set_local_position(unit, arm.forearm, arm.rest_forearm:unbox())
         Unit.set_local_position(unit, arm.hand, arm.rest_hand:unbox())
@@ -950,14 +972,27 @@ function Mirror.install(mod, presentation, options)
         mod:info("DARKTIDEVR_BODY_MIRROR colliders=disabled units=%d actors=%d", disabled, actors)
     end
 
+    -- Where the copy stands. The avatar's ROOT POSITION is the one thing
+    -- the drawn body takes from it: it is the simulated place the player is,
+    -- not animation, and the feet have to be there. Its heading is the body
+    -- frame's (state.yaw, set below each frame); before the first frame it
+    -- keeps the heading it was spawned with. Its scale is its own -- the
+    -- neck scale below -- never the avatar's. The user's rule (19
+    -- September): the base model exists hidden for hit detection, and there
+    -- is no relationship between it and the custom-IK body beyond what the
+    -- weapon needs.
     local function place(avatar, unit)
         local mode = Mirror.MODES[mode_name] or Mirror.MODES.mirror
-        local rotation = Unit.world_rotation(avatar, 1)
+        local rotation = state.yaw and Quaternion(Vector3.up(), state.yaw) or Unit.local_rotation(unit, 1)
+        if mode.facing and not state.yaw then
+            -- Spawned facing away from the player; the mirror faces them.
+            rotation = Quaternion.multiply(rotation, Quaternion(Vector3.up(), math.pi))
+        end
         local position = Unit.world_position(avatar, 1) + Quaternion.forward(rotation) * mode.distance
         Unit.set_local_position(unit, 1, position)
         Unit.set_local_rotation(unit, 1, mode.facing and
             Quaternion.multiply(rotation, Quaternion(Vector3.up(), math.pi)) or rotation)
-        Unit.set_local_scale(unit, 1, Unit.local_scale(avatar, 1))
+        Unit.set_local_scale(unit, 1, Vector3(1, 1, 1))
     end
     local function spawn(world, avatar)
         local UIProfileSpawner = require("scripts/managers/ui/ui_profile_spawner")
@@ -991,12 +1026,28 @@ function Mirror.install(mod, presentation, options)
             state.unit = unit
             state.data = data
             Unit.disable_animation_state_machine(unit)
-            local probes = {"j_hips", "j_spine2", "j_head", "j_lefthand", "j_righthand", "j_leftfoot", "j_rightfoot"}
-            state.same_layout = Mirror.same_layout(Unit.num_scene_graph_items(avatar), Unit.num_scene_graph_items(unit),
-                function(name) return Unit.has_node(avatar, name) and Unit.node(avatar, name) end,
-                function(name) return Unit.has_node(unit, name) and Unit.node(unit, name) end, probes)
+            -- The copy is posed by NAMED joints of its own rig now, never by
+            -- index from the avatar, so the avatar's layout is no longer
+            -- compared with it (Mirror.same_layout stays for its test). What
+            -- has to be true is that the copy carries the joints the solve
+            -- moves.
+            state.same_layout = Mirror.has_solve_joints(
+                function(name) return Unit.has_node(unit, name) end)
             state.count = Unit.num_scene_graph_items(unit)
             capture_arms(unit)
+            -- THE REST POSE. Every joint below the root, as the spawner left
+            -- it on this frame, boxed once. This is the whole of what the
+            -- copy is posed from: the user's instruction (19 September) is
+            -- that the drawn body is the new custom IK wholesale, with
+            -- nothing on it driven by the stock animation -- not the idle
+            -- sway, not the stance shift in the sights, and not the legs
+            -- either (the legs-from-the-avatar hybrid in the 15 September
+            -- design was never asked for). Each frame starts from this pose
+            -- and the solves below move what tracking says to move.
+            state.rest = {}
+            for index = 2, state.count do
+                state.rest[index] = Matrix4x4Box(Unit.local_pose(unit, index))
+            end
             -- Deferred: see hide_near_eye. The scale eases over about a
             -- second, so the scan waits for it to settle and for a camera.
             state.near_eye_pending = Mirror.MODES[mode_name].near_eye or nil
@@ -1011,7 +1062,7 @@ function Mirror.install(mod, presentation, options)
                 state.hand_rig = body_proxy().set_hand_rig(unit)
                 mod:info("DARKTIDEVR_BODY_MIRROR hand_rig=%s", tostring(state.hand_rig))
             elseif Mirror.MODES[mode_name].hand_rig then
-                log_once("hand_rig_layout", "hand_rig=skipped reason=layout_mismatch")
+                log_once("hand_rig_layout", "hand_rig=skipped reason=rig_incomplete")
             end
             local slots, hidden = 0, {}
             for slot_name, slot in pairs(data.slots or {}) do
@@ -1035,23 +1086,23 @@ function Mirror.install(mod, presentation, options)
                     tostring(collider_error):sub(1, 120))
             end
             state.colliders_disabled = ok_colliders
-            mod:info("DARKTIDEVR_BODY_MIRROR ready mode=%s nodes=%d avatar_nodes=%d same_layout=%s spawned_slots=%d hidden_slots=%s",
-                tostring(mode_name), state.count, Unit.num_scene_graph_items(avatar), tostring(state.same_layout), slots,
+            mod:info("DARKTIDEVR_BODY_MIRROR ready mode=%s nodes=%d solve_joints=%s spawned_slots=%d hidden_slots=%s",
+                tostring(mode_name), state.count, tostring(state.same_layout), slots,
                 #hidden > 0 and table.concat(hidden, ",") or "none")
         end
         local unit = state.unit
         if not Unit.alive(unit) then destroy_own(); return end
         if not state.same_layout then
-            log_once("layout", "copy=skipped reason=layout_mismatch mode=%s hidden=%s",
+            log_once("layout", "copy=skipped reason=rig_incomplete mode=%s hidden=%s",
                 tostring(mode_name), tostring(Mirror.MODES[mode_name].distance == 0))
             -- A copy this module cannot pose is not left standing where the
             -- player is. Every mode that spawns it on them (distance 0) hides
-            -- its head only after the pose is copied, and the reflection is
-            -- moved off them only at the end of a posed frame, so a rig whose
-            -- node layout does not match (an Ogryn, a cosmetic that changes
-            -- the node count) would otherwise leave a whole character, head
-            -- included, inside the player's view. It is hidden rather than
-            -- destroyed: destroying it here would spawn another next frame.
+            -- its head only after the pose is applied, and the reflection is
+            -- moved off them only at the end of a posed frame, so a rig
+            -- missing a joint the solve moves would otherwise leave a whole
+            -- character, head included, inside the player's view. It is
+            -- hidden rather than destroyed: destroying it here would spawn
+            -- another next frame.
             if Mirror.MODES[mode_name].distance == 0 and not state.layout_hidden then
                 state.layout_hidden = true
                 pcall(Unit.set_unit_visibility, unit, false, true)
@@ -1071,10 +1122,15 @@ function Mirror.install(mod, presentation, options)
             if not state.layout_hidden then place(avatar, unit) end
             return
         end
-        -- Every joint below the root: the avatar's local pose after its own
-        -- animation and the mod's hand writes this frame.
+        -- Every joint below the root back to the rest pose. Until 19
+        -- September this copied the avatar's local pose after its own
+        -- animation, which is how the idle sway and the stance shift in the
+        -- sights reached the drawn body ("the body still appears to use the
+        -- base game animations ... which it was explicitly instructed not
+        -- to do"). Nothing is read from the avatar's joints now; the root's
+        -- position is the one thing taken from it, in place() below.
         for index = 2, state.count do
-            Unit.set_local_pose(unit, index, Unit.local_pose(avatar, index))
+            Unit.set_local_pose(unit, index, state.rest[index]:unbox())
         end
         place(avatar, unit)
         World.update_unit(world, unit)
@@ -1085,21 +1141,12 @@ function Mirror.install(mod, presentation, options)
                 math.cos(frame.yaw - Quaternion.yaw(Unit.world_rotation(unit, 1)))))
             state.yaw = Mirror.smooth_yaw(state.yaw, frame.yaw, dt)
             Unit.set_local_rotation(unit, 1, Quaternion(Vector3.up(), state.yaw))
-            -- Put the avatar's root yaw back into the chain below, which was
-            -- copied relative to it (see Mirror.root_yaw_leak). The root keeps
-            -- the body frame's heading; everything above the hips goes back to
-            -- sitting where the avatar's own torso sits. Only the yaw is taken
-            -- from the avatar's root: a standing character's root carries no
-            -- pitch or roll worth keeping, and the copy's root was replaced
-            -- with a pure yaw a line above.
-            local hips = Unit.has_node(unit, "j_hips") and Unit.node(unit, "j_hips")
-            local leak = hips and Mirror.root_yaw_leak(
-                Quaternion.yaw(Unit.world_rotation(avatar, 1)), state.yaw)
-            if leak then
-                state.root_yaw_leak = math.deg(leak)
-                Unit.set_local_rotation(unit, hips, Quaternion.multiply(
-                    Quaternion(Vector3.up(), leak), Unit.local_rotation(unit, hips)))
-            end
+            -- No turn-leak correction any more (Mirror.root_yaw_leak stays
+            -- for the record and its test). The leak was the avatar's
+            -- counter-rotation arriving through the COPIED spine; with the
+            -- spine at rest there is nothing to cancel, and the torso faces
+            -- the body frame's heading because the root does.
+            state.root_yaw_leak = nil
             World.update_unit(world, unit)
         end
         local neck_target = frame and Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale)
@@ -1108,7 +1155,7 @@ function Mirror.install(mod, presentation, options)
                 local base = Unit.world_position(unit, 1)
                 local neck_height = Vector3.z(Unit.world_position(unit, Unit.node(unit, "j_neck"))) - Vector3.z(base)
                 state.scale_ratio = Mirror.scale_ratio(state.scale_ratio, neck_height, neck_target[3] - Vector3.z(base), dt)
-                Unit.set_local_scale(unit, 1, Unit.local_scale(avatar, 1) * state.scale_ratio)
+                Unit.set_local_scale(unit, 1, Vector3(state.scale_ratio, state.scale_ratio, state.scale_ratio))
                 World.update_unit(world, unit)
             end
             if neck_target and not Mirror.MODES[mode_name].spine_bend then
@@ -1263,7 +1310,9 @@ function Mirror.install(mod, presentation, options)
                         array(Unit.world_position(of, Unit.node(of, "j_leftarm"))),
                         array(Unit.world_position(of, Unit.node(of, "j_rightarm"))))
                 end
-                local torso_yaw, avatar_torso_yaw = shoulders(unit), shoulders(avatar)
+                -- The avatar's torso column is gone with the copied spine it
+                -- measured: nothing on the copy is posed from it now.
+                local torso_yaw, avatar_torso_yaw = shoulders(unit), nil
                 local sample = Mirror.yaw_sample(
                     frame and frame.head_yaw,
                     frame and frame.target_yaw,
@@ -1361,7 +1410,7 @@ function Mirror.install(mod, presentation, options)
                 mod:info("DARKTIDEVR_BODY_MIRROR spine neck_gap_m=%.3f->%.3f", state.spine_neck[1], state.spine_neck[2])
             end
             if state.root_yaw_delta then
-                mod:info("DARKTIDEVR_BODY_MIRROR body_yaw delta_from_avatar_deg=%.1f root_yaw_leak_deg=%s",
+                mod:info("DARKTIDEVR_BODY_MIRROR body_yaw delta_from_frame_deg=%.1f root_yaw_leak_deg=%s",
                     state.root_yaw_delta,
                     state.root_yaw_leak and string.format("%.1f", state.root_yaw_leak) or "none")
             end
@@ -1376,17 +1425,15 @@ function Mirror.install(mod, presentation, options)
                 local eye = Matrix4x4.transform(Matrix4x4.inverse(Unit.world_pose(unit, 1)), Unit.world_position(camera, 1))
                 mod:info("DARKTIDEVR_BODY_MIRROR live_eye_root_local=%.3f,%.3f,%.3f", Vector3.x(eye), Vector3.y(eye), Vector3.z(eye))
             end
-            local unit_hand, avatar_hand = Unit.node(unit, "j_righthand"), Unit.node(avatar, "j_righthand")
-            local hand = Vector3.distance(Unit.local_position(unit, unit_hand), Unit.local_position(avatar, avatar_hand))
-            -- Overlay: how far the copied hand lands from the avatar's (which
-            -- carries the weapon), and how far the hand sits from its forearm
-            -- joint: the stretch a plain copy leaves where the gloves pull the
-            -- avatar's hands.
-            local world_hand = Vector3.distance(Unit.world_position(unit, unit_hand), Unit.world_position(avatar, avatar_hand))
+            -- How far the hand sits from its forearm joint after the solve
+            -- (the stretch). The hand's error against its recorded target is
+            -- in the per-arm lines below; nothing here compares the copy with
+            -- the avatar any more.
+            local unit_hand = Unit.node(unit, "j_righthand")
             local stretch = Unit.has_node(unit, "j_rightforearm") and Vector3.distance(Unit.world_position(unit, unit_hand),
                 Unit.world_position(unit, Unit.node(unit, "j_rightforearm"))) or -1
-            mod:info("DARKTIDEVR_BODY_MIRROR copying mode=%s frames=%d right_hand_local_error_m=%.6f right_hand_world_error_m=%.4f right_forearm_to_hand_m=%.4f",
-                tostring(mode_name), state.frames, hand, world_hand, stretch)
+            mod:info("DARKTIDEVR_BODY_MIRROR posed mode=%s frames=%d right_forearm_to_hand_m=%.4f",
+                tostring(mode_name), state.frames, stretch)
             if Mirror.MODES[mode_name].solve_arms then
                 if state.arm_lengths then
                     local l = state.arm_lengths

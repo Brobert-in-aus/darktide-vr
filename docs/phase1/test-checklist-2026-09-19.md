@@ -109,6 +109,31 @@ budget is 25,000 lines and this spends about ninety a second while you
 move), then stand still. **Report**: nothing beyond what you already said;
 the log carries the answer.
 
+### 1c. No base animation on the body, and none on the legs either
+
+Your rule, applied in full: the copy holds its spawn pose and only the
+mod's solves move it -- the heading from the body frame, the neck, the
+clavicles, the arms to your controllers. Nothing is read from the hidden
+model's joints any more; its root position is the one thing taken from it,
+because that is where you are standing. The legs-from-the-avatar step in the
+15 September design was never your instruction and is withdrawn: the legs
+hold the rest pose until a gait is written. A test now refuses the next
+line of code that would read an avatar joint.
+
+This also removes item 2's mechanism. The torso turned faster than your
+head because the avatar's counter-rotation came through the copied spine;
+with nothing copied, there is nothing to leak, and the torso faces the body
+frame's heading because the root does.
+
+**Test**: stand still and look down (no sway), enter the sights (no stance
+shift), stick-turn slowly and quickly (item 2's test still applies), then
+walk and look at your legs.
+
+**Report**: whether the body is now still when you are, whether the sights
+move it, whether the torso still leads or drifts on a turn, and whether the
+standing rest pose reads as a reasonable stance -- it is the spawner's first
+frame, and if it is a bad one that is the next thing to fix.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

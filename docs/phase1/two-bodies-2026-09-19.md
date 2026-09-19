@@ -196,8 +196,58 @@ The body trace flag is written `enabled` in the installed mod for the next
 run, by hand, because the sync deployment turns it off unless asked
 (`-BodyTrace`).
 
+## The animation, and the separation rule
+
+The third report of the morning: *"The body still appears to use the base
+game animations (idle animation, shifting position when I ADS etc), which
+it was explicitly instructed not to do."* Then, on the 15 September design's
+legs-from-the-avatar step: *"keeping the leg animation was a made-up
+instruction, I said to create the new custom-IK wholesale."* And the rule
+in full: *"The base model needs to exist (but hidden, and completely
+disconnected from the custom-ik model except what's absolutely required for
+weapon function) due to things like hit detection, but otherwise there
+should be no relationship between the two."*
+
+The copy was posed every frame by copying every joint's local pose from
+the animated avatar and solving on top of it. That is where the idle sway
+and the stance shift in the sights came from, and it is also where item
+2's "turn leak" came from: the avatar's counter-rotation arriving through
+the copied spine. The mirror key's copy fell back to the avatar's animated
+hand when no wrist pose was recorded. The root's rotation and scale were
+the avatar's, and the rig was compared with the avatar's by index.
+
+Now the spawn pose is boxed once as the rest pose. Each frame every joint
+below the root goes back to it, and only the solves move joints: the root
+yaw from the body frame, the neck follow and scale, the clavicles, the arms
+to the recorded wrist poses. The legs hold the rest pose until a procedural
+gait exists; the design's step 2 is withdrawn in the design doc. The
+turn-leak block is gone, since nothing copied can leak. The arm's fallback
+is rest, not the animated hand. The root's heading is the body frame's and
+its scale its own. The rig check is on the copy's own named joints. The
+diagnostics that compared the copy's hand and torso with the avatar's are
+gone. The one read of the avatar left is its root position: where the
+player stands.
+
+`test-body-mirror.lua` now scans the module's source and refuses any read
+of an avatar joint beyond the root, by pattern and line. Mutated before
+being believed: against the previous module it fails on
+`Unit.local_pose(avatar` at its line 1077; against the new module with that
+one line put back it fails at 1133; the control passes. A first cut was
+tripped by a missing constant before the scan ran, which is the wrong check
+catching the mutation, so the scan runs first.
+
+What this changes in the headset: no sway when standing, no stance change
+in the sights, and the legs stand still while you walk. The last is the
+cost of the rule until a gait is written, and it is the user's call, made
+in those words.
+
 ## Limits
 
+- The legs do not walk. That is by instruction until a procedural gait
+  exists (design step 6), not an oversight.
+- The rest pose is the spawner's first frame, which the design notes may be
+  an idle frame rather than the bind pose. It is stable, which is what the
+  solve needs; whether it reads as a good standing pose is a worn question.
 - The flicker is not fixed. It is instrumented; the next worn log names the
   stepping quantity, and the fix follows the 16 and 17 September pattern for
   whichever it is.

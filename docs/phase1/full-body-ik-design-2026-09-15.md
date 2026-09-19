@@ -203,6 +203,13 @@ animated, as today.
    - *Scale:* humans 1 (the visual scale is only reported); Ogryn keeps its
      calibrated scale.
 2. **Legs: copy from the avatar (hybrid, VHVR pattern).**
+   **Withdrawn, 19 September 2026.** This step was the design's own choice,
+   not the user's instruction, and the user has said so: the custom-IK body
+   is to be built wholesale, with nothing on it driven by the stock
+   animation, legs included. The base model exists hidden for hit detection
+   and there is no relationship between the two beyond the root position
+   and what the weapon needs. The legs hold the rest pose until a
+   procedural gait (step 6) exists. See two-bodies-2026-09-19.md.
    - Copy local rotations for `j_hips`' leg chains (`j_*upleg`, `j_*leg`,
      `j_*foot`, toes) from the stock avatar.
    - The avatar's leg animation already follows sim velocity, crouch, sprint,
