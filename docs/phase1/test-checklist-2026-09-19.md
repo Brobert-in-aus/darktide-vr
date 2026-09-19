@@ -752,6 +752,48 @@ hand as the game does, where a mirror would show it in the left.
 
 **Cloth.** Unchanged, and why is in 1s.
 
+### 1u. Worn at 15:10: skulls fixed; the anchor goes smooth for the cloth; legs untilted; the mirror's head and hands
+
+Your report: skulls no longer flicker; physics objects still move as if
+there were a flicker; the legs tilt forward about 15 degrees with the
+feet out in front; the mirror works, its head is below yours and a
+little squished into the torso, its hands are upside-down rather than
+mirrored; the mirrored weapons are present.
+
+**Cloth: the anchor itself.** Everything the mod draws now steps 0 then
+7 cm with the view on alternate frames, because the body anchor is the
+first-person component's position, written in the game's fixed update.
+Cloth simulated against a stepping body jitters, where the stock
+avatar's cloth rides the game's interpolated root. The game's
+first-person unit carries the same point on the interpolated timeline;
+the anchor is that now, in the three places the component's position
+was read (the camera anchor, its diagnostic, and the camera's fallback).
+The camera, the hands, the weapon, the body and the skulls move every
+frame together, and so does the world against you. Two observables: the
+probe's `d_eye_m`, 0 then 0.074 all day, should read one smooth step a
+frame, with `d_unit_rel_eye_m` still near zero; and your eyes on the
+cloth and on the world while you walk. This is the largest change of
+the day to how the view moves, and it is the change the cloth needs.
+
+**Legs.** The copied leg poses were local to the pelvis, which the copy
+holds upright while the animation tilts the avatar's; the difference
+tilted the legs. Each upper leg now takes the animation's upper-leg
+world rotation relative to the avatar's heading, re-based on the copy's
+heading, so the legs stand as the animation stands them whatever the
+pelvis does. The `stock_legs` line adds `hips_pitch_deg` and
+`upleg_pitch_deg` for both units.
+
+**The mirror's head.** A stray factor in the captured head constant
+pitched the head down into the torso, which read as low and squished.
+Fixed; the `height` line now runs for the reflection too, so its eye
+height against yours is in the log.
+
+**The mirror's hands.** A reflected frame is left-handed and one axis
+has to flip to make the other hand's rotation. I flipped the right axis
+and you saw hands upside-down; the rig's other hand is the mirror turned
+about its forward axis, so it is the up that flips. Changed; look for
+palms that match.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

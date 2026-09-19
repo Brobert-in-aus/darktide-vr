@@ -1126,6 +1126,34 @@ height with the spine stretched to keep the neck at the headset.
 
 Not worn.
 
+## Worn, 15:10: the anchor goes smooth
+
+On 3a4407b. The user: skulls fixed; physics objects still move as if
+flickering; legs tilted forward about 15 degrees; the mirror's head
+below the player's and squished; the mirror's hands upside-down; the
+mirrored weapons present.
+
+- **The anchor.** `presentation.anchor_head_position(first_person_extension)`
+  returns the first-person unit's world position (the game's
+  interpolated timeline, `update_unit_position` every frame) when it is
+  alive and within 0.5 m of the component's position, else the
+  component's. `body_camera_anchor`, its alignment diagnostic and the
+  camera's fallback read it. Every consumer of the anchor moves every
+  frame: camera, hands, weapon, copy, skulls. The skull module's
+  `anchor_lag` becomes zero by construction and subtracts nothing. The
+  cloth was jittering against a body stepping 0 then 7.4 cm on alternate
+  frames; the observable is `d_eye_m` on the probe (one smooth step a
+  frame) and the cloth itself. Not worn.
+- **The legs.** The upper legs take
+  `inverse(yaw(avatar root)) * world_rotation(avatar, upleg)` re-based
+  on the copy's root yaw, after the local-pose copy; the joints below
+  keep their copied locals. `stock_legs` logs `hips_pitch_deg` and
+  `upleg_pitch_deg` for both units, the pitch of the joint's forward
+  axis.
+- **The mirror's head.** The head constant was
+  `inv(yaw(eye)) * inv(yaw(head)) * head`; it is `inv(yaw(eye)) * head`.
+- **The mirror's hands.** `Quaternion.look(reflected forward, -reflected up)`.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows

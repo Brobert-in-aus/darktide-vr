@@ -1839,7 +1839,13 @@ function Mirror.install(mod, presentation, options)
             local f, u = Quaternion.forward(q), Quaternion.up(q)
             local rf = Mirror.reflect_dir(mirror, {Vector3.x(f), Vector3.y(f), Vector3.z(f)})
             local ru = Mirror.reflect_dir(mirror, {Vector3.x(u), Vector3.y(u), Vector3.z(u)})
-            return Quaternion.look(Vector3(rf[1], rf[2], rf[3]), Vector3(ru[1], ru[2], ru[3]))
+            -- A reflected frame is left-handed; a proper rotation for the
+            -- other hand needs one axis back. With the right axis flipped
+            -- (Quaternion.look of the reflected forward and up) the 15:10
+            -- worn run's hands were "just upside-down": the rig's other
+            -- hand is the mirror turned about its forward axis, so it is
+            -- the up that flips.
+            return Quaternion.look(Vector3(rf[1], rf[2], rf[3]), Vector3(-ru[1], -ru[2], -ru[3]))
         end
         place(avatar, unit, mirror)
         World.update_unit(world, unit)
@@ -1991,6 +1997,24 @@ function Mirror.install(mod, presentation, options)
                     Unit.set_local_pose(unit, index, Unit.local_pose(avatar, index))
                 end
                 World.update_unit(world, unit)
+                -- THE UPPER LEGS IN WORLD TERMS (15:10 worn run: "legs are
+                -- tilted forwards approx 15 degrees, so the feet stick out
+                -- in front of me"). A copied local pose hangs the leg from
+                -- the copy's pelvis, which the rest pose holds upright,
+                -- while the animation tilts the avatar's pelvis; the
+                -- difference tilts the legs. Each upper leg takes the
+                -- avatar's upper-leg WORLD rotation relative to the
+                -- avatar's root heading, re-based on the copy's root
+                -- heading, so the legs stand as the animation stands them
+                -- whatever the pelvis does. The joints below keep their
+                -- copied local poses.
+                local avatar_yaw = Quaternion(Vector3.up(), Quaternion.yaw(Unit.world_rotation(avatar, 1)))
+                local copy_yaw = Quaternion(Vector3.up(), Quaternion.yaw(Unit.world_rotation(unit, 1)))
+                for _, leg in pairs(state.legs) do
+                    local relative = Quaternion.multiply(inverse(avatar_yaw), Unit.world_rotation(avatar, leg.hip))
+                    set_world_rotation(unit, leg.hip, Quaternion.multiply(copy_yaw, relative))
+                end
+                World.update_unit(world, unit)
             end)
             if ok then animated = true else log_once("stock_legs_copy", "stock_legs=copy_failed") end
             if state.frames % 900 == 0 and Unit.has_node(unit, "j_hips") and Unit.has_node(avatar, "j_hips") then
@@ -1999,10 +2023,17 @@ function Mirror.install(mod, presentation, options)
                     local name = "j_" .. side .. "toebase"
                     return Unit.has_node(unit, name) and string.format("%.3f", Vector3.z(Unit.world_position(unit, Unit.node(unit, name))) - floor) or "na"
                 end
-                mod:info("DARKTIDEVR_BODY_MIRROR stock_legs hips_copy_above_floor_m=%.3f hips_avatar_above_floor_m=%.3f toe_above_floor_m=%s/%s stretch=%.4f",
+                -- The pitch of a joint's forward axis, degrees, positive up.
+                local function pitch_deg(which, node)
+                    local f = Quaternion.forward(Unit.world_rotation(which, node))
+                    return math.deg(math.atan2(Vector3.z(f), math.sqrt(Vector3.x(f) ^ 2 + Vector3.y(f) ^ 2)))
+                end
+                mod:info("DARKTIDEVR_BODY_MIRROR stock_legs hips_copy_above_floor_m=%.3f hips_avatar_above_floor_m=%.3f toe_above_floor_m=%s/%s stretch=%.4f hips_pitch_deg=%.1f/%.1f upleg_pitch_deg=%.1f/%.1f",
                     Vector3.z(Unit.world_position(unit, Unit.node(unit, "j_hips"))) - floor,
                     Vector3.z(Unit.world_position(avatar, Unit.node(avatar, "j_hips"))) - floor,
-                    toe("left"), toe("right"), state.stretch or 1)
+                    toe("left"), toe("right"), state.stretch or 1,
+                    pitch_deg(unit, Unit.node(unit, "j_hips")), pitch_deg(avatar, Unit.node(avatar, "j_hips")),
+                    pitch_deg(unit, state.legs.left.hip), pitch_deg(avatar, state.legs.left.hip))
             end
         end
         -- LEGS FROM THE STOCK MODEL (end).
@@ -2131,9 +2162,13 @@ function Mirror.install(mod, presentation, options)
                     local eye_yaw = Quaternion.yaw(eye_rotation)
                     local body_yaw = frame and type(frame.yaw) == "number" and frame.yaw or eye_yaw
                     if math.abs(math.atan2(math.sin(eye_yaw - body_yaw), math.cos(eye_yaw - body_yaw))) < math.rad(20) then
+                        -- H such that head = yaw(eye) * H at capture: the
+                        -- head's rest frame relative to a yaw-only eye
+                        -- frame. (The 15:10 worn run's "head below my head
+                        -- and a little squished into the torso" was a
+                        -- stray factor here that pitched the head down.)
                         state.head_follow = QuaternionBox(Quaternion.multiply(inverse(Quaternion(Vector3.up(), eye_yaw)),
-                            Quaternion.multiply(inverse(Quaternion(Vector3.up(), Quaternion.yaw(Unit.world_rotation(unit, head)))),
-                                Unit.world_rotation(unit, head))))
+                            Unit.world_rotation(unit, head)))
                     end
                 end
                 if state.head_follow then
@@ -2431,7 +2466,7 @@ function Mirror.install(mod, presentation, options)
             end
             local first_person = ScriptUnit.has_extension(avatar, "first_person_system")
             local camera = first_person and first_person:first_person_unit()
-            if camera and Mirror.MODES[mode_name].near_eye then
+            if camera and (Mirror.MODES[mode_name].near_eye or Mirror.MODES[mode_name].reflect) then
                 local eye = Matrix4x4.transform(Matrix4x4.inverse(Unit.world_pose(unit, 1)), Unit.world_position(camera, 1))
                 mod:info("DARKTIDEVR_BODY_MIRROR live_eye_root_local=%.3f,%.3f,%.3f", Vector3.x(eye), Vector3.y(eye), Vector3.z(eye))
                 -- HEIGHT (13:47 worn run): "my eyeline is above the mirrored

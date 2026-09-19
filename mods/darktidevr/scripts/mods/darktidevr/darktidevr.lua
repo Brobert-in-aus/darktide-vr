@@ -5115,6 +5115,32 @@ function presentation.eye_anchor_fallback(head_position, basis)
     return head_position + presentation.rotate_vector(basis, corrected)
 end
 
+-- THE ANCHOR'S TIMELINE (19 September, 15:10). The first-person
+-- component's position is written in the game's FIXED update: at ~113
+-- frames a second it stands still for a frame and then steps 7 cm. The
+-- camera, the hands, the weapon, the body copy and the skulls are all
+-- built on it, so they step together and hold still against each other,
+-- and the whole world steps against the player, and cloth simulated on
+-- the stepping body jitters ("physics objects are still moving as if
+-- there's still a flicker"). The game's first-person UNIT carries the
+-- same point on its interpolated timeline (update_unit_position, every
+-- frame from the interpolated root); the body mirror's probe has measured
+-- the difference all day as anchor_lag_m. This returns the unit's position
+-- when it is alive, the component's otherwise, and the anchor moves every
+-- frame. Observable: the probe's d_eye_m, 0 then 0.074 until now, reads
+-- one smooth step a frame; the copy's d_unit_rel_eye_m stays near zero.
+function presentation.anchor_head_position(first_person_extension)
+    local component = first_person_extension and first_person_extension._first_person_component
+    local eye_unit = first_person_extension and first_person_extension.first_person_unit and
+        first_person_extension:first_person_unit()
+    if eye_unit and Unit.alive(eye_unit) then
+        local smooth = Unit.world_position(eye_unit, 1)
+        if not component or not component.position or Vector3.length(smooth - component.position) <= 0.5 then
+            return smooth
+        end
+    end
+    return component and component.position
+end
 function presentation.body_camera_anchor(unit)
     if not unit or not Unit.alive(unit) then
         return nil, "unit_unavailable"
@@ -5123,7 +5149,7 @@ function presentation.body_camera_anchor(unit)
         unit, "first_person_system")
     local component = first_person_extension and
         first_person_extension._first_person_component
-    local head_position = component and component.position
+    local head_position = component and presentation.anchor_head_position(first_person_extension)
     local model_eye, eye_source, left_eye, right_eye, captured =
         presentation.body_stable_eye_anchor(unit)
     if not head_position then
@@ -5241,7 +5267,7 @@ function presentation.log_body_camera_alignment(
         unit, "first_person_system")
     local component = first_person_extension and
         first_person_extension._first_person_component
-    local first_person = component and component.position or neutral_camera
+    local first_person = component and presentation.anchor_head_position(first_person_extension) or neutral_camera
     mod:info(
         "DARKTIDEVR_BODY_ALIGNMENT neutral_to_root_right_m=%.5f neutral_to_head_right_m=%.5f neutral_to_shoulders_right_m=%.5f neutral_to_live_eyes_right_m=%.5f neutral_to_stable_eyes_right_m=%.5f neutral_to_first_person_right_m=%.5f tracked_from_neutral_right_m=%.5f neutral=%.4f,%.4f,%.4f head=%.4f,%.4f,%.4f shoulders=%.4f,%.4f,%.4f",
         Vector3.dot(neutral_camera - root, scene_right),
@@ -5391,7 +5417,7 @@ local function update_stereo(manager)
         local first_person_component = first_person_extension and
             first_person_extension._first_person_component
         if first_person_component and first_person_component.position then
-            local head_position = first_person_component.position
+            local head_position = presentation.anchor_head_position(first_person_extension)
             local model_eye_position, eye_source, left_eye, right_eye,
                 eye_anchor_captured =
                     presentation.body_camera_anchor(player_unit)
