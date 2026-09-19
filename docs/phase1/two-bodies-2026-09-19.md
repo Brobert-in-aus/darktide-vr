@@ -897,6 +897,69 @@ is a child of the ankle in this rig's scene graph; if it is not, rotating
 the ankle cannot move it and the correction was applied to the wrong
 joint's frame. Not worn.
 
+## Worn, 14:26: the probe named the flicker
+
+On e85810f. The user: flicker unchanged, the glove in front and
+flickering too; "the flicker only occurs when moving, not when looking
+around or waving the hands, just moving the whole character"; toes
+pointed up worse.
+
+Ten consecutive moving probe lines (2,294 in the run):
+
+| d_avatar_m | d_eye_m | d_neck_target_m | d_unit_m | d_head_m | d_marker_m | d_hand_target_m |
+|---|---|---|---|---|---|---|
+| 0.0210 | 0.0000 | 0.0342 | 0.0342 | 0.0342 | 0.0343 | 0.0002 |
+| 0.0230 | 0.0551 | 0.0781 | 0.0781 | 0.0781 | 0.0779 | 0.0552 |
+| 0.0276 | 0.0001 | 0.0303 | 0.0304 | 0.0303 | 0.0305 | 0.0000 |
+| 0.0261 | 0.0579 | 0.0841 | 0.0840 | 0.0840 | 0.0839 | 0.0580 |
+| 0.0259 | 0.0002 | 0.0260 | 0.0260 | 0.0260 | 0.0258 | 0.0001 |
+| 0.0232 | 0.0000 | 0.0366 | 0.0366 | 0.0366 | 0.0367 | 0.0003 |
+| 0.0240 | 0.0596 | 0.0839 | 0.0838 | 0.0838 | 0.0837 | 0.0596 |
+
+The copy's root against the avatar's, from the printed positions,
+alternates between about (+0.027, -0.021) and (+0.050, +0.030): two
+places 5 cm apart along the direction of travel, every other frame.
+
+The eye (`presentation.eye_pose`, the tracked eye stored against the
+body anchor) advances every other frame by two frames' worth: the
+fixed-step anchor. The recorded wrist targets advance on exactly those
+frames by the same amount: the same anchor. The camera's position is
+built on that anchor. Everything the mod draws from the anchor steps
+together with the view and holds still against it: the weapon, the
+rigid gloves. The copy's neck target was the eye plus the smooth-lag
+shift from the morning (first-person unit minus component position),
+which does not cancel the eye's step on the same frame, and stepped 3
+then 8 cm; the root is moved by `neck_offset` so the neck lands on the
+target, so the root stepped 3 then 8; the head and the marker copied the
+root. Against a view stepping 0 then 6, that is two places. It happens
+only while moving because the anchor only steps while moving.
+
+Earlier in the day the copy's root stood on the avatar's interpolated
+root (smooth) with the targets on the anchor, and flickered; the shift
+put the targets onto the avatar's timeline while the view stayed on the
+anchor's, and it flickered the other way. The one timeline the view is
+on is the anchor's.
+
+### The change
+
+The shift is removed: neck and shoulder targets are the frame's, and the
+root lands where the neck follow puts it, on the anchor's timeline. The
+`shifted` helper is gone; `smooth_offset` stays for the probe's
+`anchor_lag_m`. The probe gains `d_unit_rel_eye_m`, the root's step
+against the eye: what the view sees.
+
+### The toes
+
+`left_pitch_stages_deg=aim:.. rebase:.. aimed:..` on the gait line: the
+foot's pitch as the knee's aim left it, after the rest rotation is
+re-based to the foot's heading, and after the foot is aimed. The 14:26
+log read +4.7 deg after the re-base against a rest of -28, and the
+axis-angle correction turned the toes further up (the sign: about the
+side axis from up x forward, a negative angle raises the toe). The foot
+is now aimed with `aim_joint`, the knees' own path, at the point a flat
+foot's toe occupies: the rest pitch below the ankle along the foot's
+heading. Not worn.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows

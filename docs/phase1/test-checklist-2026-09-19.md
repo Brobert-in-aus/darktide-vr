@@ -579,6 +579,52 @@ after a correction that should have made them equal, and the toe joint
 under the ankle in the rig's graph at all (`toe_under_ankle`), which
 decides whether rotating the ankle can move it.
 
+### 1q. Worn at 14:26: the probe named it; the copy steps with the camera now; the foot is aimed
+
+Your report: flicker unchanged, the glove in front of you flickering
+too; the toes pointed up worse; and the rule that the flicker only
+happens when moving, not when looking around or waving the hands.
+
+The log, ten consecutive moving frames:
+
+```
+d_neck_target_m=0.0342 d_eye_m=0.0000 d_unit_m=0.0342
+d_neck_target_m=0.0781 d_eye_m=0.0551 d_unit_m=0.0781
+d_neck_target_m=0.0303 d_eye_m=0.0001 d_unit_m=0.0304
+d_neck_target_m=0.0841 d_eye_m=0.0579 d_unit_m=0.0840
+...
+d_hand_target_m: 0.0000 / 0.0552 / 0.0000 / 0.0580 ...     d_avatar_m: a steady 0.021-0.033
+```
+
+While you move, the eye steps 0 then 6 cm a frame: it is stored against
+the fixed-step body anchor. The recorded wrist targets step 0 then 6 cm
+on the same frames: same anchor. The camera is on that anchor too. That
+is why the weapon and the rigid gloves hold still against the view: they
+step with it. The copy's neck target, the eye plus the "smooth" shift I
+put in this morning, stepped 3 then 8 cm, because the shift no longer
+cancels the eye's step frame by frame; the root is moved so the neck
+lands on that target, so the root stepped 3 then 8 cm too; the head and
+the marker glove copied the root exactly. Against a view stepping 0 then
+6, that is a body alternating between two places, only while moving.
+The avatar's own root steps a smooth 2.5 cm and had nothing to do with
+it.
+
+**The change.** The shift is off. The neck and shoulder targets are the
+frame's, on the anchor's timeline, and the root lands where the neck
+follow puts it, on that timeline. The probe gains `d_unit_rel_eye_m`,
+the root's step against the eye, which is what the view sees: it should
+read near zero on every moving frame, where `d_unit_m` will now read 0
+then 6 like the eye.
+
+**The toes.** The pitch stages will show it, but the log already says
+the rest-rebased rotation leaves the foot at +4.7 deg against a rest of
+-28, and the axis-angle correction turned it further up, which is what
+you saw. The foot is now aimed with the same helper that aims the knees:
+the toe is pointed at where a flat foot's toe sits, the rest pitch
+below the ankle along the foot's heading. The gait line carries
+`left_pitch_stages_deg=aim:.. rebase:.. aimed:..`; the last should equal
+the rest pitch and `toe_above_ground_m` should read about 0.03.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

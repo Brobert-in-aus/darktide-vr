@@ -1527,10 +1527,6 @@ function Mirror.install(mod, presentation, options)
         if Vector3.length(lag) > 0.5 then return nil end
         return lag
     end
-    local function shifted(position, lag)
-        if not position or not lag then return position end
-        return {position[1] + Vector3.x(lag), position[2] + Vector3.y(lag), position[3] + Vector3.z(lag)}
-    end
     -- Where the copy stands. The avatar's ROOT POSITION is the one thing
     -- the drawn body takes from it: it is the simulated place the player is,
     -- not animation, and the feet have to be there. Its heading is the body
@@ -1811,8 +1807,25 @@ function Mirror.install(mod, presentation, options)
         end
         -- Everything placed from the frame this frame is shifted onto the
         -- smooth timeline by the anchor's lag (see smooth_offset).
+        -- ONE TIMELINE (14:26 worn run, the probe with the solved joints in
+        -- it). While the player moves, the eye steps 0 then 6 cm a frame:
+        -- it is stored against the fixed-step body anchor, as the recorded
+        -- wrist targets are (0 then 6 cm on the same frames), as the camera
+        -- is. The weapon and the rigid gloves hold still against the view
+        -- because they step with it. The neck target, the eye plus this
+        -- morning's "smooth" shift, stepped 3 then 8 cm -- the shift no
+        -- longer cancels the eye's step frame by frame -- and the root,
+        -- moved to put the neck on that target, stepped with it; the head,
+        -- the marker glove, everything above the root alternated against a
+        -- view that did not. "The flicker only occurs when moving, not when
+        -- looking around or waving the hands." So the shift is off: the
+        -- targets are the frame's, on the anchor's timeline, and the root
+        -- lands where the neck follow puts it, on that timeline too. The
+        -- lag is still measured for the probe (anchor_lag_m), and the probe
+        -- gains the root's step against the eye (d_unit_rel_eye_m), which
+        -- is what the view sees: near zero while walking straight.
         state.smooth_lag = smooth_offset(avatar)
-        local neck_target = frame and shifted(Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale), state.smooth_lag)
+        local neck_target = frame and Mirror.neck_target(frame.neck, frame.head_yaw, frame.scale)
         if Mirror.MODES[mode_name].follow_neck and Unit.has_node(unit, "j_neck") then
             -- NO SCALING TO THE NECK any more (19 September). The copy's
             -- scale is the game's own character height for this profile,
@@ -1874,8 +1887,7 @@ function Mirror.install(mod, presentation, options)
                 -- The estimated shoulders hang from the frame's neck, so they take
                 -- the same extra as the copy's neck, or the clavicles would shrug
                 -- up toward shoulders 10 cm above the lowered body's.
-                local target = shifted(Mirror.neck_target(frame["shoulder_" .. side], frame.head_yaw, frame.scale),
-                    state.smooth_lag)
+                local target = Mirror.neck_target(frame["shoulder_" .. side], frame.head_yaw, frame.scale)
                 if target and Unit.has_node(unit, clavicle_name) and Unit.has_node(unit, arm_name) then
                     local clavicle, arm = Unit.node(unit, clavicle_name), Unit.node(unit, arm_name)
                     local before = Vector3.length(Unit.world_position(unit, arm) - vector(target))
@@ -1970,27 +1982,39 @@ function Mirror.install(mod, presentation, options)
                         aim_joint(world, unit, leg.knee, leg.ankle, vector(ankle))
                         -- Flat, and turned to the foot's planted heading:
                         -- the rest rotation about the root, re-based.
+                        -- The foot's pitch on the ankle-to-toe line, at three
+                        -- stages: as the knee's aim left it, after the rest
+                        -- rotation is re-based to the foot's heading, and
+                        -- after the foot is AIMED so the toe points where a
+                        -- flat foot's toe points (the rest pitch below the
+                        -- ankle, along the foot's heading). The 14:26 run
+                        -- read +4.7 deg against a rest of -28 after the
+                        -- re-base, and the axis-angle correction turned the
+                        -- toes further up ("toes are pointed up even worse
+                        -- now"). aim_joint is the knees' own path and turns
+                        -- the joint by the swing from the child's direction
+                        -- to the target's; the foot uses it now.
+                        local function toe_pitch()
+                            if not leg.toe then return nil end
+                            local to_toe = Unit.world_position(unit, leg.toe) - Unit.world_position(unit, leg.ankle)
+                            return math.atan2(Vector3.z(to_toe), math.sqrt(Vector3.x(to_toe) ^ 2 + Vector3.y(to_toe) ^ 2)),
+                                Vector3.length(to_toe)
+                        end
+                        leg.pitch_after_aim = toe_pitch()
                         set_world_rotation(unit, leg.ankle, Quaternion.multiply(
                             Quaternion(Vector3.up(), foot.yaw), leg.rest_foot_rotation:unbox()))
                         World.update_unit(world, unit)
-                        -- The foot's pitch, measured on the ankle-to-toe
-                        -- line and put back to the rest pose's (a flat
-                        -- foot), whatever the re-based rotation left it at.
-                        -- Both angles go in the gait log line.
+                        leg.pitch_after_rebase = toe_pitch()
                         if leg.toe and leg.rest_pitch then
-                            local ankle_position = Unit.world_position(unit, leg.ankle)
-                            local to_toe = Unit.world_position(unit, leg.toe) - ankle_position
-                            local flat = math.sqrt(Vector3.x(to_toe) ^ 2 + Vector3.y(to_toe) ^ 2)
-                            leg.pitch = math.atan2(Vector3.z(to_toe), flat)
-                            if flat > 0.01 and math.abs(leg.pitch - leg.rest_pitch) > math.rad(0.5) then
-                                local side_axis = Vector3.normalize(Vector3.cross(Vector3.up(), Vector3(Vector3.x(to_toe), Vector3.y(to_toe), 0)))
-                                local correction = Quaternion.axis_angle(side_axis, leg.rest_pitch - leg.pitch)
-                                set_world_rotation(unit, leg.ankle, Quaternion.multiply(correction, Unit.world_rotation(unit, leg.ankle)))
-                                World.update_unit(world, unit)
-                                to_toe = Unit.world_position(unit, leg.toe) - ankle_position
-                                leg.pitch = math.atan2(Vector3.z(to_toe), math.sqrt(Vector3.x(to_toe) ^ 2 + Vector3.y(to_toe) ^ 2))
+                            local _, foot_length = toe_pitch()
+                            if foot_length and foot_length > 0.01 then
+                                local heading = Vector3(-math.sin(foot.yaw), math.cos(foot.yaw), 0)
+                                local toe_goal = Unit.world_position(unit, leg.ankle) +
+                                    (heading * math.cos(leg.rest_pitch) + Vector3.up() * math.sin(leg.rest_pitch)) * foot_length
+                                aim_joint(world, unit, leg.ankle, leg.toe, toe_goal)
                             end
                         end
+                        leg.pitch = toe_pitch()
                         leg.error = Vector3.length(Unit.world_position(unit, leg.ankle) - target)
                     else
                         leg.error = nil
@@ -2132,7 +2156,7 @@ function Mirror.install(mod, presentation, options)
                         local function fmt(v) return v and string.format("%.4f", v) or "na" end
                         mod:info("DARKTIDEVR_BODY_MOTION t=%.3f dt=%.4f d_avatar_m=%s d_neck_target_m=%s d_eye_m=%s d_unit_m=%s " ..
                             "anchor_lag_m=%s avatar=%.3f,%.3f,%.3f unit=%.3f,%.3f,%.3f child_before_m=%s child_after_m=%s child=%s " ..
-                            "d_head_m=%s d_hand_m=%s d_hand_target_m=%s d_marker_m=%s head=%s hand=%s",
+                            "d_head_m=%s d_hand_m=%s d_hand_target_m=%s d_marker_m=%s head=%s hand=%s d_unit_rel_eye_m=%s",
                             type(t) == "number" and t or 0, type(dt) == "number" and dt or 0,
                             fmt(d_avatar), fmt(Mirror.step_m(neck_now, m.neck)), fmt(Mirror.step_m(eye_now, m.eye)),
                             fmt(Mirror.step_m(root_now, m.root)),
@@ -2142,7 +2166,9 @@ function Mirror.install(mod, presentation, options)
                             fmt(Mirror.step_m(head_now, m.head)), fmt(Mirror.step_m(hand_now, m.hand)),
                             fmt(Mirror.step_m(target_now, m.target)), fmt(Mirror.step_m(marker_now, m.marker)),
                             head_now and string.format("%.3f,%.3f,%.3f", head_now[1], head_now[2], head_now[3]) or "na",
-                            hand_now and string.format("%.3f,%.3f,%.3f", hand_now[1], hand_now[2], hand_now[3]) or "na")
+                            hand_now and string.format("%.3f,%.3f,%.3f", hand_now[1], hand_now[2], hand_now[3]) or "na",
+                            fmt(eye_now and m.eye and Mirror.step_m({root_now[1] - eye_now[1], root_now[2] - eye_now[2], root_now[3] - eye_now[3]},
+                                {m.root[1] - m.eye[1], m.root[2] - m.eye[2], m.root[3] - m.eye[3]}) or nil))
                     end
                 end
                 state.motion = {avatar = avatar_now, neck = neck_now, eye = eye_now, root = root_now,
@@ -2340,14 +2366,16 @@ function Mirror.install(mod, presentation, options)
                 local left_pitch, left_rest = pitch("left")
                 local right_pitch, right_rest = pitch("right")
                 local left_leg = state.legs and state.legs.left
-                mod:info("DARKTIDEVR_BODY_MIRROR gait speed_mps=%.3f ground_hits=%d left=%s right=%s ankle_error_m=%s/%s left_foot=%.3f,%.3f,%.3f right_foot=%.3f,%.3f,%.3f toe_above_ground_m=%s/%s foot_pitch_deg=%s/%s rest_pitch_deg=%s/%s toe_under_ankle=%s toe_parent=%s ankle=%s",
+                local function deg(v) return v and string.format("%.1f", math.deg(v)) or "na" end
+                mod:info("DARKTIDEVR_BODY_MIRROR gait speed_mps=%.3f ground_hits=%d left=%s right=%s ankle_error_m=%s/%s left_foot=%.3f,%.3f,%.3f right_foot=%.3f,%.3f,%.3f toe_above_ground_m=%s/%s foot_pitch_deg=%s/%s rest_pitch_deg=%s/%s left_pitch_stages_deg=aim:%s rebase:%s aimed:%s toe_under_ankle=%s",
                     feet.speed or 0, state.ground_hits or 0,
                     feet.left.swinging and "swinging" or "planted", feet.right.swinging and "swinging" or "planted",
                     err("left"), err("right"),
                     feet.left.position[1], feet.left.position[2], feet.left.position[3],
                     feet.right.position[1], feet.right.position[2], feet.right.position[3],
                     toe_above("left"), toe_above("right"), left_pitch, right_pitch, left_rest, right_rest,
-                    tostring(left_leg and left_leg.toe_under_ankle), tostring(left_leg and left_leg.toe_parent), tostring(left_leg and left_leg.ankle))
+                    deg(left_leg and left_leg.pitch_after_aim), deg(left_leg and left_leg.pitch_after_rebase), deg(left_leg and left_leg.pitch),
+                    tostring(left_leg and left_leg.toe_under_ankle))
             end
             if Mirror.MODES[mode_name].solve_arms then
                 if state.arm_lengths then
