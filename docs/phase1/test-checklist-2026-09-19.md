@@ -863,6 +863,31 @@ anywhere else in the mod yet, so this is the first run of them here.
 The skull-against-eye number was 3.0 cm a frame on this run's log,
 with the old lag still in the build you ran; the fix for it is in.
 
+### 1x. Worn at 16:05: the head from the model's own axes; the weapon's grip measured once
+
+Your report: no fix to the head; the mirrored weapons alternate between
+hands as you quick-switch and drift further from the character each
+time. And the rule: the 3p model's default pose has the head
+approximately neutral and facing forward, which says which of its axes
+are which; the headset is what is tracked live.
+
+**The head.** No capture and no levelling any more. The rest pose the
+copy was spawned with has the head near neutral; which of the head
+joint's axes point forward and up is read off it once, each snapped to
+the nearest body axis so a slight rest tilt is not carried, and every
+frame the head is the headset's rotation, reflected for the mirror, on
+that exact axis mapping. `head_axes forward=.. up=..` logs the mapping.
+
+**The weapon.** The log: the first move measured a grip of 5 cm from
+the right hand, the later ones 40 cm and growing. The weapon's own flow
+links it to the right hand on its first wield and only sets its pose
+afterwards, so a weapon I had moved to the left hand stayed there and
+each later measurement added the move. Now the grip is measured once
+per weapon, on its first wield, and reused; and before each wield the
+weapon I moved goes back on the right hand with its grip, so the flows
+find what they expect. `reflection_weapon moved_to=j_lefthand grip_m=..`
+should read the same grip on every switch.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

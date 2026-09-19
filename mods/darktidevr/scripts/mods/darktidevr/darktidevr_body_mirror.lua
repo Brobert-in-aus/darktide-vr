@@ -2215,35 +2215,42 @@ function Mirror.install(mod, presentation, options)
         -- within 20 degrees of the body's heading: the rig's head frame
         -- relative to the eye frame. The neck follow has already put the
         -- head where the headset is.
+        -- THE HEAD ON THE HEADSET (user, 16:15, 19 September: the 3p
+        -- model's default head orientation is in its data, nothing to
+        -- capture; the headset is what is tracked live). The copy's rest
+        -- pose is that data as spawned: the head's rest orientation
+        -- relative to the root's heading is the default, and every frame
+        -- the headset's rotation, reflected for the mirror, carries it:
+        -- head = headset * default. The rest pose is re-applied each frame
+        -- above, so the head joint holds the default at this point and
+        -- the root's heading is state.yaw.
         if Mirror.MODES[mode_name].follow_head and Unit.has_node(unit, "j_head") and presentation.eye_pose then
             local _, eye_rotation = presentation.eye_pose(avatar)
             if eye_rotation then
                 local head = Unit.node(unit, "j_head")
-                if not state.head_follow then
-                    local eye_yaw = Quaternion.yaw(eye_rotation)
-                    local body_yaw = frame and type(frame.yaw) == "number" and frame.yaw or eye_yaw
-                    if math.abs(math.atan2(math.sin(eye_yaw - body_yaw), math.cos(eye_yaw - body_yaw))) < math.rad(20) then
-                        -- H such that head = yaw(eye) * H at capture: the
-                        -- head's rest frame, LEVELLED, relative to a yaw-
-                        -- only eye frame. The rest head is the spawner's
-                        -- idle's, which looks down; carried as it was, the
-                        -- mirror looked down with it (15:26 worn run). Its
-                        -- forward axis is turned level about its right axis
-                        -- first, and the pitch it had is logged.
-                        local rest = Unit.world_rotation(unit, head)
-                        local forward = Quaternion.forward(rest)
-                        local rest_pitch = math.atan2(Vector3.z(forward), math.sqrt(Vector3.x(forward) ^ 2 + Vector3.y(forward) ^ 2))
-                        local level = Quaternion.multiply(Quaternion(Quaternion.right(rest), -rest_pitch), rest)
-                        state.head_follow = QuaternionBox(Quaternion.multiply(inverse(Quaternion(Vector3.up(), eye_yaw)), level))
-                        state.head_rest_pitch = rest_pitch
-                        mod:info("DARKTIDEVR_BODY_MIRROR head_follow captured rest_head_pitch_deg=%.1f eye_pitch_deg=%.1f",
-                            math.deg(rest_pitch), math.deg(math.asin(math.max(-1, math.min(1, Vector3.z(Quaternion.forward(eye_rotation)))))))
+                if not state.head_axes then
+                    -- The default pose has the head approximately neutral
+                    -- and facing forward (user, 16:20). Which of the head
+                    -- joint's axes point forward, up and right is read off
+                    -- that pose once, each snapped to the nearest body axis,
+                    -- so a slight rest tilt is not carried: the mapping is
+                    -- exact axes, the tracking is the headset's.
+                    local root_yaw = Quaternion.yaw(Unit.world_rotation(unit, 1))
+                    local rest = Quaternion.multiply(inverse(Quaternion(Vector3.up(), root_yaw)), Unit.world_rotation(unit, head))
+                    local function snap(v)
+                        local x, y, z = Vector3.x(v), Vector3.y(v), Vector3.z(v)
+                        local ax, ay, az = math.abs(x), math.abs(y), math.abs(z)
+                        if ax >= ay and ax >= az then return Vector3(x < 0 and -1 or 1, 0, 0) end
+                        if ay >= az then return Vector3(0, y < 0 and -1 or 1, 0) end
+                        return Vector3(0, 0, z < 0 and -1 or 1)
                     end
+                    local forward, up = snap(Quaternion.forward(rest)), snap(Quaternion.up(rest))
+                    state.head_axes = QuaternionBox(Quaternion.look(forward, up))
+                    mod:info("DARKTIDEVR_BODY_MIRROR head_axes forward=%.0f,%.0f,%.0f up=%.0f,%.0f,%.0f",
+                        Vector3.x(forward), Vector3.y(forward), Vector3.z(forward), Vector3.x(up), Vector3.y(up), Vector3.z(up))
                 end
-                if state.head_follow then
-                    set_world_rotation(unit, head, Quaternion.multiply(reflected_rotation(eye_rotation), state.head_follow:unbox()))
-                    World.update_unit(world, unit)
-                end
+                set_world_rotation(unit, head, Quaternion.multiply(reflected_rotation(eye_rotation), state.head_axes:unbox()))
+                World.update_unit(world, unit)
             end
         end
         -- THE FINGERS FROM THE OVERLAY (15:00: "its hand animations should
@@ -2281,22 +2288,38 @@ function Mirror.install(mod, presentation, options)
                 local unit_data = ScriptUnit.has_extension(avatar, "unit_data_system")
                 local inventory = unit_data and unit_data:read_component("inventory")
                 local slot = inventory and inventory.wielded_slot
+                local right_hand = Unit.has_node(unit, "j_righthand") and Unit.node(unit, "j_righthand") or nil
+                local left_hand = Unit.has_node(unit, "j_lefthand") and Unit.node(unit, "j_lefthand") or nil
                 if slot and slot ~= state.wielded_slot then
+                    -- THE WEAPON IN THE OTHER HAND, kept honest across
+                    -- switches (16:05 worn run: "the mirrored weapons
+                    -- alternate between hands as I quick switch, and are
+                    -- getting further and further away each time"; the log:
+                    -- the first move measured a 5 cm grip, the later ones
+                    -- 40 cm and growing). The weapon's own flow links it to
+                    -- the right hand on the FIRST wield and only sets its
+                    -- pose afterwards, so a weapon I had moved to the left
+                    -- hand stayed there and every later measurement added
+                    -- the move. Now: before the wield, the weapon I moved
+                    -- goes back on the right hand with its grip pose, so the
+                    -- flows find what they expect; the grip is measured once
+                    -- per weapon, on its first wield, and reused.
+                    state.weapon_grip = state.weapon_grip or {}
+                    local moved = state.weapon_on_left
+                    if moved and Unit.alive(moved) and right_hand and state.weapon_grip[moved] then
+                        local grip = state.weapon_grip[moved]
+                        World.unlink_unit(world, moved)
+                        World.link_unit(world, moved, 1, unit, right_hand)
+                        Unit.set_local_position(moved, 1, grip.position:unbox())
+                        Unit.set_local_rotation(moved, 1, grip.rotation:unbox())
+                    end
+                    state.weapon_on_left = nil
                     state.wielded_slot = slot
                     state.profile_spawner:set_visibility(true)
                     state.profile_spawner:wield_slot(slot)
-                    -- The weapon's own flow answers the wield event by
-                    -- linking it to the right hand; two frames later it is
-                    -- moved to the other hand (below).
                     state.weapon_relink = {slot = slot, frames = 2}
                     mod:info("DARKTIDEVR_BODY_MIRROR reflection_wield slot=%s", tostring(slot))
                 end
-                -- THE WEAPON IN THE OTHER HAND (15:50: "weapon still on the
-                -- wrong hand (fix that this time)"). The wielded weapon's
-                -- pose relative to the right hand joint is measured, the
-                -- weapon is unlinked and linked to the left hand joint, and
-                -- the pose is carried across with the rig's sign map, as the
-                -- fingers are. Attachments on the weapon follow it.
                 local relink = mirror and state.weapon_relink
                 if relink then
                     relink.frames = relink.frames - 1
@@ -2304,18 +2327,25 @@ function Mirror.install(mod, presentation, options)
                         state.weapon_relink = nil
                         local slot_data = state.data and state.data.slots and state.data.slots[relink.slot]
                         local weapon = slot_data and slot_data.unit_3p
-                        if weapon and Unit.alive(weapon) and Unit.has_node(unit, "j_righthand") and Unit.has_node(unit, "j_lefthand") then
-                            local right, left = Unit.node(unit, "j_righthand"), Unit.node(unit, "j_lefthand")
-                            local in_right = Matrix4x4.multiply(Unit.world_pose(weapon, 1), Matrix4x4.inverse(Unit.world_pose(unit, right)))
-                            local local_position = Matrix4x4.translation(in_right)
-                            local local_rotation = Matrix4x4.rotation(in_right)
+                        if weapon and Unit.alive(weapon) and right_hand and left_hand then
+                            state.weapon_grip = state.weapon_grip or {}
+                            local grip = state.weapon_grip[weapon]
+                            if not grip then
+                                -- First wield: the flow has just linked it to
+                                -- the right hand, and this is the authored grip.
+                                local in_right = Matrix4x4.multiply(Unit.world_pose(weapon, 1), Matrix4x4.inverse(Unit.world_pose(unit, right_hand)))
+                                grip = {position = Vector3Box(Matrix4x4.translation(in_right)), rotation = QuaternionBox(Matrix4x4.rotation(in_right))}
+                                state.weapon_grip[weapon] = grip
+                            end
+                            local grip_position = grip.position:unbox()
                             World.unlink_unit(world, weapon)
-                            World.link_unit(world, weapon, 1, unit, left)
-                            Unit.set_local_position(weapon, 1, mirrored_local_position(local_position, state.hand_mirror))
-                            Unit.set_local_rotation(weapon, 1, mirrored_local_rotation(local_rotation, state.hand_mirror))
+                            World.link_unit(world, weapon, 1, unit, left_hand)
+                            Unit.set_local_position(weapon, 1, mirrored_local_position(grip_position, state.hand_mirror))
+                            Unit.set_local_rotation(weapon, 1, mirrored_local_rotation(grip.rotation:unbox(), state.hand_mirror))
                             World.update_unit_and_children(world, unit)
-                            mod:info("DARKTIDEVR_BODY_MIRROR reflection_weapon moved_to=j_lefthand slot=%s offset_m=%.3f,%.3f,%.3f signs=%s",
-                                tostring(relink.slot), Vector3.x(local_position), Vector3.y(local_position), Vector3.z(local_position),
+                            state.weapon_on_left = weapon
+                            mod:info("DARKTIDEVR_BODY_MIRROR reflection_weapon moved_to=j_lefthand slot=%s grip_m=%.3f,%.3f,%.3f signs=%s",
+                                tostring(relink.slot), Vector3.x(grip_position), Vector3.y(grip_position), Vector3.z(grip_position),
                                 state.hand_mirror and string.format("%d,%d,%d", state.hand_mirror.x, state.hand_mirror.y, state.hand_mirror.z) or "none")
                         else
                             log_once("relink", "reflection_weapon=no_unit slot=%s", tostring(relink.slot))

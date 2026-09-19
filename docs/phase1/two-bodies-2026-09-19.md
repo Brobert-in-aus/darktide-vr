@@ -1224,6 +1224,42 @@ height instance=overlay camera_eye_root_z=1.773 copy_eye_root_z=1.687 eye_gap_m=
 
 Not worn.
 
+## Worn, 16:05: the head's axes, the weapon's grip
+
+On bfdade8. The user: no fix to the head; the mirrored weapons alternate
+between hands on quick-switch and drift further away each time. Then:
+"The default pose has the head approximately neutral and approximately
+facing forward. From that you can determine which axes correlate with
+which directions."
+
+```
+hand_mirror signs=x:-1 y:-1 z:-1 dots=x:-0.94 y:-0.77 z:-0.72 trusted=true
+head_follow captured rest_head_pitch_deg=10.5 eye_pitch_deg=-3.5
+reflection_weapon moved_to=j_lefthand slot=slot_secondary offset_m=-0.054,0.046,0.009
+reflection_weapon moved_to=j_lefthand slot=slot_primary offset_m=-0.056,0.045,0.009
+reflection_weapon moved_to=j_lefthand slot=slot_secondary offset_m=0.054,0.409,0.088
+reflection_weapon moved_to=j_lefthand slot=slot_primary offset_m=0.054,0.466,0.103
+height instance=reflection camera_eye_root_z=1.773 copy_eye_root_z=1.696 eye_gap_m=0.077 root_world_z=0.417 avatar_root_world_z=0.417
+```
+
+- The head: the rest head's orientation relative to the root heading is
+  read once, its forward and up snapped to the nearest body axes
+  (`state.head_axes`, logged as `head_axes forward=.. up=..`), and the
+  head is `reflected(headset) * head_axes` every frame. The capture and
+  the levelling from the two previous builds are gone.
+- The weapon: the grip (the weapon's pose relative to the right hand
+  joint) is measured once per weapon unit on its first wield, when the
+  flow has linked it, and kept in `state.weapon_grip`; before each
+  wield the weapon on the left hand (`state.weapon_on_left`) is put back
+  on the right hand with its grip, then `wield_slot` runs, then two
+  frames later the newly wielded weapon is moved to the left with the
+  mirrored grip.
+- The reflection's height line reads the same root as the avatar's and
+  an eye gap of 7.7 cm, like the overlay's; the 13 cm of the 15:26 run
+  is gone with the head constant.
+
+Not worn.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows
