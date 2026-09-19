@@ -439,15 +439,18 @@ local file = assert(io.open(arg[1], 'rb')); local source = file:read('*a'); file
 -- and are cut out before the scan, so anything else read from the avatar
 -- still fails here. Each marked block must close, and there must be some.
 local scanned, blocks = source, 0
+-- The torso rest is the third such read (user, 17:00 on 19 September: the
+-- calibrated model in its normal pose stands as tall as the player; the
+-- copy's rest torso comes from that pose, once, at ready).
 while true do
-  local open_at = scanned:find('LEGS FROM THE STOCK MODEL (begin)', 1, true)
+  local open_at = scanned:find('FROM THE STOCK MODEL (begin)', 1, true)
   if not open_at then break end
-  local _, close_at = scanned:find('LEGS FROM THE STOCK MODEL (end).', open_at, true)
-  assert(close_at, 'a stock-legs block that never closes')
+  local _, close_at = scanned:find('FROM THE STOCK MODEL (end).', open_at, true)
+  assert(close_at, 'a stock-model block that never closes')
   scanned = scanned:sub(1, open_at - 1) .. scanned:sub(close_at + 1)
   blocks = blocks + 1
 end
-assert(blocks >= 2, 'the stock-legs blocks (ready and update) are marked')
+assert(blocks >= 3, 'the stock-model blocks (torso rest, legs at ready, legs in update) are marked')
 assert(source:find('Unit%.local_pose%(avatar, index%)'), 'the stock legs are copied joint by joint from the avatar')
 local forbidden = {
   'Unit%.local_pose%(avatar', 'Unit%.local_position%(avatar', 'Unit%.local_rotation%(avatar',

@@ -975,6 +975,36 @@ second, never below 1 nor above 1.25. `stretch_k` and `floor_gap_m` are
 on the height line; `toe_above_floor_m` on the stock-legs line should
 read near zero when it has settled.
 
+### 1ab. Worn at 16:50, your question: the model is not short, its rest torso was folded
+
+Your question: why is the model too short in the first place, when it is
+calibrated to your height, and the calibration should factor in its
+posture.
+
+It does, and the log agrees. The camera in this mod is anchored to the
+avatar model's own eye joints, so the camera's 1.74 m above the root is
+the calibrated model's eye height in its normal gameplay pose, and it
+is your eye height. The copy did not stand like the model. The avatar's
+hips stand 0.85 to 0.89 m above the floor with its eyes at 1.74, hips
+to eyes 0.85 to 0.89. The copy's rest pose had its hips at 1.01 and its
+eyes at 1.69, hips to eyes 0.67: the same rig at the same scale, 18 to
+22 cm shorter through the torso, because its rest pose was the
+spawner's crouched idle, pelvis pitched 20.7 degrees against the
+avatar's 0 to 3, spine curve kept, and my squaring only fixed its yaw
+and pushed the hips up to a straight-leg height. Long legs under a
+folded torso: the feet float and the shoulders sit low.
+
+**This build.** In the stock-legs mode the copy's rest torso is the
+model's normal pose: once, at ready, the local poses of every joint
+from the head down to the hips, the hips' own height included, are
+taken from the avatar as the game stands it (`torso_rest=stock
+joints=N`), and the standing-hips rule stands down. A static capture
+of a pose, not the animation, in a marked block like the legs. The
+neck follow should then need no lift, the stock legs' feet should land
+on the floor, and the stretch factor should sit near one. A `torso`
+line beside the height line gives hips-to-eyes for the copy and
+hips-to-camera for the avatar; they should match.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not

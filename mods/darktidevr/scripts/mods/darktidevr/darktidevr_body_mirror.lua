@@ -1291,7 +1291,7 @@ function Mirror.install(mod, presentation, options)
     -- for the profile (PlayerHeight, the number the avatar gets), fixed for
     -- the session; nothing here scales the unit. Returns the leg
     -- measurements for the gait, or nil with a reason.
-    local function prepare_rest(world, unit, profile)
+    local function prepare_rest(world, unit, profile, keep_hips_height)
         local function node(name) return Unit.has_node(unit, name) and Unit.node(unit, name) or nil end
         local hips, neck = node("j_hips"), node("j_neck")
         local left_shoulder, right_shoulder = node("j_leftarm"), node("j_rightarm")
@@ -1422,8 +1422,10 @@ function Mirror.install(mod, presentation, options)
                 moved[#moved + 1] = hips
             end
         end
-        -- 4. The hips at standing height for these legs.
-        local standing = Mirror.standing_hips_height(ankle_z, upper, lower, k)
+        -- 4. The hips at standing height for these legs -- unless the torso
+        -- rest came from the model's normal pose (keep_hips_height), whose
+        -- hips stand where the stock legs' feet reach the floor.
+        local standing = not keep_hips_height and Mirror.standing_hips_height(ankle_z, upper, lower, k) or nil
         local hips_z_before = Vector3.z(root_local(Unit.world_position(unit, hips)))
         if standing then
             local parent = Unit.scene_graph_parent(unit, hips)
@@ -1735,11 +1737,50 @@ function Mirror.install(mod, presentation, options)
             for index = 2, state.count do
                 state.rest[index] = Matrix4x4Box(Unit.local_pose(unit, index))
             end
+            -- TORSO REST FROM THE STOCK MODEL (begin). The user, 17:00 on 19
+            -- September: "If the model in its normal pose is calibrated to
+            -- my height, then that should factor in its posture." It does:
+            -- the camera is anchored to the avatar model's eye joints and
+            -- reads 1.74 m above the root, the player's own eye height, so
+            -- the calibrated model in its normal pose is the player's
+            -- size. The copy's rest pose was the spawner's crouched idle:
+            -- hips to eyes 0.67 m against the model's 0.85-0.89 in its
+            -- normal pose, the pelvis pitched 20.7 degrees against 0-3, and
+            -- no scale corrects a fold. So, in the stock-legs mode, the
+            -- copy's rest torso is the model's normal pose: once, here, the
+            -- local poses of every joint from the head down to the hips
+            -- (the hips' own position included, which is their height)
+            -- are taken from the avatar as the game stands it. A static
+            -- capture of a pose, not the animation; nothing is read after.
+            local torso_from_avatar = false
+            if Mirror.MODES[mode_name].animated_legs and Unit.has_node(unit, "j_hips") and Unit.has_node(unit, "j_head") and
+                    Unit.has_node(avatar, "j_hips") and Unit.has_node(avatar, "j_head") and
+                    Unit.num_scene_graph_items(avatar) == state.count then
+                local hips, head = Unit.node(unit, "j_hips"), Unit.node(unit, "j_head")
+                local at, hops, chain = head, 0, {}
+                while at and hops < 64 do
+                    chain[#chain + 1] = at
+                    if at == hips then break end
+                    at = Unit.scene_graph_parent(unit, at)
+                    hops = hops + 1
+                end
+                if at == hips then
+                    for _, index in ipairs(chain) do
+                        local pose = Unit.local_pose(avatar, index)
+                        Unit.set_local_pose(unit, index, pose)
+                        state.rest[index] = Matrix4x4Box(pose)
+                    end
+                    World.update_unit(world, unit)
+                    torso_from_avatar = true
+                    mod:info("DARKTIDEVR_BODY_MIRROR torso_rest=stock joints=%d", #chain)
+                end
+            end
+            -- TORSO REST FROM THE STOCK MODEL (end).
             -- The rest pose made neutral and the calibration applied (see
             -- prepare_rest); the legs and the gait from what it measured.
             -- The offsets are at scale 1; the gait scales them with the copy.
             state.legs, state.gait, state.scale = nil, nil, 1
-            local ok_rest, rest, why = pcall(prepare_rest, world, unit, state.profile)
+            local ok_rest, rest, why = pcall(prepare_rest, world, unit, state.profile, torso_from_avatar)
             if ok_rest and rest then
                 local Gait = mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_body_gait")
                 state.scale = rest.scale
@@ -2776,6 +2817,21 @@ function Mirror.install(mod, presentation, options)
                     fmt(state.neck_offset and state.neck_offset[3]),
                     fmt(d.camera_z), fmt(d.frame_neck_z), fmt(d.target_z), fmt(d.rest_neck_z), fmt(d.frame_scale), tostring(d.clamped),
                     fmt(state.stretch_k), fmt(state.floor_gap))
+                -- Hips to eyes on both units: the copy's hips to its own
+                -- eyes, the avatar's hips to the camera (the camera is
+                -- anchored to the avatar model's eye joints, so it is the
+                -- calibrated model's eye height in its normal pose).
+                -- HIPS DIAGNOSTIC FROM THE STOCK MODEL (begin): a log line,
+                -- the avatar's hips height read for the comparison only.
+                if Unit.has_node(unit, "j_hips") and Unit.has_node(avatar, "j_hips") and eye_z then
+                    local copy_hips = Vector3.z(Matrix4x4.transform(root_inverse, Unit.world_position(unit, Unit.node(unit, "j_hips"))))
+                    local avatar_hips = Vector3.z(Unit.world_position(avatar, Unit.node(avatar, "j_hips"))) - Vector3.z(Unit.world_position(avatar, 1))
+                    mod:info("DARKTIDEVR_BODY_MIRROR torso instance=%s copy_hips_to_eyes_m=%.3f avatar_hips_to_camera_m=%.3f copy_hips_root_z=%.3f avatar_hips_root_z=%.3f",
+                        is_reflection and "reflection" or "overlay", eye_z - copy_hips,
+                        Vector3.z(Unit.world_position(camera, 1)) - Vector3.z(Unit.world_position(avatar, 1)) - avatar_hips,
+                        copy_hips, avatar_hips)
+                end
+                -- HIPS DIAGNOSTIC FROM THE STOCK MODEL (end).
             end
             -- How far the hand sits from its forearm joint after the solve
             -- (the stretch). The hand's error against its recorded target is

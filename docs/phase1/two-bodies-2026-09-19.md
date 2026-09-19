@@ -1293,6 +1293,47 @@ height; the scale is the calibration's and this is the rig's shortfall.
 The feet of the stock legs rise with the root; `toe_above_floor_m`
 measures it. Not worn.
 
+## 16:50 to 17:05: floating, the sunk root, and why the model is not short
+
+The user (on the build that let the neck follow lift): floating; stretch
+the torso and legs a bit; "I think the model height isn't being
+calculated right"; 178 cm tall, eyes near 1.73 m; then the mirror's head
+"teleporting vertically between a random range of heights"; then: "If
+the model in its normal pose is calibrated to my height, then that
+should factor in its posture."
+
+```
+height instance=reflection ... root_world_z=0.624 avatar_root_world_z=0.418 neck_offset_z=0.206    camera 2.20 world
+height instance=reflection ... root_world_z=0.213 avatar_root_world_z=0.418 neck_offset_z=-0.205   camera 2.18 world
+trace neck_m: mean 0.225 max 0.964, 667 of 9435 lines at the 0.5 cap (previous run mean 0.050)
+stock_legs hips_copy_above_floor_m=0.905..1.044 hips_avatar_above_floor_m=0.847..0.893
+copy eyes at rest 1.687 above the root; camera 1.74 above the avatar's root
+```
+
+- **The sunk and floating root.** With lifting allowed the neck offset
+  read +0.206 then -0.205 with the camera steady: the neck target
+  alternated by 41 cm. Cause unknown from the log. `Mirror.NECK_LIFT_MAX`
+  (0.12) clamps the vertical part; the height line now carries
+  `camera_z`, `frame_neck_z`, `target_z`, `rest_neck_z`, `frame_scale`
+  and the clamped count.
+- **The stretch.** `state.floor_gap` (copy hips minus avatar hips above
+  the floor, the applied torso share added back) drives
+  `state.stretch_k = 1 + gap / chain` in [1, 1.25], eased over a second:
+  spine and upper legs k, head, clavicles and ankles 1/k, the leg scales
+  re-applied after the leg copy. `Mirror.STRETCH_TO_FLOOR_MAX`.
+- **Why the model read short.** The camera is anchored to the avatar's
+  eye joints, so 1.74 is the calibrated model's eye height in its
+  normal pose and the player's. The copy's rest torso was the spawner's
+  crouched idle: hips to eyes 0.67 against the model's 0.85-0.89, pelvis
+  pitched 20.7 degrees against 0-3. In the stock-legs mode the rest
+  torso is now the model's normal pose, captured once at ready
+  (`TORSO REST FROM THE STOCK MODEL`: the head-to-hips chain's local
+  poses, hips height included), and `prepare_rest` skips the
+  standing-hips rule (`keep_hips_height`). The test's scan now cuts
+  every `FROM THE STOCK MODEL` block (torso rest, legs at ready, legs in
+  update, the hips diagnostic) and requires at least three. A `torso`
+  log line gives copy hips-to-eyes and avatar hips-to-camera. Not worn.
+
 ## Limits
 
 - The smooth timeline is measured cause and reasoned fix: the probe shows
