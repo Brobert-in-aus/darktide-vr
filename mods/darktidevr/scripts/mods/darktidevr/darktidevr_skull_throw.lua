@@ -1088,10 +1088,19 @@ function Skull.install(mod, presentation)
                         -- the grab, are the grip; both ride the hand from
                         -- then on. The centre is the skull's root (the drawn
                         -- parts sit on it while it follows).
-                        local centre_now = Unit.world_position(skull, 1)
+                        -- FROM THE FRAME BEFORE (18:20 worn run: every
+                        -- captured distance read exactly 0.070 m, the hold
+                        -- height -- the hold feed had already moved the root
+                        -- onto the hand before this ran, so the skull was
+                        -- locked at the hand plus 7 cm, and "still teleports
+                        -- when grabbed"). The drawn centre and rotation of
+                        -- the previous following frame are what the grab
+                        -- takes; the root's own position is the fallback.
+                        local centre_now = record.last_centre and record.last_centre:unbox() or Unit.world_position(skull, 1)
+                        local rotation_now = record.last_rotation and record.last_rotation:unbox() or Unit.world_rotation(skull, 1)
                         local in_hand = Quaternion.rotate(Quaternion.inverse(hand_rotation), centre_now - hand)
                         record.grab = {offset = Vector3Box(in_hand), zero = QuaternionBox(hand_rotation),
-                            base = QuaternionBox(Unit.world_rotation(skull, 1))}
+                            base = QuaternionBox(rotation_now)}
                         record.bridge_nodes.freeze_base = true
                         mod:info("DARKTIDEVR_SKULL_THROW grabbed offset_in_hand_m=%.3f,%.3f,%.3f distance_m=%.3f",
                             Vector3.x(in_hand), Vector3.y(in_hand), Vector3.z(in_hand), Vector3.length(in_hand))
@@ -1109,11 +1118,17 @@ function Skull.install(mod, presentation)
                     record.bridge_nodes.freeze_base = nil
                 end
                 if not grabbed then
+                    local drawn = lag and {real[1] - lag[1], real[2] - lag[2], real[3] - lag[3]} or real
                     if lag then
-                        place(extension, skull, record.bridge_nodes, {real[1] - lag[1], real[2] - lag[2], real[3] - lag[3]})
+                        place(extension, skull, record.bridge_nodes, drawn)
                     else
                         unplace(record.bridge_nodes, skull)
                     end
+                    -- Where the skull is drawn this frame, for a grab on the next.
+                    if record.last_centre then record.last_centre:store(Vector3(drawn[1], drawn[2], drawn[3]))
+                    else record.last_centre = Vector3Box(Vector3(drawn[1], drawn[2], drawn[3])) end
+                    if record.last_rotation then record.last_rotation:store(Unit.world_rotation(skull, 1))
+                    else record.last_rotation = QuaternionBox(Unit.world_rotation(skull, 1)) end
                 end
                 record.bridge, record.position = nil, real
             else
