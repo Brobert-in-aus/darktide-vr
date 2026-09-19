@@ -1500,6 +1500,11 @@ class OpenXrProbe {
     std::cout << "openxr.native_original_direct requested=" << direct_original_requested << '\n';
     std::uint64_t ingested_original_ready{};
     std::array<XrPosef,2> submitted_original_view_poses{};
+    // The projection each eye image was RENDERED with. Equal to the submitted
+    // one while there is no zoom; what anything painted into the image must
+    // use once there is.
+    std::array<XrPosef, 2> render_view_poses{};
+    std::array<XrFovf, 2> render_view_fovs{};
     std::uint64_t rendered_pair_pose_sequence{};
     auto next_generated_open = std::chrono::steady_clock::now();
     std::array<XrPosef, 2> cached_pair_view_poses{};
@@ -3429,6 +3434,38 @@ class OpenXrProbe {
                                         recentered.symmetric_fov.angle_right,
                                         recentered.symmetric_fov.angle_up,
                                         recentered.symmetric_fov.angle_down};
+            // THE PROJECTION THE EYE IMAGE WAS RENDERED WITH, which is not
+            // the one submitted above once a zoom is on.
+            //
+            // Anything PAINTED INTO that image has to use this one, because
+            // it is drawing on top of world pixels that were put there by it.
+            // Use the submitted projection instead and the mark lands off by
+            // the difference between the two axes -- 2.0 degrees per eye at
+            // m=1.30, in opposite directions, which worn reads as "the
+            // crosshair is way off to the left of where the shots actually
+            // go" (19 September).
+            //
+            // The submitted projection is still right for SUBMITTING: the
+            // runtime displays the whole texture through it, so the painted
+            // mark is carried along with the world exactly as it should be.
+            const auto rendered_projection =
+                darktidevr::math::recentered_symmetric_projection(
+                    darktidevr::math::zoomed_fov(runtime_fov,
+                                                 submitted_zoom_magnification),
+                    render_aspect_ratio);
+            const auto rendered_pose = darktidevr::math::compose(
+                base, {rendered_projection.orientation_offset, {0.0F, 0.0F, 0.0F}});
+            render_view_poses[eye].orientation = {
+                rendered_pose.orientation.x, rendered_pose.orientation.y,
+                rendered_pose.orientation.z, rendered_pose.orientation.w};
+            render_view_poses[eye].position = {rendered_pose.position.x,
+                                               rendered_pose.position.y,
+                                               rendered_pose.position.z};
+            render_view_fovs[eye] = {
+                rendered_projection.symmetric_fov.angle_left,
+                rendered_projection.symmetric_fov.angle_right,
+                rendered_projection.symmetric_fov.angle_up,
+                rendered_projection.symmetric_fov.angle_down};
           }
           submitted_view_projection_valid = true;
         }
@@ -4086,15 +4123,17 @@ class OpenXrProbe {
               // away, and standing the layer down on a draw that produced
               // nothing would lose the reticle entirely (review,
               // 18 September).
+              // The RENDER projection: this is painting onto world pixels
+              // the cameras put there, so it has to agree with them.
               const auto visible =
                   darktidevr::harness::panel_quad_centre_visible(
-                      submitted_view_poses[eye], submitted_view_fovs[eye],
+                      render_view_poses[eye], render_view_fovs[eye],
                       reticle_quad.pose, reticle_quad.size);
               const auto drawn =
                   panel_renderer->record(command_list.Get(), eye_target,
                                          eye_rect, eye,
-                                         submitted_view_poses[eye],
-                                         submitted_view_fovs[eye],
+                                         render_view_poses[eye],
+                                         render_view_fovs[eye],
                                          &reticle_quad, 1, false) != 0U;
               rendered_gameplay_reticle |= drawn && visible;
             }
