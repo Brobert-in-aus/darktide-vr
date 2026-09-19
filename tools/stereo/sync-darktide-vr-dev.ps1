@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string] $GameRoot,
 
@@ -30,6 +30,19 @@ param(
     # that once turned it on cannot leave it running for a player: the answer
     # to "is the trace on" is always this switch, never what happens to be on
     # disk. Off by default like every other diagnostic.
+    # Draw the gameplay reticle INTO the eye images instead of handing it to
+    # the runtime as a quad layer.
+    #
+    # The two are placed through different projections: the world through the
+    # field of view the viewer submits, a quad layer through the runtime's own
+    # view poses. Correcting one to match the other has produced a new symptom
+    # on each attempt (19 September), and this project has been here before --
+    # the info boards swam under Virtual Desktop's tangent for the same reason
+    # and were fixed by drawing them into a projection layer instead.
+    #
+    # Off by default like the other diagnostics.
+    [switch] $ReticleInEyes,
+
     [switch] $BodyTrace,
 
     # The arm census (darktidevr_arm_census): names every unit drawing an arm
@@ -272,6 +285,16 @@ $deploymentEntries += @{ Destination = $fullBodyFlag; Content = $fullBodyFlagVal
 # The body trace. Always written, so it is asserted off rather than merely not
 # turned on -- the same reason the production runtime flags below are written
 # every deployment.
+# PRESENCE is the switch for this one -- the viewer never reads the contents
+# ("Presence is the switch; the file's contents are not read", main.cpp). So it
+# is created or REMOVED, never written with 'disabled', which would read as on.
+$reticleInEyesFlag = Join-Path $modRoot 'darktidevr_reticle_in_eyes.flag'
+if ($ReticleInEyes) {
+    $deploymentEntries += @{ Destination = $reticleInEyesFlag; Content = 'enabled' + [Environment]::NewLine }
+} elseif (Test-Path -LiteralPath $reticleInEyesFlag) {
+    Remove-Item -LiteralPath $reticleInEyesFlag -Force
+}
+
 $bodyTraceFlag = Join-Path $modRoot 'darktidevr_body_trace.flag'
 $bodyTraceValue = if ($BodyTrace) { 'enabled' } else { 'disabled' }
 $deploymentEntries += @{ Destination = $bodyTraceFlag; Content = $bodyTraceValue + [Environment]::NewLine }
