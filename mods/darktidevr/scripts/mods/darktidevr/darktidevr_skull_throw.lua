@@ -1183,7 +1183,22 @@ function Skull.install(mod, presentation)
                                     meshes[#meshes + 1] = string.format("%d:to_centre=%.3f/to_root=%.3f", index, Vector3.distance(m, centre), Vector3.distance(m, root))
                                 end
                             end
-                            mod:info("DARKTIDEVR_SKULL_GRAB_DRAWN gear=%s meshes=%s", gear_text, table.concat(meshes, " "))
+                            -- The unit's WORLD box (Unit.box), which the engine
+                            -- builds from the mesh at its current node pose:
+                            -- Mesh.box above is in the mesh's own space and
+                            -- said nothing (19:05 worn run). A box centre
+                            -- that keeps its distance to the placed centre
+                            -- is a mesh on the children; one that keeps its
+                            -- distance to the root is a mesh on the root.
+                            local box_text = "na"
+                            local ok_ubox, ubox_pose, ubox_half = pcall(Unit.box, skull)
+                            if ok_ubox and ubox_pose then
+                                local b = Matrix4x4.translation(ubox_pose)
+                                box_text = string.format("%.3f,%.3f,%.3f to_centre=%.3f to_root=%.3f half=%.2f,%.2f,%.2f", Vector3.x(b), Vector3.y(b), Vector3.z(b),
+                                    Vector3.distance(b, centre), Vector3.distance(b, root),
+                                    ubox_half and Vector3.x(ubox_half) or -1, ubox_half and Vector3.y(ubox_half) or -1, ubox_half and Vector3.z(ubox_half) or -1)
+                            end
+                            mod:info("DARKTIDEVR_SKULL_GRAB_DRAWN gear=%s meshes=%s unit_box=%s", gear_text, table.concat(meshes, " "), box_text)
                         end)
                     end
                 else
