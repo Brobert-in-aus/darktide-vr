@@ -2271,17 +2271,27 @@ function Mirror.install(mod, presentation, options)
                 -- between the camera's eye and the copy's eyes, each frame.
                 if mirror and state.data and state.data.slots then
                     local eye_position = presentation.eye_pose(avatar)
-                    local eyes_z
-                    for _, slot in pairs(state.data.slots) do
-                        local face = slot.unit_3p
-                        if face and Unit.alive(face) and Unit.has_node(face, "j_lefteye") and Unit.has_node(face, "j_righteye") then
-                            eyes_z = (Vector3.z(Unit.world_position(face, Unit.node(face, "j_lefteye"))) +
-                                Vector3.z(Unit.world_position(face, Unit.node(face, "j_righteye")))) / 2
-                            break
+                    -- The face unit's eye joints refresh only at the end-
+                    -- of-frame children flush, so a gap read off them sees
+                    -- the previous frame's lift and the lift alternates
+                    -- ("head is freaking out", 16:40). The rig's eyes-
+                    -- above-head distance is read ONCE, before any lift,
+                    -- and the gap each frame is taken from the copy's own
+                    -- head joint, which is current within the frame.
+                    if state.eyes_above_head == nil then
+                        for _, slot in pairs(state.data.slots) do
+                            local face = slot.unit_3p
+                            if face and Unit.alive(face) and Unit.has_node(face, "j_lefteye") and Unit.has_node(face, "j_righteye") then
+                                local eyes_z = (Vector3.z(Unit.world_position(face, Unit.node(face, "j_lefteye"))) +
+                                    Vector3.z(Unit.world_position(face, Unit.node(face, "j_righteye")))) / 2
+                                state.eyes_above_head = eyes_z - Vector3.z(Unit.world_position(unit, head))
+                                mod:info("DARKTIDEVR_BODY_MIRROR eyes_above_head_m=%.3f", state.eyes_above_head)
+                                break
+                            end
                         end
                     end
-                    if eye_position and eyes_z then
-                        local gap = Vector3.z(eye_position) - eyes_z
+                    if eye_position and state.eyes_above_head then
+                        local gap = Vector3.z(eye_position) - (Vector3.z(Unit.world_position(unit, head)) + state.eyes_above_head)
                         if math.abs(gap) < 0.25 then
                             local parent = Unit.scene_graph_parent(unit, head)
                             local parent_rotation = parent and Unit.world_rotation(unit, parent) or Quaternion.identity()
@@ -2385,12 +2395,14 @@ function Mirror.install(mod, presentation, options)
                             -- With all three hand axes reversed the grip
                             -- rotation carries unchanged, and the weapon
                             -- came out upside-down in the other hand (16:25
-                            -- worn run): the mirror image of a weapon is its
-                            -- grip turned half a turn about the barrel, the
-                            -- unit's forward axis. Labelled: if it comes out
-                            -- backwards instead, the barrel is another axis.
+                            -- worn run); a half turn about the unit's forward
+                            -- made it backwards (16:40). Upside-down needs a
+                            -- half turn about the barrel; a half turn about
+                            -- the forward turned it end for end instead, so
+                            -- the barrel is the unit's RIGHT axis, and the
+                            -- half turn goes about that.
                             Unit.set_local_rotation(weapon, 1, Quaternion.multiply(
-                                mirrored_local_rotation(grip.rotation:unbox(), state.hand_mirror), Quaternion(Vector3.forward(), math.pi)))
+                                mirrored_local_rotation(grip.rotation:unbox(), state.hand_mirror), Quaternion(Vector3.right(), math.pi)))
                             World.update_unit_and_children(world, unit)
                             state.weapon_on_left = weapon
                             mod:info("DARKTIDEVR_BODY_MIRROR reflection_weapon moved_to=j_lefthand slot=%s grip_m=%.3f,%.3f,%.3f signs=%s",

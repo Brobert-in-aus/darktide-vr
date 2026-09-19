@@ -926,6 +926,23 @@ between its eyes and its neck, so its eyes land on yours. The stock
 legs hang from the hips, so the feet rise with the torso; the
 `stock_legs` line's `toe_above_floor_m` says by how much.
 
+### 1z. Worn at 16:40: the head's lift read a stale joint; the barrel is the unit's right axis
+
+Your report: weapon backwards; head freaking out.
+
+**The head.** The lift was measured on the face unit's eye joints, and
+that unit's positions refresh only at the end-of-frame children flush,
+so each frame read the previous frame's lift and the lift alternated.
+The rig's eyes-above-head distance is now read once
+(`eyes_above_head_m=..` in the log) and the gap each frame is taken from
+the copy's own head joint, which is current within the frame.
+
+**The weapon.** No turn gave upside-down; a half turn about the unit's
+forward gave backwards. Upside-down needs a half turn about the barrel,
+and a half turn about the forward turned it end for end instead, so the
+barrel is the unit's right axis. The half turn goes about that now, by
+elimination rather than by guess.
+
 ### The weapon, and why it is still on the stock model
 
 You asked why the weapon needs to be there. It does not, and it already is not
