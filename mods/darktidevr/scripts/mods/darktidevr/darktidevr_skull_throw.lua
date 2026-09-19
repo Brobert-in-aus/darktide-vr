@@ -714,6 +714,7 @@ function Skull.install(mod, presentation)
     end
 
     local skull_motion_lines = 0
+    local skull_grab_lines = 0
     -- The anchor's lag: where the first-person unit stands (the game's
     -- interpolated timeline) minus the fixed-step component position the
     -- view is built on, as the body mirror measures it. A 3-array, or nil.
@@ -1123,6 +1124,23 @@ function Skull.install(mod, presentation)
                     place(extension, skull, record.bridge_nodes, {Vector3.x(centre), Vector3.y(centre), Vector3.z(centre)},
                         axis and Vector3(axis[1], axis[2], axis[3]) or nil, angle)
                     grabbed = true
+                    -- THE GRAB PROBE (18:40 worn run, "nope, still wrong"
+                    -- after the wrist origin; the captured grip still lies
+                    -- along the wrist's y). What the wrist's axes are in the
+                    -- world, where the centre lands and how far the parts
+                    -- are turned, every sixth held frame, budgeted.
+                    record.grab.frames = (record.grab.frames or 0) + 1
+                    if record.grab.frames % 6 == 1 and skull_grab_lines < 400 then
+                        skull_grab_lines = skull_grab_lines + 1
+                        local f, u, r = Quaternion.forward(hand_rotation), Quaternion.up(hand_rotation), Quaternion.right(hand_rotation)
+                        local root = Unit.world_position(skull, 1)
+                        mod:info("DARKTIDEVR_SKULL_GRAB hand=%.3f,%.3f,%.3f fwd=%.2f,%.2f,%.2f up=%.2f,%.2f,%.2f right=%.2f,%.2f,%.2f centre=%.3f,%.3f,%.3f root=%.3f,%.3f,%.3f turn_deg=%.1f axis=%s grip_to_wrist_m=%.3f",
+                            Vector3.x(hand), Vector3.y(hand), Vector3.z(hand), Vector3.x(f), Vector3.y(f), Vector3.z(f),
+                            Vector3.x(u), Vector3.y(u), Vector3.z(u), Vector3.x(r), Vector3.y(r), Vector3.z(r),
+                            Vector3.x(centre), Vector3.y(centre), Vector3.z(centre), Vector3.x(root), Vector3.y(root), Vector3.z(root),
+                            math.deg(angle or 0), axis and string.format("%.2f,%.2f,%.2f", axis[1], axis[2], axis[3]) or "none",
+                            hand_track.position and Vector3.distance(hand, Vector3(hand_track.position[1], hand_track.position[2], hand_track.position[3])) or -1)
+                    end
                 else
                     record.grab = nil
                     record.bridge_nodes.freeze_base = nil
