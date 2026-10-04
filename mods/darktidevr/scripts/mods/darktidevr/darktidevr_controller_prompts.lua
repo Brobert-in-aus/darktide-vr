@@ -89,6 +89,12 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
         navigate_primary_right_pressed="vr_menu_point_select",
         navigate_secondary_left_pressed="vr_menu_point_select",
         navigate_secondary_right_pressed="vr_menu_point_select",
+        -- Game 1.13: the end screen's match rating and session-stats toggle
+        -- and the inventory's stats panel. Each is a clickable widget.
+        rate_match_positive="vr_menu_point_select", rate_match_negative="vr_menu_point_select",
+        toggle_player_stats_inventory="vr_menu_point_select",
+        toggle_player_navigation_inventory="vr_menu_point_select",
+        cycle_list_primary="vr_menu_point_select",
         next_hint=false, notification_option_a=false, notification_option_b=false,
         skip_cinematic="vr_menu_hold_skip", skip_cinematic_hold="vr_menu_hold_skip",
     }
@@ -211,15 +217,20 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
             return finish_scope(previous_switch,pcall(func,...))
         end)
     end
-    -- Stock prologue caching watches keyboard keys and device selection, which
-    -- do not change when a VR control is remapped or tracking becomes unavailable.
-    mod:hook("HudElementPrologueTutorialInfoBox","_should_update_input",function(func,self,info,...)
-        local stock=func(self,info,...)
-        if not info or not info.input_descriptions then return stock end
+    -- The stock prologue box rewrites its text on the game's input-changed
+    -- events, which do not fire when a VR control is remapped or tracking
+    -- becomes unavailable. Game 1.13 removed the per-frame
+    -- _should_update_input poll this used to extend, so the same test now
+    -- raises the box's own event_on_input_changed, which does nothing unless
+    -- a box is showing.
+    mod:hook("HudElementPrologueTutorialInfoBox","update",function(func,self,...)
         local current=bindings.revision*2+(enabled() and 1 or 0)
-        local changed=revisions[self]~=current
+        local previous=revisions[self]
         revisions[self]=current
-        return stock or changed
+        if previous~=nil and previous~=current and self.event_on_input_changed then
+            self:event_on_input_changed()
+        end
+        return func(self,...)
     end)
     -- These elements cache text across frames. Refresh just their input text
     -- when mappings or VR availability change, without forcing global input mode.

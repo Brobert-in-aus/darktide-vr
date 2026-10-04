@@ -20,7 +20,7 @@ for name in ("system_view news_view cosmetics_inspect_view class_selection_view 
     "cosmetics_vendor_view cosmetics_vendor_background_view havoc_background_view " ..
     "havoc_play_view havoc_reward_presentation_view group_finder_view penance_overview_view " ..
     "report_player_view expedition_view horde_play_view dlc_purchase_view player_survey_view " ..
-    "live_event_skulls_guns_progress_view"):gmatch("%S+") do native_views[name] = true end
+    "live_event_skulls_guns_progress_view live_event_torment_progress_view"):gmatch("%S+") do native_views[name] = true end
 function MenuInput.native_view(name)
     return type(name) == "string" and
         (native_views[name] == true or name:match("^inventory_") ~= nil)

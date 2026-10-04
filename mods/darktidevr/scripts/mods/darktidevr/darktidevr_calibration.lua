@@ -3,6 +3,24 @@ local ButtonPassTemplates = require("scripts/ui/pass_templates/button_pass_templ
 local UISoundEvents = require("scripts/settings/ui/ui_sound_events")
 local Breeds = require("scripts/settings/breed/breeds")
 
+-- Game 1.13 moved a character's height from profile.personal.character_height
+-- to profile.character_height (profile_utils, player_height). With only the
+-- old place read, every guard below took its "unavailable" exit and the
+-- calibrated height silently stopped reaching the character. The new place is
+-- read first and both are written, so a profile of either shape is right.
+local function profile_height(profile)
+    local height = profile.character_height
+    if height == nil and profile.personal then
+        height = profile.personal.character_height
+    end
+    return tonumber(height)
+end
+local function set_profile_height(profile, height)
+    profile.character_height = height
+    if profile.personal then profile.personal.character_height = height end
+end
+calibration.profile_height = profile_height
+
 local calibration = {}
 
 function calibration.install(mod, controller_state, get_head_pose,
@@ -36,8 +54,7 @@ function calibration.install(mod, controller_state, get_head_pose,
         local service = Managers.data_service and
             Managers.data_service.profiles
         local character_id = player and player:character_id()
-        if not profile or not profile.personal or not service or
-                not character_id then
+        if not profile or not service or not character_id then
             result.profile_height_status = "service_unavailable"
             return false, result.profile_height_status
         end
@@ -55,8 +72,7 @@ function calibration.install(mod, controller_state, get_head_pose,
             height_range[2], tonumber(result.floor_eye_height) /
                 authored_eye_height))
         target_scale = tonumber(string.format("%.3f", target_scale))
-        result.profile_height_previous =
-            tonumber(profile.personal.character_height)
+        result.profile_height_previous = profile_height(profile)
         result.profile_height_requested = target_scale
         if result.profile_height_previous and math.abs(
                 result.profile_height_previous - target_scale) < 0.0005 then
@@ -67,7 +83,7 @@ function calibration.install(mod, controller_state, get_head_pose,
         result.profile_height_status = "pending"
         mod:set("vr_calibration_v1", result)
         service:set_character_height(character_id, target_scale):next(function()
-            profile.personal.character_height = target_scale
+            set_profile_height(profile, target_scale)
             result.profile_height_status = "accepted"
             mod:set("vr_calibration_v1", result)
             mod:info(
@@ -95,7 +111,7 @@ function calibration.install(mod, controller_state, get_head_pose,
                 not tonumber(result.floor_eye_height) then
             return false, "standing_height_unavailable"
         end
-        if not profile or not profile.personal or not profile.character_id then
+        if not profile or not profile.character_id then
             return false, "profile_unavailable"
         end
         local archetype = profile.archetype
@@ -111,7 +127,7 @@ function calibration.install(mod, controller_state, get_head_pose,
             height_range[2], tonumber(result.floor_eye_height) /
                 authored_eye_height))
         target_scale = tonumber(string.format("%.3f", target_scale))
-        local current = tonumber(profile.personal.character_height)
+        local current = profile_height(profile)
         if current and math.abs(current - target_scale) < 0.0005 then
             return true, "already_current"
         end
@@ -126,7 +142,7 @@ function calibration.install(mod, controller_state, get_head_pose,
             tostring(character_id), tostring(current), target_scale,
             tostring(archetype.name or archetype.breed))
         service:set_character_height(character_id, target_scale):next(function()
-            profile.personal.character_height = target_scale
+            set_profile_height(profile, target_scale)
             mod:info(
                 "DARKTIDEVR_CALIBRATION profile_height reconciled character=%s requested=%.3f",
                 tostring(character_id), target_scale)

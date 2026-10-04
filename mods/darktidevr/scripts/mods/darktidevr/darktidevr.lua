@@ -8780,8 +8780,11 @@ function presentation.calibrated_character_scale(local_player)
         return local_player:profile()
     end)
     profile = profile_ok and profile or nil
-    local profile_scale = profile and profile.personal and
-        tonumber(profile.personal.character_height)
+    -- Game 1.13 keeps the height on the profile itself; 1.12 kept it under
+    -- `personal`. Read only there, this was nil on 1.13 and the scale fell
+    -- back to the middle of the breed's range.
+    local profile_scale = profile and (tonumber(profile.character_height) or
+        (profile.personal and tonumber(profile.personal.character_height)))
     local is_ogryn = archetype == "ogryn"
     local breeds = require("scripts/settings/breed/breeds")
     local breed_name = profile and profile.archetype and

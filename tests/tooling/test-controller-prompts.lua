@@ -23,24 +23,30 @@ local mod={get=function(_,key) return settings[key] end,
 local bindings=Bindings.install(mod)
 local menu=dofile(arg[4]).install(mod,function() return active end)
 Prompts.install(mod,bindings,function() return active end,menu)
--- Stock tutorial refresh only watches keyboard aliases/device changes. A VR
--- remap must also invalidate its cached description, including VR loss/recovery.
-local tutorial, tutorial_info={}, {input_descriptions={{input_action='action_one'}}}
-local function tutorial_refresh(info,stock_result)
-    return assert(hooks.HudElementPrologueTutorialInfoBox._should_update_input,
-        'Tutorial has no binding-revision refresh')(function(self,passed)
-            assert(self==tutorial and passed==info); return stock_result or false
-        end,tutorial,info)
+-- The stock tutorial box rewrites its text on the game's input-changed events
+-- only (game 1.13 removed the _should_update_input poll). A VR remap, and VR
+-- loss/recovery, must raise the box's own event; an unchanged frame must not,
+-- and nor must the first frame, which has nothing to compare with.
+local tutorial_raised=0
+local tutorial={event_on_input_changed=function(self) tutorial_raised=tutorial_raised+1 end}
+local function tutorial_refresh(element)
+    local before=tutorial_raised
+    local result=assert(hooks.HudElementPrologueTutorialInfoBox.update,
+        'Tutorial has no binding-revision refresh')(function(self,dt)
+            assert(self==element and dt==0.25); return 'stock'
+        end,element,0.25)
+    assert(result=='stock','The tutorial update lost the stock result')
+    return tutorial_raised>before
 end
-assert(not tutorial_refresh(nil))
-assert(tutorial_refresh(tutorial_info))
-assert(not tutorial_refresh(tutorial_info),'Unchanged tutorial refreshed every frame')
+assert(not hooks.HudElementPrologueTutorialInfoBox._should_update_input,'A hook on a method game 1.13 removed')
+assert(not tutorial_refresh(tutorial),'The first tutorial frame raised a change')
+assert(not tutorial_refresh(tutorial),'Unchanged tutorial refreshed every frame')
 settings.vr_bind_right_trigger='alternate'; mod.on_setting_changed('vr_bind_right_trigger')
-assert(tutorial_refresh(tutorial_info),'VR remap left tutorial hint cached')
-assert(not tutorial_refresh(tutorial_info))
-assert(tutorial_refresh(tutorial_info,true),'Stock keyboard refresh was suppressed')
-active=false; assert(tutorial_refresh(tutorial_info)); assert(not tutorial_refresh(tutorial_info))
-active=true; assert(tutorial_refresh(tutorial_info))
+assert(tutorial_refresh(tutorial),'VR remap left tutorial hint cached')
+assert(not tutorial_refresh(tutorial))
+assert(not tutorial_refresh({}),'An element without the event was called')
+active=false; assert(tutorial_refresh(tutorial)); assert(not tutorial_refresh(tutorial))
+active=true; assert(tutorial_refresh(tutorial))
 settings.vr_bind_right_trigger=nil; mod.on_setting_changed('vr_bind_right_trigger')
 local stock_calls=0
 local function stock(service,alias,tint)
@@ -270,12 +276,13 @@ if arg[5] and arg[6] then
         return scope('HudElementPrologueTutorialInfoBox','_get_input_description_text',
             actual._get_input_description_text,element,info)
     end
-    local function refresh()
-        return scope('HudElementPrologueTutorialInfoBox','_should_update_input',
-            actual._should_update_input,element,info)
-    end
+    -- The event the update hook raises must be the stock class's own.
+    assert(type(actual.event_on_input_changed)=='function' and actual._should_update_input==nil,
+        'The stock tutorial box is not the game 1.13 one')
+    element.event_on_input_changed=tutorial.event_on_input_changed
+    local function refresh() return tutorial_refresh(element) end
     assert(description()=='Hold [RT] Attack')
-    assert(refresh() and not refresh())
+    assert(not refresh() and not refresh())
     settings.vr_action_bind_primary=256
     mod.on_setting_changed('vr_action_bind_primary')
     assert(refresh() and not refresh(),'Stock tutorial missed a pure VR remap')

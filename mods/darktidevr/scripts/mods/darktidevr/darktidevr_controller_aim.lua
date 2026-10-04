@@ -428,9 +428,16 @@ function controller_aim.install(mod, presentation, state)
         local name = template and template.name
         -- Psyker targeting consumes the existing hand-authored smart-target
         -- result; preserve sticky-target and homing rules at launch.
+        -- Game 1.13 deleted the zealot_throwing_knives weapon template: the
+        -- knives are now thrown by a base action under whatever weapon is
+        -- wielded, so the weapon's name no longer says a knife is leaving.
+        -- The projectile's own name does, on either version.
+        local projectile = knife_settings and knife_settings.projectile_template
+        local zealot_knife = name == "zealot_throwing_knives" or
+            (type(projectile) == "table" and projectile.name == "zealot_throwing_knives")
         local knife = knife_settings and knife_settings.kind == "spawn_projectile" and
             not knife_settings.spawn_node and not knife_settings.track_towards_position and
-            ((name == "zealot_throwing_knives" and not knife_settings.track_towards_target) or
+            ((zealot_knife and not knife_settings.track_towards_target) or
              (name == "psyker_throwing_knives" and knife_settings.track_towards_target and
               knife_settings.target_finder_module_class_name == "smart_target_targeting"))
         if knife then
@@ -610,9 +617,14 @@ function controller_aim.install(mod, presentation, state)
         -- Flame damage and suppression query the camera directly, independently
         -- of the prepared shot. Both must consume the same hand-authored pose.
         for _, method in ipairs({"_acquire_targets", "_acquire_suppressed_units"}) do
-            mod:hook(ranged_classes[index], method, function(func, self, ...)
-                return controller_aim.with_ranged_pose(self, func, ...)
-            end)
+            -- Game 1.13 moved suppression out of the action into
+            -- FlamerAction.suppress_targets, which takes the shot's own
+            -- prepared rotation; the method is hooked only where it exists.
+            if ranged_classes[index][method] then
+                mod:hook(ranged_classes[index], method, function(func, self, ...)
+                    return controller_aim.with_ranged_pose(self, func, ...)
+                end)
+            end
         end
     end
 
