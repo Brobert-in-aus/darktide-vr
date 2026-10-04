@@ -13981,22 +13981,32 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
   if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
       install_cluster_trace_hooks ||
       install_cluster_light_visibility_fix_hooks) {
-    constexpr std::uintptr_t kUploadFlushRva = 0x7d5840;
-    constexpr std::array<std::byte, 12> kUploadFlushSignature{
-        std::byte{0x4c}, std::byte{0x8b}, std::byte{0xdc}, std::byte{0x48},
-        std::byte{0x83}, std::byte{0xec}, std::byte{0x48}, std::byte{0x80},
-        std::byte{0xb9}, std::byte{0xb0}, std::byte{0x00}, std::byte{0x00}};
-    auto* candidate = reinterpret_cast<std::byte*>(GetModuleHandleW(nullptr)) +
-                      kUploadFlushRva;
-    MEMORY_BASIC_INFORMATION memory{};
-    if (VirtualQuery(candidate, &memory, sizeof(memory)) == sizeof(memory) &&
-        memory.State == MEM_COMMIT &&
-        std::memcmp(candidate, kUploadFlushSignature.data(),
-                    kUploadFlushSignature.size()) == 0) {
-      stingray_upload_flush_target = candidate;
-      billboard_upload_flush_hook_state.store(1, std::memory_order_relaxed);
-    } else {
-      billboard_upload_flush_hook_state.store(2, std::memory_order_relaxed);
+    // One address per supported game build (1.12.5, 1.13.1). The function's
+    // first 34 bytes are identical in both and hold no relocated operand:
+    // they are the frame setup, the upload-pending test at +0xb0 and the
+    // reads at +0xa8 and +0xc0 that the hook itself depends on, so a match
+    // also vouches for the layout. An executable matching at neither address
+    // leaves the hook off rather than detouring an unknown function.
+    constexpr std::array<std::uintptr_t, 2> kUploadFlushRvas{0x7d5840, 0x7f6da0};
+    constexpr std::array<unsigned char, 34> kUploadFlushSignature{
+        0x4c, 0x8b, 0xdc, 0x48, 0x83, 0xec, 0x48, 0x80, 0xb9, 0xb0, 0x00, 0x00,
+        0x00, 0x00, 0x0f, 0x84, 0x9e, 0x00, 0x00, 0x00, 0x8b, 0x81, 0xa8, 0x00,
+        0x00, 0x00, 0x49, 0x89, 0x5b, 0x10, 0x49, 0x89, 0x7b, 0xf8};
+    billboard_upload_flush_hook_state.store(2, std::memory_order_relaxed);
+    for (const auto rva : kUploadFlushRvas) {
+      auto* candidate =
+          reinterpret_cast<std::byte*>(GetModuleHandleW(nullptr)) + rva;
+      MEMORY_BASIC_INFORMATION memory{};
+      if (VirtualQuery(candidate, &memory, sizeof(memory)) == sizeof(memory) &&
+          memory.State == MEM_COMMIT &&
+          reinterpret_cast<std::byte*>(memory.BaseAddress) + memory.RegionSize >=
+              candidate + kUploadFlushSignature.size() &&
+          std::memcmp(candidate, kUploadFlushSignature.data(),
+                      kUploadFlushSignature.size()) == 0) {
+        stingray_upload_flush_target = candidate;
+        billboard_upload_flush_hook_state.store(1, std::memory_order_relaxed);
+        break;
+      }
     }
   }
   if (MH_Initialize() != MH_OK ||

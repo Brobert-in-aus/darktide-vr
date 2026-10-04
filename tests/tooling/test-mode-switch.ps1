@@ -95,7 +95,47 @@ try {
     if ((Get-Content -LiteralPath $settings -Raw).Trim() -ne 'newest') { Fail 'Restore did not use the newest backup' }
     $kept = Get-ChildItem -LiteralPath $backups -Filter 'user_settings.before-restore-*.config'
     if (-not $kept -or (Get-Content -LiteralPath $kept[0].FullName -Raw).Trim() -ne 'reset to defaults') { Fail 'The replaced settings file was not kept' }
-    if (-not ($restore.lines -match '^settings_backup=user_settings.20260915-080000.config$')) { Fail 'Status did not name the newest backup' }} finally {
+    if (-not ($restore.lines -match '^settings_backup=user_settings.20260915-080000.config$')) { Fail 'Status did not name the newest backup' }
+
+    # A game update: the patch tool refuses the executable on stderr and exits
+    # non-zero (the shipped tool before 5 October 2026 threw "Unexpected
+    # byte"). Every mode must still run -- above all flat, the way out.
+    $toolPath = Join-Path $modRoot 'tools\set-skinner-assert-patch.ps1'
+    Set-Content -LiteralPath $toolPath -Value 'param($Action,$GameExe) throw "Unexpected byte 0x38 at file offset 0x7a7586"' -Encoding ascii
+    Remove-Item -LiteralPath $proxy -Force -ErrorAction SilentlyContinue
+    $status = Invoke-Switch 'status'
+    if ($status.exit -ne 0 -or -not ($status.lines -match '^executable=unsupported$')) { Fail "Status on a refused executable: $($status.lines -join ' | ')" }
+    $vr = Invoke-Switch 'vr'
+    if ($vr.exit -eq 0 -or -not ($vr.lines -match 'not supported yet')) { Fail "VR on a refused executable: $($vr.lines -join ' | ')" }
+
+    # Flat with this mod the only load-order line, and a damaged settings file
+    # while the VR profile is the current one: the saved VR profile survives.
+    $loadOrder = Join-Path $game 'mods\mod_load_order.txt'
+    Set-Content -LiteralPath $loadOrder -Value 'darktidevr' -Encoding ascii
+    $profileDirectory = Join-Path $env:LOCALAPPDATA 'DarktideVR'
+    $sound = 'mods_settings = { ' + ('x' * 4000) + ' }'
+    Set-Content -LiteralPath (Join-Path $profileDirectory 'settings-profile.txt') -Value 'vr' -Encoding ascii
+    Set-Content -LiteralPath (Join-Path $profileDirectory 'user_settings.vr.config') -Value $sound -Encoding ascii
+    Set-Content -LiteralPath (Join-Path $profileDirectory 'user_settings.flat.config') -Value ($sound + ' flat') -Encoding ascii
+    Set-Content -LiteralPath $settings -Value 'reset to defaults' -Encoding ascii
+    $flat = Invoke-Switch 'flat'
+    if ($flat.exit -ne 0) { Fail "Flat on a refused executable failed: $($flat.lines -join ' | ')" }
+    if (@(Get-Content -LiteralPath $loadOrder | Where-Object { $_.Trim() -eq 'darktidevr' }).Count -ne 0) { Fail 'Flat left the load-order line' }
+    if ((Get-Content -LiteralPath (Join-Path $profileDirectory 'user_settings.vr.config') -Raw).Trim() -ne $sound) { Fail 'A damaged settings file replaced the saved VR profile' }
+    if (-not ($flat.lines -match 'looks damaged or reset')) { Fail 'Flat did not report the damaged settings file' }
+    if ((Get-Content -LiteralPath $settings -Raw).Trim() -ne ($sound + ' flat')) { Fail 'Flat did not restore the flat profile' }
+    if (-not ($flat.lines -match '^settings_profile=flat$')) { Fail 'The profile marker did not move to flat' }
+
+    # The shipped patch tool itself: an unknown executable is reported, not
+    # thrown, so the switch does not depend on how stderr is handled.
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'tools\stereo\set-skinner-assert-patch.ps1') -Destination $toolPath -Force
+    $env:LOCALAPPDATA = Join-Path $profileRoot 'local'
+    $ErrorActionPreference = 'Continue'
+    $inspect = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $toolPath -Action Inspect -GameExe (Join-Path $game 'binaries\Darktide.exe') 2>&1 | ForEach-Object { "$_" })
+    $inspectExit = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($inspectExit -ne 0 -or -not ($inspect -contains 'state=unsupported')) { Fail "Patch tool on an unknown executable: exit=$inspectExit $($inspect -join ' | ')" }
+} finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
-Write-Output 'mode_switch=pass proxy_states=absent,installed,outdated,foreign restore_settings'
+Write-Output 'mode_switch=pass proxy_states=absent,installed,outdated,foreign restore_settings refused_executable damaged_settings'

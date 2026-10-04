@@ -947,6 +947,13 @@ function Skull.install(mod, presentation)
         end
         local owner = local_player_unit()
         local thrower = owner and companion(owner)
+        -- A flight ended here -- a menu opening, the option going off, an
+        -- error -- gives the skull its culling back, as the flight's own end
+        -- does. Before this only that end restored it, and any other way out
+        -- left the skull unculled for the rest of the mission.
+        if throw and throw.culling_off and throw.skull and Unit.alive(throw.skull) then
+            pcall(Unit.set_unit_culling, throw.skull, true, true)
+        end
         if throw and thrower then unplace(throw, thrower) end
         if throw and not thrower then
             -- The skull is gone and the record goes with it, but say so: with
@@ -1545,9 +1552,11 @@ function Skull.install(mod, presentation)
                 record.state_name = name
             end
             local undo = {tables = {}}
+            local fed = true
             if following then
                 local ok, feed_err = pcall(feed, self, unit, record, owner, t, thrower, undo)
                 if not ok then
+                    fed = false
                     -- Taken back at once: the stock update then runs unfed.
                     pcall(unfeed, undo)
                     undo = {tables = {}}
@@ -1566,7 +1575,11 @@ function Skull.install(mod, presentation)
                 note_failure()
                 pcall(unplace_all)
                 mod:warning("DARKTIDEVR_SKULL_THROW error=%s", tostring(after_err))
-            else
+            elseif fed then
+                -- Only a call in which nothing failed forgives the count: a
+                -- feed that errored every frame was forgiven by the movement
+                -- succeeding in the same call, never reached the stand-down,
+                -- and warned every frame for the whole mission instead.
                 note_success()
             end
         end)
@@ -1583,10 +1596,7 @@ function Skull.install(mod, presentation)
         -- module down for the rest of the SESSION costs the side mirroring and
         -- the hold pose, which are the parts people rely on.
         api.rearm()
-        -- A throw abandoned by a reset gives its skull its culling back.
-        if throw and throw.culling_off and throw.skull and Unit.alive(throw.skull) then
-            pcall(Unit.set_unit_culling, throw.skull, true, true)
-        end
+        -- unplace_all has given an abandoned throw's skull its culling back.
         pending = nil; throw = nil; heading_state = nil; shared = nil; shared_t = nil; held_until = nil
     end
     return api

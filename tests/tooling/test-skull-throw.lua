@@ -277,8 +277,15 @@ do
   assert(source:find('throw%.culling_off = pcall%(Unit%.set_unit_culling, skull, false, true%)', 1), 'culling off for the flight')
   assert(source:find('if throw%.culling_off then pcall%(Unit%.set_unit_culling, skull, true, true%) end%s+unplace%(throw, skull%); throw = nil', 1),
     'and back on at the flight end, before the parts are restored')
-  assert(source:find('pcall%(Unit%.set_unit_culling, throw%.skull, true, true%)%s+end%s+pending = nil; throw = nil', 1),
+  -- In unplace_all, the one path every abandonment takes (the option going
+  -- off, a menu, an error, the teardown), and before it forgets the throw.
+  -- This check used to match a restore in destroy() that sat after
+  -- unplace_all had already cleared the throw, in a function nothing called.
+  assert(source:find('pcall%(Unit%.set_unit_culling, throw%.skull, true, true%)%s+end%s+if throw and thrower then unplace%(throw, thrower%) end', 1),
     'and back on when a reset abandons the throw')
+  local main = assert(io.open((arg[1]:gsub('darktidevr_skull_throw%.lua$', 'darktidevr.lua')), 'rb')):read('*a')
+  local _, teardowns = main:gsub('presentation%.skull_throw then pcall%(presentation%.skull_throw%.destroy%)', '')
+  assert(teardowns == 3, 'the teardown is called at the state change, on disable and on unload')
 end
 
 print('skull_throw=pass flight_time chase ballistic forward_offsets rest_offsets smoothed stock_offset lead fed_offset axis_angle rigid_part toward_target')

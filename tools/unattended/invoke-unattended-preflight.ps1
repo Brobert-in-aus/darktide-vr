@@ -34,6 +34,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
+# The smoke certifies readiness, so asking for it is asking for Ready. Decided
+# here, before any gate reads the mode: decided after them, an Inventory run
+# with the smoke reported Ready without the installed-Lua and stale-flag gates.
+if ($RunXrSmoke) { $Mode = 'Ready' }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $repoRoot 'tools\stereo\resolve-darktide-game-root.ps1')
@@ -148,6 +152,8 @@ if ($Mode -eq 'Ready') {
 
 $adb = Get-AdbPath
 . (Join-Path $repoRoot 'tools/quest/resolve-quest-transport.ps1')
+# Already decided at the top; repeated because the device-inventory test runs
+# this section on its own.
 if ($RunXrSmoke) { $Mode = 'Ready' }
 $authorizedDevices = @(
     & $adb devices |
@@ -217,7 +223,9 @@ if ($Mode -eq 'Ready') {
 $linkHealth = $null
 if ($adb -and (Get-XrRuntimeProfile -Runtime $activeRuntime) -eq 'VDXR') {
     try {
-        $linkLog = @(& $adb logcat -d -t 20000 SyncBossFW:* SyncBossHAL:* '*:S' 2>&1)
+        # -s: with the headset on USB and Wi-Fi at once adb refuses an
+        # unaddressed command, and the catch below then skipped this check.
+        $linkLog = @(& $adb -s $device logcat -d -t 20000 SyncBossFW:* SyncBossHAL:* '*:S' 2>&1)
         if ($LASTEXITCODE -eq 0) {
             $linkHealth = Get-ControllerLinkHealth -LogLines $linkLog
         }

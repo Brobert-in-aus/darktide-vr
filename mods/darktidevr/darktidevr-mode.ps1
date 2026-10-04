@@ -59,6 +59,29 @@ function Get-SettingsProfile {
     return 'flat'
 }
 
+# A crash while the game writes user_settings.config leaves it truncated or
+# zero-filled, and the game then rewrites it from defaults. Such a file must
+# never replace a saved profile: the saved copy is what the player restores
+# from. The same tests as the mod's own launch backup (settings_backup.cpp),
+# with the shrink measured against the copy it would replace.
+function Test-SettingsSound([string] $Path, [string] $Against) {
+    try { $bytes = [IO.File]::ReadAllBytes($Path) } catch { return $false }
+    if ($bytes.Length -lt 2048 -or [Array]::IndexOf($bytes, [byte] 0) -ge 0) { return $false }
+    if ([Text.Encoding]::ASCII.GetString($bytes).IndexOf('mods_settings', [StringComparison]::Ordinal) -lt 0) { return $false }
+    if ($Against -and (Test-Path -LiteralPath $Against -PathType Leaf)) {
+        if ($bytes.Length -lt (Get-Item -LiteralPath $Against).Length * 0.7) { return $false }
+    }
+    return $true
+}
+
+# Written beside the destination and renamed over it, so an interruption
+# leaves either the old file or the new one, never part of one.
+function Copy-FileWhole([string] $Source, [string] $Destination) {
+    $partial = "$Destination.partial"
+    Copy-Item -LiteralPath $Source -Destination $partial -Force
+    Move-Item -LiteralPath $partial -Destination $Destination -Force
+}
+
 function Switch-SettingsProfile([string] $Target) {
     $current = Get-SettingsProfile
     if ($current -eq $Target) {
@@ -72,14 +95,21 @@ function Switch-SettingsProfile([string] $Target) {
     New-Item -ItemType Directory -Path $profileDirectory -Force | Out-Null
     $savedCurrent = Join-Path $profileDirectory "user_settings.$current.config"
     $savedTarget = Join-Path $profileDirectory "user_settings.$Target.config"
-    Copy-Item -LiteralPath $settingsPath -Destination $savedCurrent -Force
-    if (Test-Path -LiteralPath $savedTarget -PathType Leaf) {
-        Copy-Item -LiteralPath $savedTarget -Destination $settingsPath -Force
-        Write-Output "Settings: $current profile saved, $Target profile restored."
+    $saved = Test-SettingsSound $settingsPath $savedCurrent
+    if ($saved) {
+        Copy-FileWhole $settingsPath $savedCurrent
     } else {
+        Write-Output "Settings: the current user_settings.config looks damaged or reset (too small, or much smaller than the saved $current profile); the saved $current profile is kept as it was."
+    }
+    # The marker goes first: if the swap below is interrupted, the next switch
+    # must not save this mode's file under the other mode's name.
+    Set-Content -LiteralPath $profileMarker -Value $Target -Encoding ascii
+    if (Test-Path -LiteralPath $savedTarget -PathType Leaf) {
+        Copy-FileWhole $savedTarget $settingsPath
+        Write-Output "Settings: $(if ($saved) { "$current profile saved, " })$Target profile restored."
+    } elseif ($saved) {
         Write-Output "Settings: $current profile saved; the $Target profile starts from the current settings."
     }
-    Set-Content -LiteralPath $profileMarker -Value $Target -Encoding ascii
 }
 
 function Get-FileSha256([string] $Path) {
@@ -89,7 +119,15 @@ function Get-FileSha256([string] $Path) {
 
 function Get-ExeState {
     if (-not (Test-Path -LiteralPath $patchTool -PathType Leaf)) { return 'patch-tool-missing' }
-    $lines = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $patchTool -Action Inspect -GameExe $gameExe 2>&1
+    # The tool's refusals arrive on stderr. Under 'Stop' a redirected stderr
+    # line from a native command is a terminating error here, which made every
+    # mode -- flat included -- abort on a game build the tool did not know.
+    $ErrorActionPreference = 'Continue'
+    try {
+        $lines = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $patchTool -Action Inspect -GameExe $gameExe 2>$null)
+    } finally {
+        $ErrorActionPreference = 'Stop'
+    }
     $state = ($lines | Where-Object { "$_" -like 'state=*' } | Select-Object -First 1)
     if (-not $state) {
         # Unknown hash or an unexpected byte: the tool refuses this build.
@@ -164,7 +202,7 @@ if ($Mode -eq 'restore-settings') {
         Write-Output "Settings: the current file is kept as $kept."
     }
     New-Item -ItemType Directory -Path $settingsDirectory -Force | Out-Null
-    Copy-Item -LiteralPath $backup.FullName -Destination $settingsPath -Force
+    Copy-FileWhole $backup.FullName $settingsPath
     Write-Output "Settings: restored from $($backup.Name)."
     Write-Status
     exit 0
@@ -238,7 +276,9 @@ switch (Get-ProxyState) {
     default { Write-Output 'd3d12 proxy: a different d3d12.dll is present; left as is.' }
 }
 if ((Get-LoadOrderState) -eq 'listed') {
-    $kept = Get-Content -LiteralPath $loadOrderPath | Where-Object { $_.Trim() -ne $modName }
+    # @(): with this mod the only line, the filter yields nothing and a null
+    # array made WriteAllLines throw after the executable was already restored.
+    $kept = @([IO.File]::ReadAllLines($loadOrderPath) | Where-Object { $_.Trim() -ne $modName })
     [IO.File]::WriteAllLines($loadOrderPath, [string[]] $kept)
     Write-Output 'Load order: removed.'
 } else {

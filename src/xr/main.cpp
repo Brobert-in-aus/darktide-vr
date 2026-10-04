@@ -1949,9 +1949,14 @@ class OpenXrProbe {
                      "xrLocateSpace(VIEW in STAGE)");
             const auto floor_flags = XR_SPACE_LOCATION_POSITION_VALID_BIT |
                                      XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
-            if ((stage_head.locationFlags & floor_flags) == floor_flags) {
-              pose_sample.floor_eye_height_metres =
-                  stage_head.pose.position.y;
+            // The transport accepts 0 (unknown) or 0.2-3.5 m and rejects the
+            // sample otherwise, and a rejected publish ends the viewer. A
+            // tracked headset set down on the floor, or a stage floor set
+            // wrongly, reads outside that range: report it as unknown.
+            const auto eye_height = stage_head.pose.position.y;
+            if ((stage_head.locationFlags & floor_flags) == floor_flags &&
+                eye_height >= 0.2F && eye_height <= 3.5F) {
+              pose_sample.floor_eye_height_metres = eye_height;
             }
           }
           runtime_ipd_metres_ = pose_sample.ipd_metres;

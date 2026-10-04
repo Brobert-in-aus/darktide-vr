@@ -23,13 +23,22 @@ if (-not $GameExe) {
 }
 New-Item -ItemType Directory -Path (Split-Path -Parent $Backup) -Force | Out-Null
 
-$originalSha256 =
-    'e0f581d2c63b692c7d9f328e3edeb39c0f484956905569d38ba27bbb3fcc0aae'
-$patches = @(
-    # jne skip_assert -> jmp skip_assert. These are the only changed bytes.
-    @{ Offset = 0x7a7586; Original = [byte] 0x75; Patched = [byte] 0xeb },
-    @{ Offset = 0x7a7682; Original = [byte] 0x75; Patched = [byte] 0xeb }
+# One entry per supported game build: the pristine executable's hash and the
+# raw file offsets of the two `jne skip_assert` branches in
+# stingray::deferred_skinning_kernel ("Bad Skinner!", d3d12_dispatcher lines
+# 376 and 396). Each becomes `jmp skip_assert`; these are the only changed
+# bytes. A build is recognised by reversing those bytes and hashing, so a
+# patched executable is identified as exactly as a pristine one.
+$builds = @(
+    @{ Name = '1.12.5'
+       Sha256 = 'e0f581d2c63b692c7d9f328e3edeb39c0f484956905569d38ba27bbb3fcc0aae'
+       Offsets = @(0x7a7586, 0x7a7682) },
+    @{ Name = '1.13.1'
+       Sha256 = '28b843bc2905faaa0f27329d68e5de989df908f2552d80bf2b3c79b86e259775'
+       Offsets = @(0x7c89c6, 0x7c8ac2) }
 )
+$originalByte = [byte] 0x75
+$patchedByte = [byte] 0xeb
 
 function Get-BytesSha256([byte[]] $Bytes) {
     $sha = [Security.Cryptography.SHA256]::Create()
@@ -42,29 +51,31 @@ function Get-BytesSha256([byte[]] $Bytes) {
     }
 }
 
-function Get-PatchState([byte[]] $Bytes) {
-    $originalCount = 0
-    $patchedCount = 0
-    foreach ($patch in $patches) {
-        $value = $Bytes[$patch.Offset]
-        if ($value -eq $patch.Original) {
-            ++$originalCount
+# The build this executable is, and whether its two branches are original or
+# patched. $null when it is no build this tool knows: a game update, or a file
+# changed by something else.
+function Resolve-Build([byte[]] $Bytes, [string] $Sha256) {
+    foreach ($build in $builds) {
+        if ($Sha256 -eq $build.Sha256) {
+            return @{ Build = $build; State = 'original' }
         }
-        elseif ($value -eq $patch.Patched) {
-            ++$patchedCount
+        $patchedCount = 0
+        $candidate = $true
+        foreach ($offset in $build.Offsets) {
+            if ($offset -ge $Bytes.Length) { $candidate = $false; break }
+            if ($Bytes[$offset] -eq $patchedByte) { ++$patchedCount }
+            elseif ($Bytes[$offset] -ne $originalByte) { $candidate = $false; break }
         }
-        else {
-            throw ('Unexpected byte 0x{0:x2} at file offset 0x{1:x}' -f
-                $value, $patch.Offset)
+        if (-not $candidate -or $patchedCount -eq 0) { continue }
+        $reversed = [byte[]] $Bytes.Clone()
+        foreach ($offset in $build.Offsets) { $reversed[$offset] = $originalByte }
+        if ((Get-BytesSha256 $reversed) -ne $build.Sha256) { continue }
+        if ($patchedCount -ne $build.Offsets.Count) {
+            throw 'Refusing a partially patched Darktide executable'
         }
+        return @{ Build = $build; State = 'patched' }
     }
-    if ($originalCount -eq $patches.Count) {
-        return 'original'
-    }
-    if ($patchedCount -eq $patches.Count) {
-        return 'patched'
-    }
-    throw 'Refusing a partially patched Darktide executable'
+    return $null
 }
 
 $gamePath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(
@@ -79,77 +90,90 @@ if (Get-Process Darktide -ErrorAction SilentlyContinue) {
 }
 
 $bytes = [IO.File]::ReadAllBytes($gamePath)
-$state = Get-PatchState $bytes
 $sha256 = Get-BytesSha256 $bytes
+$resolved = Resolve-Build $bytes $sha256
 
 if ($Action -eq 'Inspect') {
     # Plain lines: object output can be dropped when the host exits right
-    # after emitting it, and installers parse these values.
+    # after emitting it, and installers parse these values. An unknown build
+    # is an answer, not an error: the mode switch must still be able to turn
+    # VR off after a game update.
     Write-Output "path=$gamePath"
-    Write-Output "state=$state"
+    if ($resolved) {
+        Write-Output "state=$($resolved.State)"
+        Write-Output "build=$($resolved.Build.Name)"
+    } else {
+        Write-Output 'state=unsupported'
+        Write-Output 'build=unknown'
+    }
     Write-Output "sha256=$sha256"
-    Write-Output ("patched.offsets=" + (($patches.Offset | ForEach-Object { '0x{0:x}' -f $_ }) -join ','))
+    if ($resolved) {
+        Write-Output ("patched.offsets=" + (($resolved.Build.Offsets | ForEach-Object { '0x{0:x}' -f $_ }) -join ','))
+    }
     Write-Output "backup=$backupPath backup.present=$(Test-Path -LiteralPath $backupPath -PathType Leaf)"
     exit 0
 }
+
+if (-not $resolved) {
+    throw "Unknown Darktide executable hash: $sha256"
+}
+$build = $resolved.Build
 
 if ($Action -eq 'Apply') {
     $eac = Get-Service EasyAntiCheat_EOS -ErrorAction SilentlyContinue
     if ($eac -and $eac.Status -ne 'Stopped') {
         throw "Refusing to patch Darktide while EAC is $($eac.Status)"
     }
-    if ($state -eq 'patched') {
+    if ($resolved.State -eq 'patched') {
         throw 'Darktide.exe is already patched'
-    }
-    if ($sha256 -ne $originalSha256) {
-        throw "Unknown Darktide executable hash: $sha256"
     }
 
     $backupDirectory = Split-Path -Parent $backupPath
     if (-not (Test-Path -LiteralPath $backupDirectory -PathType Container)) {
         New-Item -ItemType Directory -Path $backupDirectory -Force | Out-Null
     }
-    if (Test-Path -LiteralPath $backupPath) {
+    $backupSha256 = $null
+    if (Test-Path -LiteralPath $backupPath -PathType Leaf) {
         $backupSha256 = (Get-FileHash -LiteralPath $backupPath -Algorithm SHA256).
             Hash.ToLowerInvariant()
-        if ($backupSha256 -ne $originalSha256) {
-            throw "Existing backup has unexpected hash: $backupSha256"
-        }
     }
-    else {
-        Copy-Item -LiteralPath $gamePath -Destination $backupPath
+    if ($backupSha256 -ne $build.Sha256) {
+        # No copy yet, or the copy of an earlier game build that a game update
+        # has since replaced: this build's pristine executable takes its place.
+        Copy-Item -LiteralPath $gamePath -Destination $backupPath -Force
     }
 
-    foreach ($patch in $patches) {
-        $bytes[$patch.Offset] = $patch.Patched
+    foreach ($offset in $build.Offsets) {
+        $bytes[$offset] = $patchedByte
     }
     [IO.File]::WriteAllBytes($gamePath, $bytes)
     $patchedSha256 = (Get-FileHash -LiteralPath $gamePath -Algorithm SHA256).
         Hash.ToLowerInvariant()
-    Write-Output "Applied exact two-byte skinner assertion patch"
+    Write-Output "Applied exact two-byte skinner assertion patch (build $($build.Name))"
     Write-Output "patched.sha256=$patchedSha256"
     Write-Output "restore.command=tools\stereo\set-skinner-assert-patch.ps1 -Action Restore"
     exit 0
 }
 
-if (-not (Test-Path -LiteralPath $backupPath -PathType Leaf)) {
-    throw "Pristine backup not found: $backupPath"
-}
-$backupSha256 = (Get-FileHash -LiteralPath $backupPath -Algorithm SHA256).
-    Hash.ToLowerInvariant()
-if ($backupSha256 -ne $originalSha256) {
-    throw "Pristine backup has unexpected hash: $backupSha256"
-}
-if ($state -ne 'patched') {
+if ($resolved.State -ne 'patched') {
     throw 'Darktide.exe is not in the expected patched state'
 }
-
-$reversed = [byte[]] $bytes.Clone()
-foreach ($patch in $patches) {
-    $reversed[$patch.Offset] = $patch.Original
+# Resolve-Build has already shown that reversing the two bytes reproduces the
+# pristine hash, so the restore does not depend on the copy: a copy that is
+# missing, or is an earlier build's, must not leave the game unrestorable.
+$backupMatches = (Test-Path -LiteralPath $backupPath -PathType Leaf) -and
+    ((Get-FileHash -LiteralPath $backupPath -Algorithm SHA256).Hash.ToLowerInvariant() -eq $build.Sha256)
+if ($backupMatches) {
+    Copy-Item -LiteralPath $backupPath -Destination $gamePath -Force
+    Write-Output 'Restored pristine Darktide.exe from verified backup'
+} else {
+    foreach ($offset in $build.Offsets) {
+        $bytes[$offset] = $originalByte
+    }
+    [IO.File]::WriteAllBytes($gamePath, $bytes)
+    Write-Output 'Restored pristine Darktide.exe by reversing the two patched bytes'
 }
-if ((Get-BytesSha256 $reversed) -ne $originalSha256) {
-    throw 'Patched executable differs from the known build beyond the two patch bytes'
+$restoredSha256 = (Get-FileHash -LiteralPath $gamePath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($restoredSha256 -ne $build.Sha256) {
+    throw "Restored executable has unexpected hash: $restoredSha256"
 }
-Copy-Item -LiteralPath $backupPath -Destination $gamePath -Force
-Write-Output 'Restored pristine Darktide.exe from verified backup'

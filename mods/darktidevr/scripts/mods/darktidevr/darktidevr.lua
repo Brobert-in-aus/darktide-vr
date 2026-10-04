@@ -8160,6 +8160,12 @@ function presentation.apply_body_visibility(self, frame, force)
                 hidden_body_units,
                 tostring(inventory.wielded_slot))
         end
+        -- A pass was applied, so the flip is recorded here too. Recorded only
+        -- past the last return, it stayed nil on this path -- the one every
+        -- player is on -- and nil never equals the boolean above: the force
+        -- was set on every call and the sixty-frame gate never held (review,
+        -- 5 October).
+        controller_observation.body_visibility_copy_drew = copy_draws_body
         return
     end
 
@@ -8220,6 +8226,7 @@ function presentation.apply_body_visibility(self, frame, force)
                     hidden_weapon_units, tostring(inventory.wielded_slot))
             end
         end
+        controller_observation.body_visibility_copy_drew = copy_draws_body
         return
     end
 
@@ -16870,6 +16877,7 @@ mod.on_game_state_changed = function(status, state_name)
         if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
         if presentation.wrist_display then pcall(presentation.wrist_display.destroy) end
         if presentation.forearm_holsters then pcall(presentation.forearm_holsters.destroy) end
+    if presentation.skull_throw then pcall(presentation.skull_throw.destroy) end
         if presentation.teammate_status then pcall(presentation.teammate_status.destroy) end
         if presentation.rig_scan then pcall(presentation.rig_scan.destroy) end
         if presentation.body_mirror then pcall(presentation.body_mirror.destroy) end
@@ -16919,6 +16927,7 @@ mod.on_disabled = function()
     if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
     if presentation.wrist_display then pcall(presentation.wrist_display.destroy) end
     if presentation.forearm_holsters then pcall(presentation.forearm_holsters.destroy) end
+    if presentation.skull_throw then pcall(presentation.skull_throw.destroy) end
     if presentation.teammate_status then pcall(presentation.teammate_status.destroy) end
     if presentation.rig_scan then pcall(presentation.rig_scan.destroy) end
     if presentation.body_mirror then pcall(presentation.body_mirror.destroy) end
@@ -16947,6 +16956,7 @@ mod.on_unload = function()
     if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
     if presentation.wrist_display then pcall(presentation.wrist_display.destroy) end
     if presentation.forearm_holsters then pcall(presentation.forearm_holsters.destroy) end
+    if presentation.skull_throw then pcall(presentation.skull_throw.destroy) end
     if presentation.teammate_status then pcall(presentation.teammate_status.destroy) end
     if presentation.rig_scan then pcall(presentation.rig_scan.destroy) end
     if presentation.body_mirror then pcall(presentation.body_mirror.destroy) end
