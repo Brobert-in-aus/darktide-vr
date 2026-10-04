@@ -4,6 +4,44 @@ All notable user-facing changes to Darktide VR. Versions follow
 `major.minor.patch` with a pre-release suffix while the mod is in alpha; the
 runtime package records the exact source revision alongside the version.
 
+## Unreleased
+
+Since 0.3.0-alpha.1. A compatibility release for the game's 1.13 update,
+with a few small fixes.
+
+### Game update
+
+- **Darktide 1.13.1 is supported.** `Darktide VR Mode.bat` recognises the
+  updated executable and patches it; 0.3.0-alpha.1 refused it. Run the batch
+  file and choose VR mode again after updating the mod. The game update
+  also switches the mod loader off, as every game update does: re-run the
+  mod loader's `toggle_darktide_mods.bat` first.
+- Your calibrated height reaches your character again. The game moved where
+  a character's height is kept, and the mod was reading the old place.
+- The new live-event progress screen can be pointed at and clicked.
+- The end screen's match rating and statistics buttons, and the inventory's
+  statistics buttons, show a controller prompt instead of "[Unbound]".
+- Zealot throwing knives leave from your hand again; the update had moved
+  them to a different weapon action.
+- The tutorial's control hints follow a remapped control again.
+
+### Fixed
+
+- `Darktide VR Mode.bat` no longer stops with an error on a game build it
+  does not know. Flat mode in particular always works, so a game update can
+  never leave you unable to switch the mod off.
+- Switching modes no longer saves a damaged or reset settings file over the
+  stored copy of that mode's settings, and with this mod the only entry in
+  the mod load order, Flat mode no longer fails part-way.
+- The viewer no longer closes when the headset is put down on the floor
+  while still tracked.
+- A fault in the servo skull code is forgiven at the next level instead of
+  switching the skull features off until the game restarts, and a skull
+  whose throw is interrupted (a menu opening, the option switched off) is
+  put back as it was.
+- Less work every frame: the pass that decides which parts of your character
+  are drawn was running every frame instead of once a second.
+
 ## 0.3.0-alpha.1 (19 September 2026)
 
 Since 0.2.0-alpha.1. Everything called experimental is off until you turn it
