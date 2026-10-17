@@ -10,6 +10,9 @@ Since 0.3.0-alpha.2.
 
 ### Changed
 
+- "Push to talk with a hand at your mouth" is on by default for new
+  installs: push to talk has no button of its own, so a new install could
+  not talk. An existing install keeps its setting.
 - `Darktide VR Mode.bat` recognises a Darktide executable it has never seen
   by the two places it patches, so a game update no longer needs a mod
   update before VR mode works again (the mod loader's toggle is still
@@ -28,6 +31,19 @@ Since 0.3.0-alpha.2.
   also the pointer's click, so rating the match or opening the statistics
   skipped the screen as well.
 - Holding A previews a group in the group finder, which had no VR control.
+- Party invites can be accepted: hold Y and B together in the Mourningstar,
+  or open the menu and hold A in a mission. Every invite used to decline
+  itself after ten seconds.
+- Kick and level votes can be answered: open the menu, then A for yes or X
+  for no.
+- Hold the right stick click for the communication wheel in a mission and
+  the emote wheel in the Mourningstar; a quick click still tags. Neither
+  wheel could be opened before, and emotes not at all.
+- Hold the menu button for the tactical overlay (mission details,
+  contracts, live event), which had no control; a tap still opens the menu.
+- Right stick down also inspects another operative in the Mourningstar.
+- The Psykhanium's movement tutorial says "L Stick" instead of keyboard keys,
+  and the tactical overlay's tab switch shows its control.
 - Prompts that read "[Unbound]" though the pointer can click them now say
   so: the group finder's refresh, the talent summary, the mission board's
   debrief. The reward track reads "Stick", the title screen "LT/RT", and

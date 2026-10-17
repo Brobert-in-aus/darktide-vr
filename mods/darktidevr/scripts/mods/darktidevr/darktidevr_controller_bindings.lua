@@ -19,7 +19,9 @@ Bindings.controls = {
     {id="r3", bit=256, default="tag"},
     {id="menu", bit=1024, default="menu"},
     {id="right_stick_up", bit=2048, default="quick_wield", axis="y", sign=1},
-    {id="right_stick_down", bit=4096, default="interact_reload", axis="y", sign=-1},
+    -- Interact also inspects another operative in the Mourningstar, which
+    -- the game reads only there (17 October: it had no control).
+    {id="right_stick_down", bit=4096, default="interact_reload_inspect", axis="y", sign=-1},
     {id="right_stick_left", bit=8192, default="unbound", axis="x", sign=-1},
     {id="right_stick_right", bit=16384, default="unbound", axis="x", sign=1},
 }
@@ -31,6 +33,7 @@ Bindings.actions = {
     {id="interact", mask=8, pressed={"interact_pressed"}, held={"interact_hold"}},
     {id="reload", hub=false, mask=4096, pressed={"weapon_reload_pressed"}, held={"weapon_reload_hold"}},
     {id="interact_reload", mask=4104},
+    {id="interact_reload_inspect", mask=4104+1048576},
     -- Item selection shares one control: device and pocketable cycling.
     {id="pocketable_device", mask=786432},
     {id="quick_wield", hub=false, mask=16, pressed={"quick_wield"}},
@@ -134,6 +137,17 @@ local function swap_saved_xy(mod)
 end
 Bindings.swap_saved_xy=swap_saved_xy
 
+-- Inspecting another operative joins the interact control (17 October). An
+-- install that saved its per-action bindings before then has inspect_target
+-- saved as unbound (0); that becomes the right stick down, once. Any other
+-- saved value is a choice and is kept.
+local function add_saved_inspect(mod)
+    if not mod or not mod.set or mod:get('vr_bindings_inspect_added') then return end
+    if mod:get('vr_action_bind_inspect_target')==0 then mod:set('vr_action_bind_inspect_target',4096) end
+    mod:set('vr_bindings_inspect_added',true)
+end
+Bindings.add_saved_inspect=add_saved_inspect
+
 -- One press may select several wield targets (a shared button: device and
 -- item cycle, stim and ammo crate, quick wield and an item). The game applies
 -- only one of several wield inputs, not a chosen one, so the scanner never came
@@ -184,6 +198,7 @@ end
 
 function Bindings.widgets(mod)
     swap_saved_xy(mod)
+    add_saved_inspect(mod)
     local widgets,hub,gripping={},{},{}
     local function label(key) return mod and mod:localize(key) or key end
     for _,action in ipairs(Bindings.actions) do
@@ -251,6 +266,7 @@ end
 
 function Bindings.install(mod)
     swap_saved_xy(mod)
+    add_saved_inspect(mod)
     local api = {held=0,bindings={},revision=0,context="combat",
         wield_press=Bindings.wield_press,
         support_grip={held=false,pressed=false,released=false,cancelled=false}}

@@ -50,7 +50,13 @@ end
 -- Mourningstar, where it never had a VR answer.
 MenuInput.menu_buttons = {hotkey_menu_special_1 = "y", hotkey_menu_special_2 = "x",
     continue_end_view = "a", social_show_list = "a", cancel_matchmaking = "both_triggers",
-    group_finder_group_inspect = "a"}
+    group_finder_group_inspect = "a",
+    -- Kick and level votes arrive mid-mission, where every controller button
+    -- is gameplay: they are answered with the system menu open, A yes and X
+    -- no, and only there (the options view's X is its reset).
+    notification_option_a = "a", notification_option_b = "x"}
+-- Menu buttons that answer only while this view is the top one, no popup.
+MenuInput.menu_button_views = {notification_option_a = "system_view", notification_option_b = "system_view"}
 
 -- Per-button edges for one UI frame. A button held when the owner changes
 -- must be released before it presses.
@@ -227,6 +233,8 @@ function MenuInput.proxy(source, null_service, sample, vector, read_desktop, wid
         -- own type (pressed, held or released) on its key alias.
         local rule = source._actions and source._actions[action]
         local button_id = rule and MenuInput.menu_buttons[rule.key_alias]
+        local only = rule and MenuInput.menu_button_views[rule.key_alias]
+        if only and sample.view_name ~= only then button_id = nil end
         local button = button_id and sample.buttons and sample.buttons[button_id]
         if button then
             local down = rule.type == "held" and button.held or
@@ -403,6 +411,44 @@ function MenuInput.install(mod, presentation)
             return value
         end})
     end
+    -- Accepting a party invite is a held View action timed by the UI
+    -- manager's InputHoldTracker, which took its service once, at start-up,
+    -- before this route existed: no VR control could ever reach it, and every
+    -- invite auto-declined. In the Mourningstar it answers to Y and B held
+    -- together (neither does anything there); in a mission, where both are
+    -- gameplay, to A held with the system menu open. The tracker times the
+    -- hold itself (one second).
+    function MenuInput.invite_hold(buttons, hub, system_menu)
+        if type(buttons) ~= "table" then return false end
+        if hub then return buttons.y == true and buttons.b == true end
+        return system_menu == true and buttons.a == true
+    end
+    mod:hook("InputHoldTracker", "update", function(func, self, ...)
+        local source = self._input_service
+        if self._input_service_name ~= "View" or not source or not presentation.read_menu_buttons then
+            return func(self, ...)
+        end
+        local ok, accept = pcall(function()
+            local ui = Managers and Managers.ui
+            return MenuInput.invite_hold(presentation.read_menu_buttons(),
+                presentation.current_game_mode_name and presentation.current_game_mode_name() == "hub",
+                ui ~= nil and ui:view_active("system_view"))
+        end)
+        if not ok or not accept then return func(self, ...) end
+        self._input_service = setmetatable({get = function(_, action, ...)
+            if action == "accept_invite_notification" then return true end
+            return source:get(action, ...)
+        end}, {__index = function(_, key)
+            local value = source[key]
+            if type(value) == "function" then return function(_, ...) return value(source, ...) end end
+            return value
+        end})
+        local function pack(...) return {n = select("#", ...), ...} end
+        local result = pack(pcall(func, self, ...))
+        self._input_service = source
+        if not result[1] then error(result[2], 0) end
+        return unpack(result, 2, result.n)
+    end)
     -- Both regular views and constant elements (confirmation popups, etc.)
     -- obtain input here. The view handler alone does not cover modal dialogs.
     local function route_service(func, self, ...)
@@ -440,11 +486,13 @@ function MenuInput.install(mod, presentation)
         local owner = handler and handler._active_views_array and
             handler._active_views_array[handler._num_active_views]
         local data = owner and handler._active_views_data and handler._active_views_data[owner]
-        owner = (self._active_popups and self._active_popups[1]) or
-            (data and data.instance) or owner
+        local popup = self._active_popups and self._active_popups[1]
+        local view_name = not popup and type(owner) == "string" and owner or nil
+        owner = popup or (data and data.instance) or owner
         local buttons = presentation.read_menu_buttons and presentation.read_menu_buttons() or nil
         local sample = MenuInput.sample(state, pointer, pointer.frame_id or 0, owner,
             RESOLUTION_LOOKUP.width, RESOLUTION_LOOKUP.height, buttons)
+        sample.view_name = view_name
         if pointer.primary_pressed and sample.rejection then
             mod:info("DARKTIDEVR_MENU_INPUT rejected frame=%d reason=%s",
                 pointer.frame_id or 0, sample.rejection)

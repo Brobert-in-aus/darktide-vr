@@ -13,9 +13,17 @@ local aliases = {
     weapon_inspect="inspect",menu="menu",
     wield_1=false,wield_2=false,wield_3="pocketable",wield_3_gamepad="cycle_pocketables",
     wield_4="stim",wield_5="device",interact_inspect="inspect_target",com_wheel="communication_wheel",
-    tactical_overlay="tactical_overlay",
+    tactical_overlay="tactical_overlay",tactical_overlay_swap="interact",
     voip_push_to_talk="push_to_talk",
 }
+-- Fixed labels for gameplay aliases no binding answers: the Psykhanium's
+-- movement tutorial names the keyboard keys (the game runs in mouse mode in
+-- VR), and movement is the left stick.
+local fixed_labels = {keyboard_move_forward="vr_prompt_left_stick",keyboard_move_backward="vr_prompt_left_stick",
+    keyboard_move_left="vr_prompt_left_stick",keyboard_move_right="vr_prompt_left_stick",
+    move_controller="vr_prompt_left_stick"}
+-- Actions with no control of their own that a hold or gesture reaches.
+local hold_fallback = {tactical_overlay="menu", communication_wheel="tag"}
 local scopes = {
     {"HudElementPlayerWeapon","_update_input",true},
     {"HudElementPlayerAbility","_update_input"},
@@ -111,7 +119,17 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
         -- Loading-screen hints: no VR control, and none is needed; show no
         -- prompt rather than an Unbound one.
         next_hint="",
-        notification_option_a=false, notification_option_b=false,
+        -- Votes: with the system menu open, A yes and X no (darktidevr_menu_input).
+        notification_option_a="vr_prompt_menu_then_a", notification_option_b="vr_prompt_menu_then_x",
+        -- A party invite: Y and B held in the hub, A held with the system menu
+        -- open elsewhere (the UI manager's hold tracker, darktidevr_menu_input).
+        accept_invite_notification=function()
+            local ok, hub = pcall(function()
+                local game_mode = Managers and Managers.state and Managers.state.game_mode
+                return game_mode and game_mode:game_mode_name() == "hub"
+            end)
+            return ok and hub and "vr_prompt_y_and_b" or "vr_prompt_menu_then_a"
+        end,
         skip_cinematic="vr_menu_hold_skip", skip_cinematic_hold="vr_menu_hold_skip",
     }
     local secondary_aliases = {right=true, right_pressed=true, right_released=true, right_hold=true}
@@ -123,6 +141,7 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
                 menu_prompts.secondary_available() and "vr_menu_point_secondary" or false
         end
         local text
+        if type(label) == "function" then label = label() end
         if label == "" then return "" end
         if label then
             text = "["..mod:localize(label).."]"
@@ -156,6 +175,11 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
                 return view_text(alias,tint)
             end
             if service~="Ingame" and not inventory then return func(service,alias,tint,...) end
+            if service=="Ingame" and fixed_labels[alias] then
+                local text=Prompts.single_line("["..mod:localize(fixed_labels[alias]).."]")
+                if tint then text=InputUtils.apply_color_to_input_text(text,Color.ui_input_color(255,true)) end
+                return text
+            end
             if action==nil then return func(service,alias,tint,...) end
             local switch = weapon_switch and (alias=="wield_1" or alias=="wield_2")
             if switch then action="quick_wield" end
@@ -173,6 +197,24 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
             -- does reach it instead of "Unbound".
             if not controls[1] and cycle_fallback[action] then
                 controls = bindings.controls_for_action("cycle_pocketables")
+            end
+            -- The tactical overlay is the menu control held and the wheels the
+            -- tag control held (17 October); push to talk is the hand at the
+            -- mouth while that gesture is on.
+            local hold_label
+            if not controls[1] and hold_fallback[action] then
+                local held_controls = bindings.controls_for_action(hold_fallback[action])
+                if held_controls[1] then
+                    hold_label = mod:localize("vr_prompt_hold").." "..mod:localize("vr_prompt_"..held_controls[1])
+                end
+            end
+            if not controls[1] and action=="push_to_talk" and mod:get("vr_comms_gesture")==true then
+                hold_label = mod:localize("vr_prompt_hand_at_mouth")
+            end
+            if hold_label then
+                local text=Prompts.single_line("["..hold_label.."]")
+                if tint then text=InputUtils.apply_color_to_input_text(text,Color.ui_input_color(255,true)) end
+                return text
             end
             -- A hub hotkey without a controller assignment reads Unbound, not
             -- its keyboard key.

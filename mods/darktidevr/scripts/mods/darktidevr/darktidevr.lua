@@ -15906,7 +15906,7 @@ do
         local ok, left, right, left_buttons, right_buttons = pcall(read_triggers)
         if not ok or not right then return nil end
         return {x = bit.band(left_buttons, 1) ~= 0, y = bit.band(left_buttons, 2) ~= 0,
-            a = bit.band(right_buttons, 1) ~= 0, rt = right >= 0.55,
+            a = bit.band(right_buttons, 1) ~= 0, b = bit.band(right_buttons, 2) ~= 0, rt = right >= 0.55,
             both_triggers = right >= 0.55 and (tonumber(left) or 0) >= 0.55}
     end
     local function title_triggers_down()

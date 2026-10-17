@@ -182,7 +182,9 @@ local p,h,r=default_mapper.sample(true,0,1,1,true,1)
 -- waits for it); the other directions stay unbound.
 assert(p==16 and h==16 and r==0,'right stick up must default to the weapon switch')
 p,h,r=default_mapper.sample(true,0,0,-1,true,1)
-assert(p==4104 and h==4104,'right stick down must default to interact/reload')
+-- Since 17 October it also inspects another operative (1048576), which the
+-- game reads only in the Mourningstar.
+assert(p==4104+1048576 and h==4104+1048576,'right stick down must default to interact/reload/inspect')
 print('controller_bindings=pass defaults aliases remap_cancel context_handoff directional_hysteresis tracking generation stock_names options')
 -- Mission slots use ordinary stock wield edges. Held bindings and a second
 -- alias cannot repeat slot changes; an inactive transition requires release.
@@ -520,7 +522,8 @@ do
         saved.vr_action_bind_device==16,'default crouch and items must move to the new buttons')
     assert(saved.vr_action_bind_jump==32 and saved.vr_hub_action_bind_crouch==-1 and
         saved.vr_action_bind_sprint==128+16,'other bindings stay, including a custom Y')
-    assert(saved.vr_bindings_xy_swapped==true and #writes==4)
+    -- Four for the X/Y swap, one for the inspect flag (17 October).
+    assert(saved.vr_bindings_xy_swapped==true and #writes==5)
     local _,again=migrated(saved)
     assert(#again==0 and saved.vr_action_bind_crouch==8,'the migration runs once')
     -- Crouch moved elsewhere: nothing moves, X and Y keep their actions.
@@ -537,7 +540,16 @@ do
     assert(saved.vr_action_bind_crouch==16+128 and saved.vr_action_bind_device==8)
     -- Fresh install: nothing saved, nothing written but the flag.
     saved,writes=migrated({})
-    assert(#writes==1 and saved.vr_bindings_xy_swapped==true and saved.vr_action_bind_crouch==nil)
+    assert(#writes==2 and saved.vr_bindings_xy_swapped==true and saved.vr_action_bind_crouch==nil)
+    -- Inspecting an operative joins the right stick down once, only where it
+    -- was saved unbound; a chosen control stays, and it runs once.
+    saved=migrated({vr_action_bind_inspect_target=0})
+    assert(saved.vr_action_bind_inspect_target==4096 and saved.vr_bindings_inspect_added==true)
+    saved.vr_action_bind_inspect_target=0
+    local _,once=migrated(saved)
+    assert(#once==0 and saved.vr_action_bind_inspect_target==0,'the inspect migration runs once')
+    saved=migrated({vr_action_bind_inspect_target=32})
+    assert(saved.vr_action_bind_inspect_target==32,'a chosen inspect control was moved')
 end
 -- A press selecting several wield targets is a cycle over them, device first,
 -- then pocketable, small pocketable and (with quick wield) the weapon; it

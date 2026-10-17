@@ -71,7 +71,8 @@ end,'back','Back')=='[B]','shared hook lost menu labels')
 assert(text('back','View')=='[B]','menu back outside the hint context kept a keyboard key')
 local point='[Point\194\160+\194\160RT]'
 assert(text('confirm_pressed','View')==point and text('navigate_primary_right_pressed','View')==point)
-assert(text('notification_option_a','View')=='[Unbound]','vote prompt must not show a keyboard key')
+assert(text('notification_option_a','View')=='[Menu,\194\160then\194\160A]' and text('notification_option_b','View')=='[Menu,\194\160then\194\160X]',
+    'votes read the system-menu buttons')
 assert(text('skip_cinematic_hold','View')=='[Hold\194\160RT]','cutscene skip legend must read Hold RT')
 assert(text('some_new_alias','View')=='[Unbound]','unrouted menu alias must read Unbound')
 assert(text('hotkey_inventory','View')=='[Unbound]','a menu hotkey outside the hub must not show a keyboard key')
@@ -93,8 +94,14 @@ scope('HudElementWieldInfo','_create_entry',function()
     assert(text('weapon_extra')=='[R\194\160Grip]')
     assert(text('combat_ability')=='[L\194\160Grip]','combat ability defaults to the left grip')
     assert(text('smart_tag')=='[R3]')
-    assert(text('com_wheel')=='[Unbound]')
+    -- The wheel is the tag control held, the overlay the menu control held
+    -- (17 October); push to talk reads Unbound only with its gesture off.
+    assert(text('com_wheel')=='[Hold\194\160R3]','the wheel prompt does not name the tag hold')
+    assert(text('tactical_overlay')=='[Hold\194\160Menu]','the overlay prompt does not name the menu hold')
     assert(text('voip_push_to_talk')=='[Unbound]')
+    assert(text('tactical_overlay_swap')=='[RS\194\160Down]','the overlay tab swap shows a keyboard key')
+    assert(text('keyboard_move_left')=='[L\194\160Stick]' and text('move_controller')=='[L\194\160Stick]',
+        'the movement tutorial shows the keyboard')
     assert(text('interact')=='[RS\194\160Down]' and text('weapon_reload')=='[RS\194\160Down]')
     assert(text('wield_1')=='[Unbound]','direct slot selection pretended to be bound')
     assert(text('unrecognized')=='keyboard:unrecognized')
@@ -115,7 +122,8 @@ mod.on_setting_changed('vr_action_bind_communication_wheel')
 scope('HudElementWieldInfo','_create_entry',function()assert(text('com_wheel')=='[R3]')end)
 settings.vr_action_bind_communication_wheel=2048
 mod.on_setting_changed('vr_action_bind_communication_wheel')
-scope('HudElementWieldInfo','_create_entry',function()assert(text('com_wheel')=='[Unbound]')end)
+-- A stick direction cannot hold the wheel, so the tag control's hold still does.
+scope('HudElementWieldInfo','_create_entry',function()assert(text('com_wheel')=='[Hold\194\160R3]')end)
 settings.vr_action_bind_communication_wheel=nil
 mod.on_setting_changed('vr_action_bind_communication_wheel')
 settings.vr_action_bind_push_to_talk=256
@@ -152,7 +160,8 @@ scope('HudElementInteraction','_update_interaction_input_text',function()
 end)
 bindings.sample(true,0,0,0,true,1,'shooting_range')
 scope('HudElementInteraction','_update_interaction_input_text',function()
-    assert(text('interact_inspect')=='[Unbound]' and text('interact')=='[RS\194\160Down]')
+    -- Since 17 October inspecting an operative is on the interact control.
+    assert(text('interact_inspect')=='[RS\194\160Down]' and text('interact')=='[RS\194\160Down]')
 end)
 settings.vr_hub_bind_x=nil
 mod.on_setting_changed('vr_hub_bind_x')

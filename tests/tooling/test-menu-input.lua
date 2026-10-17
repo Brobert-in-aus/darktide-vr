@@ -142,7 +142,7 @@ for _,extent in ipairs({{1536,864},{1920,1080},{2496,2688}}) do
     end
 end
 -- Exercise the real adapter seam, including the engine's null input service.
-local hook,legacy_hook,direct_hook,readiness_hook
+local hook,legacy_hook,direct_hook,readiness_hook,hold_hook
 local readiness_logs=0
 local consumed={primary=0,secondary=0,back=0,scroll=0}
 local presentation={mode=5,read_menu_pointer=function() return p end,
@@ -157,6 +157,7 @@ end, info=function(_,format)
 end, hook=function(_,class,name,fn)
     if class=='UIManager' then assert(name=='input_service'); hook=fn
     elseif class=='InputManager' then direct_hook=fn
+    elseif class=='InputHoldTracker' then assert(name=='update'); hold_hook=fn
     else legacy_hook=fn end
 end},presentation)
 Vector3=vector
@@ -545,7 +546,55 @@ do
     assert(not cancel_frame(21,false,true):get('cancel_matchmaking'),'the right trigger alone cancelled matchmaking')
     assert(cancel_frame(22,true,true):get('cancel_matchmaking'),'both triggers did not cancel matchmaking with no menu open')
     assert(not cancel_frame(23,true,true):get('cancel_matchmaking'),'a held chord cancelled twice')
-    print('menu_hotkey_buttons=pass key_alias_types release_required owner_quarantine pointer_independent cancel_matchmaking')
+
+    -- Votes: A yes, X no, with the system menu the top view and no popup;
+    -- nowhere else (the options view's X is its reset).
+    local vote_source={_actions={notification_option_a={key_alias='notification_option_a',type='pressed'},
+        notification_option_b={key_alias='notification_option_b',type='pressed'}},get=function() return false end}
+    local function vote(view_name,a,x)
+        local vote_state={}
+        menu.sample(vote_state,off_panel,60,'menu',1920,1080,{a=false,x=false})
+        local sample=menu.sample(vote_state,off_panel,61,'menu',1920,1080,{a=a,x=x})
+        sample.view_name=view_name
+        local p=menu.proxy(vote_source,null,sample,vector)
+        return p:get('notification_option_a'),p:get('notification_option_b')
+    end
+    local yes,no=vote('system_view',true,false); assert(yes and not no,'A did not vote yes in the system menu')
+    yes,no=vote('system_view',false,true); assert(no and not yes,'X did not vote no in the system menu')
+    yes,no=vote('options_view',true,true); assert(not yes and not no,'a vote answered outside the system menu')
+    yes,no=vote(nil,true,true); assert(not yes and not no,'a vote answered under a popup')
+    print('menu_hotkey_buttons=pass key_alias_types release_required owner_quarantine pointer_independent cancel_matchmaking votes')
+end
+
+-- Party invites: the UI manager's hold tracker kept its own View service,
+-- so the hold is answered on the tracker: Y and B in the hub, A with the
+-- system menu open elsewhere, and the tracker's service is put back after.
+do
+    local stock_service={get=function(_,action) return action=='other' and 'stock' or false end}
+    local tracker={_input_service_name='View',_input_service=stock_service}
+    local buttons,mode,system={},'hub',false
+    presentation.read_menu_buttons=function() return buttons end
+    presentation.current_game_mode_name=function() return mode end
+    local saved=Managers
+    Managers={ui={view_active=function(_,name) return name=='system_view' and system end}}
+    local function held()
+        local seen,other
+        hold_hook(function(self) seen=self._input_service:get('accept_invite_notification'); other=self._input_service:get('other') end,tracker)
+        assert(tracker._input_service==stock_service,'the tracker kept the VR service')
+        assert(other=='stock' or other==nil)
+        return seen
+    end
+    assert(not held(),'an invite accepted with nothing held')
+    buttons={y=true,b=false}; assert(not held(),'Y alone accepted an invite')
+    buttons={y=true,b=true}; assert(held(),'Y and B did not accept an invite in the hub')
+    mode='expedition'; assert(not held(),'Y and B accepted an invite in a mission')
+    buttons={a=true}; assert(not held(),'A accepted an invite with no menu open')
+    system=true; assert(held(),'A did not accept an invite with the system menu open')
+    tracker._input_service_name='Ingame'; assert(not held(),'another tracker was answered')
+    tracker._input_service_name='View'
+    assert(not pcall(hold_hook,function() error('tracker failed') end,tracker) and tracker._input_service==stock_service,
+        'a failed tracker update kept the VR service')
+    presentation.read_menu_buttons=nil; presentation.current_game_mode_name=nil; Managers=saved
 end
 
 -- A named character (the unattended runner's "start:<name>"): selected through

@@ -128,7 +128,18 @@ set has changed; the settings have only moved to where they belong.
   ability, X crouches, Y cycles carried items, A jumps and dodges, B is the
   blitz, clicking the left stick sprints, clicking the right stick tags,
   right stick up switches weapon and right stick down interacts and
-  reloads. Tutorial and HUD prompts show these badges.
+  reloads (and, in the Mourningstar, inspects another operative). Tutorial
+  and HUD prompts show these badges.
+- Hold the right stick click to open the communication wheel in a mission,
+  or the emote wheel in the Mourningstar; push the stick to choose and let
+  go to pick. A quick click still tags.
+- Tap the menu button for the menu; hold it for the tactical overlay
+  (mission details, contracts and the live event).
+- Cancel matchmaking: both triggers. Accept a party invite: hold Y and B
+  together in the Mourningstar, or open the menu and hold A in a mission.
+  Kick and level votes: open the menu, then A for yes or X for no. The end
+  of mission screen continues on A; holding A previews a group in the group
+  finder.
 - Firing follows the right hand. Aim stabilisation and the crosshair size are
   adjustable. "Cancel weapon sway (%)" removes the game's artificial weapon
   sway from your shots (0, the default, keeps it), so only your own hands'
