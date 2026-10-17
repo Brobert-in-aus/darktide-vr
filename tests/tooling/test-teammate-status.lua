@@ -134,4 +134,33 @@ fail_once()
 assert(before >= 20 and attempts == before,
     "a fault that fails every other frame is stopped by the total, not the run: " ..
     before .. " attempts")
-print('teammate_status=pass state_label angular_size bars clamps')
+-- Keep both (user, 17 October): the team panel is not hidden, and the game's
+-- own mission nameplate above a teammate is made transparent while the option
+-- is on, after its update (which sets it opaque), and left alone when off.
+do
+    local on, hooks, required = true, {}, {}
+    local hook_mod = {get = function() return on end, warning = function() end, info = function() end,
+        hook = function(_, target, name, fn) hooks[#hooks + 1] = {target = target, name = name, fn = fn} end,
+        hook_require = function(_, path, fn) required[path] = fn end}
+    local view = {mode = 1}
+    Status.install(hook_mod, view)
+    for _, h in ipairs(hooks) do
+        assert(h.target ~= "HudElementTeamPlayerPanel", "the team panel is hidden again")
+    end
+    local template = {update_function = function(_, _, widget) widget.alpha_multiplier = 1; return "stock" end}
+    local install = assert(required["scripts/ui/hud/elements/world_markers/templates/world_marker_template_nameplate_combat"],
+        "the mission nameplate template is not hooked")
+    install(template)
+    local hook = hooks[#hooks]
+    assert(hook.target == template and hook.name == "update_function")
+    local widget = {}
+    assert(hook.fn(template.update_function, nil, nil, widget) == "stock", "the stock result is kept")
+    assert(widget.alpha_multiplier == 0, "the stock nameplate still shows with the option on")
+    on = false
+    hook.fn(template.update_function, nil, nil, widget)
+    assert(widget.alpha_multiplier == 1, "the stock nameplate is hidden with the option off")
+    on, view.mode = true, 2
+    hook.fn(template.update_function, nil, nil, widget)
+    assert(widget.alpha_multiplier == 1, "the stock nameplate is hidden outside gameplay")
+end
+print('teammate_status=pass state_label angular_size bars clamps team_panel_kept stock_nameplate_hidden')

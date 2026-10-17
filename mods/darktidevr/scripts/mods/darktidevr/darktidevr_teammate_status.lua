@@ -1,8 +1,9 @@
 -- Teammate status (option "vr_teammate_status", default off; backlog,
 -- 15 September evening): each teammate's name, toughness and health bars,
--- and a disabled state (downed, netted, ...) float above their head instead
--- of the team panel, whose teammate panels are hidden while it is on (the
--- local player's own panel stays). Drawn on the hand overlay's panels
+-- and a disabled state (downed, netted, ...) float above their head. The
+-- team panel stays on the HUD (user, 17 October: keep both); the game's own
+-- name above each teammate is hidden while this is on, so the head does not
+-- carry two names. Drawn on the hand overlay's panels
 -- (darktidevr_hand_overlay), so they show through walls like stock
 -- nameplates, at a constant apparent size.
 local Status = {}
@@ -85,13 +86,23 @@ function Status.install(mod, presentation)
     local consecutive_failures, total_failures = 0, 0
     local function enabled() return mod.get and mod:get("vr_teammate_status") == true end
     api.enabled = enabled
-    -- The team panel's teammate panels, hidden while the status floats above
-    -- the teammates instead.
-    if mod.hook then
-        mod:hook("HudElementTeamPlayerPanel", "draw", function(func, self, ...)
-            if enabled() and presentation.mode == 1 then return end
-            return func(self, ...)
-        end)
+    -- The game's mission nameplate (world marker "nameplate_party") is made
+    -- transparent after its own update, which sets it opaque each frame it
+    -- draws; the team panel is left alone. The Mourningstar's nameplates are
+    -- other templates, and the status does not draw there.
+    function api.hides_stock_nameplate()
+        return enabled() and presentation.mode == 1
+    end
+    if mod.hook_require then
+        mod:hook_require("scripts/ui/hud/elements/world_markers/templates/world_marker_template_nameplate_combat",
+            function(template)
+                if type(template) ~= "table" or type(template.update_function) ~= "function" then return end
+                mod:hook(template, "update_function", function(func, parent, ui_renderer, widget, ...)
+                    local result = func(parent, ui_renderer, widget, ...)
+                    if widget and api.hides_stock_nameplate() then widget.alpha_multiplier = 0 end
+                    return result
+                end)
+            end)
     end
     local function field(read) local ok, value = pcall(read); return ok and value or nil end
     local function values_for(unit)

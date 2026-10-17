@@ -78,7 +78,7 @@ return {
     vr_wrist_display_scale_description = {en = "Resize the wrist display's bars and numbers. Updates while playing."},
     vr_wrist_display_description = {en = "Health, toughness and stamina bars with their numbers, always shown in your off-hand glove's cuff and drawn in front of everything. Not in the hub."},
     vr_teammate_status = {en = "Teammate status above teammates"},
-    vr_teammate_status_description = {en = "Each teammate's name, toughness and health bars float above their head, in front of everything and at a readable size at any distance, with DOWNED, NETTED and similar when they need help. Their panels in the team HUD are hidden while this is on; yours stays."},
+    vr_teammate_status_description = {en = "Each teammate's name, toughness and health bars float above their head, in front of everything and at a readable size at any distance, with DOWNED, NETTED and similar when they need help. The team panel stays on the HUD; the game's own name above each teammate is hidden while this is on."},
     vr_holster_counts = {en = "Holster labels"},
     vr_holster_counts_description = {en = "With Weapon hand holsters on, the item your hand is in shows its name above it."},
     vr_sight_ads = {en = "Aim down sights by raising the gun (experimental)"},
