@@ -4,6 +4,22 @@ All notable user-facing changes to Darktide VR. Versions follow
 `major.minor.patch` with a pre-release suffix while the mod is in alpha; the
 runtime package records the exact source revision alongside the version.
 
+## Unreleased
+
+Since 0.3.0-alpha.2.
+
+### Changed
+
+- `Darktide VR Mode.bat` recognises a Darktide executable it has never seen
+  by the two places it patches, so a game update no longer needs a mod
+  update before VR mode works again (the mod loader's toggle is still
+  needed after every update). Restoring such an executable needs the
+  pristine copy the batch file kept; without it, use Steam's "Verify
+  integrity of game files" or the Xbox app's Repair.
+- The Microsoft Store / Game Pass version of Darktide should now work: its
+  executable is recognised the same way, and its settings are read from
+  `Fatshark\MicrosoftStore\Darktide`. Launch it from the Xbox app. Untested.
+
 ## 0.3.0-alpha.2 (17 October 2026)
 
 Since 0.3.0-alpha.1. A compatibility release for the game's 1.13 update,

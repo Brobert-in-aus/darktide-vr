@@ -16027,8 +16027,24 @@ extern "C" __declspec(dllexport) int dtvr_backup_user_settings() {
                   static_cast<unsigned>(now.wYear), static_cast<unsigned>(now.wMonth),
                   static_cast<unsigned>(now.wDay), static_cast<unsigned>(now.wHour),
                   static_cast<unsigned>(now.wMinute), static_cast<unsigned>(now.wSecond));
+    // The Microsoft Store / Game Pass build keeps its files under
+    // Fatshark\MicrosoftStore\Darktide; its game folder is a GDK package,
+    // which carries MicrosoftGame.config beside binaries.
+    std::array<wchar_t, 32768> executable{};
+    const auto executable_length = GetModuleFileNameW(
+        nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+    std::error_code store_error;
+    const bool store_build =
+        executable_length > 0 && executable_length < executable.size() &&
+        std::filesystem::exists(
+            std::filesystem::path(std::wstring(executable.data(), executable_length))
+                    .parent_path().parent_path() / L"MicrosoftGame.config",
+            store_error);
+    const auto settings_directory =
+        store_build ? std::filesystem::path(roaming) / L"Fatshark" / L"MicrosoftStore" / L"Darktide"
+                    : std::filesystem::path(roaming) / L"Fatshark" / L"Darktide";
     return static_cast<int>(darktidevr::core::backup_settings(
-        std::filesystem::path(roaming) / L"Fatshark" / L"Darktide" / L"user_settings.config",
+        settings_directory / L"user_settings.config",
         std::filesystem::path(local) / L"DarktideVR" / L"settings-backups", stamp));
   } catch (...) {
     return static_cast<int>(SettingsBackupResult::failed);

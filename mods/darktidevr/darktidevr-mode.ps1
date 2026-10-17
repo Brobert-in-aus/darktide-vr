@@ -38,7 +38,11 @@ if (-not (Test-Path -LiteralPath $patchTool -PathType Leaf)) {
 # Separate settings per mode: the game keeps video, audio, input bindings and
 # the rest in one file, so the switch keeps one copy per mode and swaps them.
 # The first switch into a mode starts that mode's copy from the current file.
-$settingsDirectory = Join-Path $env:APPDATA 'Fatshark\Darktide'
+# The Microsoft Store / Game Pass build keeps them under
+# Fatshark\MicrosoftStore\Darktide; its game folder is a GDK package, which
+# carries MicrosoftGame.config beside binaries.
+$storeBuild = Test-Path -LiteralPath (Join-Path $GameRoot 'MicrosoftGame.config') -PathType Leaf
+$settingsDirectory = if ($storeBuild) { Join-Path $env:APPDATA 'Fatshark\MicrosoftStore\Darktide' } else { Join-Path $env:APPDATA 'Fatshark\Darktide' }
 $settingsPath = Join-Path $settingsDirectory 'user_settings.config'
 $profileDirectory = Join-Path $env:LOCALAPPDATA 'DarktideVR'
 $profileMarker = Join-Path $profileDirectory 'settings-profile.txt'
@@ -167,6 +171,7 @@ function Get-ProxyState {
 
 function Write-Status {
     Write-Output "game=$GameRoot"
+    Write-Output "store=$(if ($storeBuild) { 'microsoft' } else { 'steam' })"
     Write-Output "executable=$(Get-ExeState)"
     Write-Output "d3d12_proxy=$(Get-ProxyState)"
     Write-Output "load_order=$(Get-LoadOrderState)"
@@ -255,7 +260,7 @@ if ($Mode -eq 'vr') {
         Write-Output 'Load order: added.'
     }
     Switch-SettingsProfile 'vr'
-    Write-Output 'VR mode is on. Launch Darktide through Steam as usual.'
+    Write-Output "VR mode is on. Launch Darktide as usual$(if ($storeBuild) { ' from the Xbox app' } else { ' through Steam' })."
     Write-Status
     exit 0
 }

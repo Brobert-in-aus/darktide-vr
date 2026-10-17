@@ -78,7 +78,93 @@ function Resolve-Build([byte[]] $Bytes, [string] $Sha256) {
         }
         return @{ Build = $build; State = 'patched' }
     }
+    return Find-Build $Bytes $Sha256
+}
+
+# A build this table does not list -- the next weekly hotfix, or the
+# Microsoft Store / Game Pass executable, which is a different file from
+# Steam's -- is recognised by the patch sites themselves rather than by hash:
+# exactly one `cmp [rsi+0xd0], eax; jne +0x31` whose assertion call names
+# "Bad Skinner!" with the condition of line 376, and exactly one with that of
+# line 396, both original or both patched. The strings are followed through
+# the instructions' RIP-relative loads, so a match is the same two branches
+# that the listed builds patch, not merely similar bytes. Anything else is
+# no build: unsupported, as before.
+function Get-PeSections([byte[]] $Bytes) {
+    $pe = [BitConverter]::ToInt32($Bytes, 0x3c)
+    $count = [BitConverter]::ToUInt16($Bytes, $pe + 6)
+    $optional = [BitConverter]::ToUInt16($Bytes, $pe + 20)
+    $table = $pe + 24 + $optional
+    for ($i = 0; $i -lt $count; ++$i) {
+        $o = $table + $i * 40
+        [pscustomobject]@{
+            VirtualSize = [BitConverter]::ToUInt32($Bytes, $o + 8)
+            VirtualAddress = [BitConverter]::ToUInt32($Bytes, $o + 12)
+            RawSize = [BitConverter]::ToUInt32($Bytes, $o + 16)
+            RawOffset = [BitConverter]::ToUInt32($Bytes, $o + 20)
+        }
+    }
+}
+
+function Convert-RawToRva($Sections, [long] $Raw) {
+    foreach ($s in $Sections) {
+        if ($Raw -ge $s.RawOffset -and $Raw -lt $s.RawOffset + $s.RawSize) { return $Raw - $s.RawOffset + $s.VirtualAddress }
+    }
     return $null
+}
+
+function Convert-RvaToRaw($Sections, [long] $Rva) {
+    foreach ($s in $Sections) {
+        if ($Rva -ge $s.VirtualAddress -and $Rva -lt $s.VirtualAddress + [Math]::Max($s.VirtualSize, $s.RawSize)) { return $Rva - $s.VirtualAddress + $s.RawOffset }
+    }
+    return $null
+}
+
+# The NUL-terminated string a 7-byte `lea reg, [rip+disp32]` at $Raw loads.
+function Get-LeaString([byte[]] $Bytes, $Sections, [long] $Raw) {
+    $rva = Convert-RawToRva $Sections $Raw
+    if ($null -eq $rva) { return $null }
+    $target = Convert-RvaToRaw $Sections ($rva + 7 + [BitConverter]::ToInt32($Bytes, $Raw + 3))
+    if ($null -eq $target -or $target -lt 0 -or $target -ge $Bytes.Length) { return $null }
+    $end = [Array]::IndexOf($Bytes, [byte] 0, [int] $target)
+    if ($end -lt 0 -or $end - $target -gt 256) { return $null }
+    return [Text.Encoding]::ASCII.GetString($Bytes, $target, $end - $target)
+}
+
+function Find-Build([byte[]] $Bytes, [string] $Sha256) {
+    $conditions = @{ 376 = 'bones_buffer.last_frame_accessed != frame'
+                     396 = 'last_bones_buffer.last_frame_accessed != frame' }
+    try { $sections = @(Get-PeSections $Bytes) } catch { return $null }
+    # Latin-1 maps every byte to one character, so a regex index is a file offset.
+    $text = [Text.Encoding]::GetEncoding(28591).GetString($Bytes)
+    $pattern = '\x8b\x85\x00\x09\x00\x00\x39\x86\xd0\x00\x00\x00[\x75\xeb]\x31\x48\x8d\x05[\s\S]{4}\xb9[\s\S]{4}\x4c\x8d\x0d'
+    $found = @{}
+    foreach ($match in [regex]::Matches($text, $pattern)) {
+        $site = $match.Index + 12
+        # jne (2) and lea rax (7) precede `mov ecx, <line>`, whose immediate is at +10.
+        $line = [BitConverter]::ToInt32($Bytes, $site + 10)
+        if (-not $conditions.ContainsKey($line)) { continue }
+        if ((Get-LeaString $Bytes $sections ($site + 2)) -ne 'Bad Skinner!') { continue }
+        if ((Get-LeaString $Bytes $sections ($site + 14)) -ne $conditions[$line]) { continue }
+        if ($found.ContainsKey($line)) { return $null }
+        $found[$line] = $site
+    }
+    if ($found.Count -ne 2) { return $null }
+    $offsets = @($found[376], $found[396])
+    $values = @($offsets | ForEach-Object { $Bytes[$_] })
+    if (@($values | Where-Object { $_ -eq $originalByte }).Count -eq 2) {
+        $original = $Sha256
+        $state = 'original'
+    } elseif (@($values | Where-Object { $_ -eq $patchedByte }).Count -eq 2) {
+        $reversed = [byte[]] $Bytes.Clone()
+        foreach ($offset in $offsets) { $reversed[$offset] = $originalByte }
+        $original = Get-BytesSha256 $reversed
+        $state = 'patched'
+    } else {
+        throw 'Refusing a partially patched Darktide executable'
+    }
+    return @{ Build = @{ Name = "unlisted-$($original.Substring(0, 12))"; Sha256 = $original
+                         Offsets = $offsets; Unlisted = $true }; State = $state }
 }
 
 $gamePath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(
@@ -166,6 +252,12 @@ if ($resolved.State -ne 'patched') {
 # missing, or is an earlier build's, must not leave the game unrestorable.
 $backupMatches = (Test-Path -LiteralPath $backupPath -PathType Leaf) -and
     ((Get-FileHash -LiteralPath $backupPath -Algorithm SHA256).Hash.ToLowerInvariant() -eq $build.Sha256)
+# An unlisted build has no known hash to prove the reversal against; the copy
+# Apply kept is that proof. Without it the restore is refused, and the store's
+# own file check (Steam: Verify integrity; Xbox app: Repair) puts it back.
+if ($build.Unlisted -and -not $backupMatches) {
+    throw 'This executable was patched as a build the tool does not list, and the pristine copy that would prove the restore is missing or belongs to another build. Use Verify integrity of game files (Steam) or Repair (Xbox app) to restore Darktide.exe.'
+}
 if ($backupMatches) {
     Copy-Item -LiteralPath $backupPath -Destination $gamePath -Force
     Write-Output 'Restored pristine Darktide.exe from verified backup'
