@@ -22,6 +22,16 @@ Launch through Steam as usual. Reply under each heading; a word is enough.
   upload-flush hook found by searching); the loader re-patched, the build
   redeployed (deployment `970d6efe1cbd4c8ba1a16c45e7350925`, binaries match
   by hash) and the executable patched as 1.13.2. Ready for a second launch.
+- 17 October, second launch: "a bunch of errors, no VR". Mods loaded
+  (`is_modded = true`), but darktidevr_calibration.lua failed at load
+  (`attempt to index global 'calibration'`), and the main chunk's
+  `.install` on the failed module ended the mod's initialisation
+  (darktidevr.lua:15636). My eff0050 height fix had exported its helper
+  above the module table's declaration. Fixed in `d83fd8a` with a new test
+  (lua_use_before_local) that fails on that file; redeployed (deployment
+  `a587b7b22a2d4522b09f87481736aa67`), installed Lua matches the source.
+  Everything after the calibration module in the mod's start-up has still
+  not run on 1.13.2, so this third launch is the first real one.
 
 ## 1. Does it start in VR at all
 
