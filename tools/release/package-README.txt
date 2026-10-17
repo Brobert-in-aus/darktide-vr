@@ -19,7 +19,8 @@ Requirements
 Install
   1. Extract this archive into the Darktide game folder (the folder that
      contains "binaries", "bundle" and "mods"). Afterwards
-     mods\darktidevr must exist beside mods\dmf.
+     mods\darktidevr must exist beside mods\dmf. Extract it; do not run
+     the batch file from inside the zip, which only copies that one file.
   2. Run mods\darktidevr\"Darktide VR Mode.bat" and choose
      "1  VR mode". It patches two bytes of Darktide.exe (a pristine copy is
      kept under %LOCALAPPDATA%\DarktideVR), installs the d3d12 proxy and adds

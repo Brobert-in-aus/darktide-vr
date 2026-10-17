@@ -25,6 +25,9 @@ Since 0.3.0-alpha.2.
 
 ### Fixed
 
+- `Darktide VR Mode.bat` says what to do when it is run from inside the zip
+  (Windows copies only that one file and PowerShell reported a missing
+  script) or from a folder outside the game folder.
 - Cancel matchmaking works in the Mourningstar: both triggers. 0.3.0-alpha.2
   added it but it only answered while a menu was open.
 - The end screen continues on A instead of the right trigger. The trigger is
