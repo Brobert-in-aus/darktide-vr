@@ -28,6 +28,14 @@ native components are what is deployed for item 1, so a clean worn pass
 releases this archive as it is, apart from the dated headings (item 6).
 Items 1, 5 and 6 are the user's.
 
+**17 October, 13:05: published.** The user uploaded the candidate archive
+(`darktidevr-0.3.0-alpha.2-4efdd3369405.zip`, SHA-256 above, rechecked
+before the GitHub upload) to Nexus and ordered the GitHub release. The worn
+pass (item 1) and the fresh-install pass (item 5) were not reported before
+publication. The archive's own changelog reads "unreleased"; the dated
+headings are in the publication commit, not in the archive. Tag
+`v0.3.0-alpha.2` on `4efdd33`, the build commit.
+
 ## 1. Worn pass on the deployed build — open, the user's
 
 Deployed 17 October (deployment `f1ee05a0c296472086ccd752c7baa9e8`, head

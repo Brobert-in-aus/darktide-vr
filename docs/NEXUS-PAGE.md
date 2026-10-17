@@ -107,7 +107,7 @@ the Psykhanium and part of a mission.
 - Optional: Custom HUD (continued), for HUD layout editing (tested with
   2.1.6; the original Custom HUD is untested).
 
-## Changelog post: 0.3.0-alpha.2 (unreleased)
+## Changelog post: 0.3.0-alpha.2 (17 October 2026)
 
 Drafted 17 October from `CHANGELOG.md`'s 0.3.0-alpha.2 section.
 
