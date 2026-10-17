@@ -3,6 +3,7 @@ local function module(name)return dofile(root..'/darktidevr_'..name..'.lua')end
 local Wheel,Gesture,Context,Navigation=module('communication_wheel'),module('communication_gesture'),
     module('communication_context'),module('communication_navigation')
 local source
+emote_hooks={}
 if arg[2] then
     local file=assert(io.open(arg[2]..'/scripts/ui/hud/elements/smart_tagging/hud_element_smart_tagging.lua','r'))
     source=file:read('*a');file:close()
@@ -85,6 +86,7 @@ local function fixture(tag_tap)
         if self.selected then return {option={voice_event_data={voice_tag_concept='mock',voice_tag_id='mock'}}}end
     end
     local mod={hook=function(_,class,name,hook)
+        if class=='HudElementEmoteWheel' then emote_hooks[name]=hook;return end
         assert(class=='HudElementSmartTagging');local original=assert(Hud[name])
         Hud[name]=function(...)return hook(original,...)end
     end}
@@ -210,3 +212,32 @@ do
     g.input.blocked=true;tapped=true;g:update()
     assert(context.input_start_time==nil,'a blocked service must not see the tap')
 end
+
+-- The Mourningstar's emote wheel: the gesture's hold is its com_wheel, the
+-- held stick aims its cursor as a gamepad's would, and the release keeps the
+-- last aimed entry (no presentation pass on the neutral release sample).
+do
+    local g=fixture()
+    local emote={owner=g.owner,_parent={player_unit=function()return g.owner end}}
+    local stock={get=function(_,name)if name=='cursor' then return {1,1,0} end return false end}
+    local held_seen,cursor_seen,presented
+    local function handle()
+        assert(emote_hooks._handle_com_wheel(function(self,t,r,s,input)held_seen=input:get('com_wheel');return 'h' end,
+            emote,1,{}, {},stock)=='h')
+    end
+    local function present()
+        presented=false
+        emote_hooks._update_wheel_presentation(function(self,dt,t,r,s,input)presented=true;cursor_seen=input:get('cursor')end,
+            emote,0.1,1,{}, {},stock)
+    end
+    g:sample(false);g:sample(false)
+    handle();assert(held_seen==false,'the emote wheel opened with nothing held')
+    g:sample(true,0,1);handle();assert(held_seen==true,'the hold did not open the emote wheel')
+    present();assert(presented and math.abs(cursor_seen[1]-960)<1e-6 and math.abs(cursor_seen[2]-0)<1e-6,
+        'the stick did not aim the emote wheel')
+    -- Stock update order: the presentation pass, then the input handler.
+    g:sample(false);present();assert(not presented,'the neutral release replaced the aimed entry')
+    handle();assert(held_seen==false,'the release did not close the emote wheel')
+    g.eligible=false;g:sample(true,0,1);handle();assert(held_seen==false,'an ineligible owner drove the emote wheel')
+end
+

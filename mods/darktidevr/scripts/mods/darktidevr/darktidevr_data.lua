@@ -255,7 +255,10 @@ return {
                     {
                         setting_id = "vr_comms_gesture",
                         type = "checkbox",
-                        default_value = false,
+                        -- On by default since 17 October: push to talk has no
+                        -- free control, so without the gesture a default
+                        -- install cannot talk (worn-confirmed 17 September).
+                        default_value = true,
                     },
                     {
                         setting_id = "melee_preview_toggle",

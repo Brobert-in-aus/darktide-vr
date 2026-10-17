@@ -191,7 +191,9 @@ The world around you, "Push to talk with a hand at your mouth". Bring your off
 hand up in front of your mouth and hold it there for about half a second: your
 microphone opens, as if you were speaking into a vox bead, and closes when you
 take the hand away. It works alongside your push to talk binding rather than
-instead of it, and never while that hand is holding the gun.
+instead of it, and never while that hand is holding the gun. It is on by
+default for new installs, because push to talk has no button of its own;
+an earlier install keeps the setting it had.
 
 ### Item radial at your hand (experimental)
 

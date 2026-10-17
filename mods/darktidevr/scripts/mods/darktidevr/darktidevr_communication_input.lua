@@ -37,7 +37,13 @@ function Input.install(mod,presentation,observation,runtime)
     })
     local api={}
     function api.sample(handler,unit,input,enabled,physical,mode,world)
-        local held=bindings.physical_hold('communication_wheel',physical,mode)
+        -- The tag control is also the wheel, as the middle mouse button and a
+        -- gamepad's tag button are in stock play: held from the press, the
+        -- stock wheel opens after its own delay, and a tap stays a tag (and,
+        -- with nothing under the reticle, a location marker). The wheel had
+        -- no default control before 17 October and could not be opened.
+        local held=bindings.physical_hold('communication_wheel',physical,mode) or
+            bindings.physical_hold('tag',physical,mode)
         state.frame=state.frame+1
         if not same(state.owner,handler,unit,input,mode,world) then
             state.owner={handler=handler,unit=unit,input=input,mode=mode,world=world,

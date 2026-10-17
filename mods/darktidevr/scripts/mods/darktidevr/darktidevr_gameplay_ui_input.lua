@@ -12,8 +12,18 @@ local function usable(source)
     return ok and result==true
 end
 
-function Input.install(mod, local_player_unit)
+-- The menu control: a tap opens the system menu when it is let go, a hold
+-- shows the tactical overlay for as long as it is held (the gamepad's View and
+-- Start, on the one Quest menu button). The overlay never opened in VR before
+-- (17 October review): its action had no control.
+Input.MENU_HOLD_SECONDS = 0.35
+
+function Input.install(mod, local_player_unit, clock)
     local state = {sample=0}
+    clock = clock or function()
+        local time = Managers and Managers.time
+        return time and time:has_timer("main") and time:time("main") or os.clock()
+    end
     local api = {}
     local inventory_owner
     local tactical_owner
@@ -34,10 +44,25 @@ function Input.install(mod, local_player_unit)
     function api.sample(active, pressed, held)
         state.sample = state.sample + 1
         state.active = active == true
-        state.menu = state.active and bit.band(pressed or 0,1024) ~= 0
-        state.inventory = state.active and not state.menu and bit.band(pressed or 0,32768) ~= 0
-        state.tag = state.active and not state.menu and not state.inventory and bit.band(pressed or 0,256) ~= 0
-        state.tactical = state.active and not state.menu and not state.inventory and bit.band(held or 0,2097152) ~= 0
+        local menu_down = state.active and bit.band(held or 0,1024) ~= 0
+        local now = clock()
+        if menu_down and not state.menu_down then state.menu_since = now end
+        local overlay = menu_down and state.menu_since ~= nil and now - state.menu_since >= Input.MENU_HOLD_SECONDS
+        -- A tap, released before it became a hold: the menu, on the release.
+        state.menu = state.active and state.menu_down == true and not menu_down and not state.menu_overlay
+        state.menu_overlay = menu_down and (state.menu_overlay or overlay) or false
+        state.menu_down = menu_down
+        if not menu_down then state.menu_since = nil end
+        -- The menu control takes precedence while it is down, as the menu did
+        -- when it opened on the press.
+        local menu_busy = state.menu or menu_down
+        state.inventory = state.active and not menu_busy and bit.band(pressed or 0,32768) ~= 0
+        state.tag = state.active and not menu_busy and not state.inventory and bit.band(pressed or 0,256) ~= 0
+        state.tactical = state.active and not state.menu and not state.inventory and
+            (bit.band(held or 0,2097152) ~= 0 or state.menu_overlay)
+        -- The overlay's tab swap shares the interact control, as stock shares
+        -- E and the gamepad's X between them.
+        state.swap = state.tactical and bit.band(pressed or 0,8) ~= 0
         state.owner = (state.menu or state.inventory or state.tag or state.tactical) and current_owner() or nil
     end
 
@@ -46,9 +71,9 @@ function Input.install(mod, local_player_unit)
     end
     -- Stock re-fetches Ingame input inside update. Scope the existing central
     -- input-manager route; do not install a competing get_input_service hook.
-    mod:hook('HudElementTacticalOverlay','update',function(func,self,...)
+    local function tactical_scope(owner_test,func,self,...)
         local ok,local_hud=false,false
-        if state.active and state.tactical then ok,local_hud=pcall(local_tactical_owner,self) end
+        if state.active and state.tactical then ok,local_hud=pcall(owner_test,self) end
         if not tactical_owner and (not ok or not local_hud) then return func(self,...) end
         local previous=tactical_owner
         tactical_owner=ok and local_hud and {hud=self,sample=state.sample} or nil
@@ -57,6 +82,15 @@ function Input.install(mod, local_player_unit)
         tactical_owner=previous
         if not result[1] then error(result[2],0) end
         return unpack(result,2,result.n)
+    end
+    mod:hook('HudElementTacticalOverlay','update',function(func,self,...)
+        return tactical_scope(local_tactical_owner,func,self,...)
+    end)
+    -- The mission-buff choice reads the same hold to show its overlay. It is
+    -- a constant element, one per client, so the owner is the sampled local
+    -- player rather than a HUD's.
+    mod:hook('ConstantElementMissionBuffs','update',function(func,self,...)
+        return tactical_scope(request_owner_current,func,self,...)
     end)
     function api.route_ingame_input(source,name)
         if name~='Ingame' or not tactical_owner or not state.active or not state.tactical or
@@ -64,7 +98,8 @@ function Input.install(mod, local_player_unit)
         local scope_owner=tactical_owner
         return setmetatable({get=function(_,action,...)
             local value=source:get(action,...)
-            local inject=action=='tactical_overlay_hold' and tactical_owner==scope_owner and
+            local inject=(action=='tactical_overlay_hold' or (action=='tactical_overlay_swap' and state.swap)) and
+                tactical_owner==scope_owner and
                 state.sample==scope_owner.sample and state.active and state.tactical and request_owner_current()
             return inject and true or value
         end},{__index=function(_,key)

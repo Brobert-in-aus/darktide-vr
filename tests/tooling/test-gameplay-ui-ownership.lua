@@ -12,6 +12,7 @@ mod={get=function(_,key) return settings[key] end,info=function() end,
     end,
     hook=function(_,class,name,fn)
         if class=='ChatManager' then chat_hooks[name]=fn
+        elseif class=='HudElementEmoteWheel' then emote_hooks=emote_hooks or {};emote_hooks[name]=fn
         else assert(class=='HudElementSmartTagging');wheel_hooks[name]=fn end
     end}
 -- The input block times each sampler through the frame profiler; off, a

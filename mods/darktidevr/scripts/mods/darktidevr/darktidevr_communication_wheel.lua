@@ -158,6 +158,55 @@ function Wheel.install(mod,config)
         if scope_for(self) then cancel() end
         return func(self,...)
     end)
+
+    -- The Mourningstar's emote wheel reads the same com_wheel hold, through
+    -- its own HUD element, which had no VR route at all. It keeps its state
+    -- in its own fields, so the gesture's sample feeds it directly: the hold
+    -- opens and closes it, the right stick, which the gesture claims, aims it
+    -- as a gamepad's would, and letting go plays the hovered emote.
+    local function emote_sample(hud)
+        local sample=state.sample
+        if sample and current(hud) then return sample end
+    end
+    local function proxy_for(input,answer)
+        return setmetatable({get=function(_,name,...)
+            local value=answer(name)
+            if value~=nil then return value end
+            return input:get(name,...)
+        end},{__index=function(_,name)
+            local value=input[name]
+            if type(value)=='function' then return function(_,...)return value(input,...)end end
+            return value
+        end})
+    end
+    -- A wheel the hold opened stays the gesture's until stock closes it: the
+    -- release clears the gesture's sample, and the stock pass would otherwise
+    -- aim at the desktop mouse for the frame that picks the emote.
+    local driven=setmetatable({},{__mode='k'})
+    mod:hook('HudElementEmoteWheel','_handle_com_wheel',function(func,self,t,renderer,settings,input,...)
+        local sample=emote_sample(self)
+        local held=sample~=nil and sample.held==true
+        if not held and not driven[self] then return func(self,t,renderer,settings,input,...) end
+        if not usable(input) then driven[self]=nil;return func(self,t,renderer,settings,input,...) end
+        driven[self]=held or nil
+        return func(self,t,renderer,settings,proxy_for(input,function(name)
+            if name=='com_wheel' then return held end
+        end),...)
+    end)
+    mod:hook('HudElementEmoteWheel','_update_wheel_presentation',function(func,self,dt,t,renderer,settings,input,...)
+        local sample=emote_sample(self)
+        local held=sample~=nil and sample.held==true
+        if not held and not driven[self] then return func(self,dt,t,renderer,settings,input,...) end
+        if not usable(input) then return func(self,dt,t,renderer,settings,input,...) end
+        -- Keep the last aimed entry through the release, which reads neutral.
+        if not held then return end
+        local width,height=config.dimensions()
+        return func(self,dt,t,renderer,settings,proxy_for(input,function(name)
+            if name=='cursor' then
+                return config.vector(width*0.5+sample.x*width*0.5,height*0.5-sample.y*height*0.5,0)
+            end
+        end),...)
+    end)
     return api
 end
 return Wheel

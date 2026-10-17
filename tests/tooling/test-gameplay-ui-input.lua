@@ -7,21 +7,50 @@ local mod={hook=function(_,class,method,fn)
 end}
 local unit={}
 local retiring=false
-local api=dofile(arg[1]).install(mod,function()
+local now=0
+local Input=dofile(arg[1])
+local api=Input.install(mod,function()
     if retiring then error('player manager retired') end
     return unit
-end)
+end,function() return now end)
 local opened,blocked=0,false
 local manager={using_input=function() return blocked end,
     view_active=function(_,name) assert(name=='system_view'); return false end,
     open_view=function(_,name) assert(name=='system_view'); opened=opened+1 end}
-api.sample(true,1024); api.update_menu(manager); api.update_menu(manager)
+-- The menu control: a tap opens the menu on its release; a hold past
+-- MENU_HOLD_SECONDS shows the tactical overlay instead and opens nothing.
+local function tap() api.sample(true,1024,1024); now=now+0.1; api.sample(true,0,0) end
+api.sample(true,1024,1024); api.update_menu(manager); assert(opened==0,'the menu opened on the press, not the release')
+now=now+0.1; api.sample(true,0,0); api.update_menu(manager); api.update_menu(manager)
 assert(opened==1)
 blocked=true
-api.sample(true,1024); api.update_menu(manager)
+tap(); api.update_menu(manager)
 blocked=false; api.update_menu(manager)
 assert(opened==1,'Blocked menu request replayed later')
-api.sample(false,1024); api.update_menu(manager); assert(opened==1)
+api.sample(false,1024,1024); now=now+0.1; api.sample(false,0,0); api.update_menu(manager); assert(opened==1)
+do
+    local tactical_update
+    for name,fn in pairs(hooks) do if name=='HudElementTacticalOverlay.update' then tactical_update=fn end end
+    local overlay_hud={_parent={player_unit=function() return unit end}}
+    local ingame={get=function(_,action) return false end}
+    local seen_hold
+    local function overlay_frame()
+        seen_hold=nil
+        tactical_update(function()
+            seen_hold=api.route_ingame_input(ingame,'Ingame'):get('tactical_overlay_hold')
+        end,overlay_hud)
+        return seen_hold
+    end
+    api.sample(true,1024,1024)
+    assert(not overlay_frame(),'the overlay showed on a tap')
+    now=now+Input.MENU_HOLD_SECONDS+0.05; api.sample(true,0,1024)
+    assert(overlay_frame(),'holding the menu control did not show the overlay')
+    now=now+0.5; api.sample(true,0,1024); assert(overlay_frame(),'the overlay closed while still held')
+    now=now+0.1; api.sample(true,0,0); api.update_menu(manager)
+    assert(opened==1,'letting go of a hold opened the menu')
+    assert(not overlay_frame(),'the overlay stayed after the hold')
+    assert(hooks['ConstantElementMissionBuffs.update'],'the mission-buff choice does not see the overlay hold')
+end
 local null={get=function() return false end}; null.null_service=function() return null end
 local keyboard=false
 local source
@@ -48,7 +77,7 @@ api.sample(true,256)
 hook(stock,hud,3,{}, {},null); assert(not seen[#seen])
 hook(stock,hud,3,{}, {},source); assert(not seen[#seen],'Blocked edge returned within same frame')
 hook(stock,hud,4,{}, {},source); assert(not seen[#seen],'Blocked tag replayed')
-api.sample(true,1280) -- Opening a menu takes precedence over tagging.
+api.sample(true,1280,1024) -- The menu control, held, takes precedence over tagging.
 hook(stock,hud,5,{}, {},source); assert(not seen[#seen])
 keyboard=true
 api.sample(false,0)
@@ -94,7 +123,7 @@ local predicate_tag_null={get=function()return false end,is_null_service=functio
 hook(function(self,t,renderer,settings,input)
     assert(input==predicate_tag_null and not input:get('smart_tag'))
 end,hud,7.5,{}, {},predicate_tag_null)
-print('gameplay_ui_input=pass menu=semantic tag=stock_input inherited_edges=not_replayed')
+print('gameplay_ui_input=pass menu=tap_release overlay=hold tag=stock_input inherited_edges=not_replayed')
 
 local inventory_hook=assert(hooks['UIManager._update_view_hotkeys'])
 assert(not hooks['UIManager.input_service'],'Duplicate menu input hook')
@@ -132,8 +161,9 @@ inventory_keyboard=true
 api.sample(false,0)
 assert(inventory_hook(stock_hotkeys,ui),'Keyboard inventory suppressed')
 inventory_keyboard=false
-api.sample(true,32768+1024)
+api.sample(true,32768+1024,1024) -- the menu control held
 assert(not inventory_hook(stock_hotkeys,ui),'Inventory competed with menu')
+api.sample(true,0,0); api.sample(true,0,0) -- let go of the menu control (its tap is a menu request, not under test here)
 local retained_inventory
 api.sample(true,32768)
 inventory_hook(function(self)
@@ -262,7 +292,7 @@ end,hud)
 assert(not pcall(tactical,function()error('overlay update failed')end,hud))
 assert(api.route_ingame_input(overlay_source,'Ingame')==overlay_source, 'Failed update leaked scope')
 api.sample(true,0,0);assert(not tactical(overlay_stock,hud), 'Released overlay remained held')
-api.sample(true,1024,2097152);assert(not tactical(overlay_stock,hud), 'Menu did not take precedence')
+api.sample(true,1024,1024+2097152);api.sample(true,0,2097152);assert(not tactical(overlay_stock,hud), 'Menu did not take precedence')
 api.sample(false,0,2097152);assert(not tactical(overlay_stock,hud), 'Inactive input remained held')
 keyboard_overlay=true;assert(tactical(overlay_stock,hud), 'Keyboard overlay was suppressed')
 keyboard_overlay=false
