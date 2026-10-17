@@ -12,7 +12,21 @@ Each says what decides it and whether it is done.
 
 ## Progress
 
-(recorded here as items close)
+**17 October.** Items 2 and 3 done. Item 4 run as a release candidate ahead
+of the worn pass, to prove the pipeline on this branch: provenance recorded
+(`artifacts/packages/component-provenance-0.3.0-alpha.2.json`, 2
+components), package built and tested (`runtime_package=pass files=124`):
+
+    darktidevr-0.3.0-alpha.2-4efdd3369405.zip
+    9,430,291 bytes
+    SHA-256 4E7B66C4601A37BC5830CAEDF6F5E60677978F9DB62B4BBBD7C53E433FCE62DD
+    built from 4efdd3369405 (release_candidate, source_dirty=False)
+
+It carries the patch tool's three builds (1.12.5, 1.13.1, 1.13.2), 102 Lua
+files (the tracked count), and only the two shipped `bin` flags. Its Lua and
+native components are what is deployed for item 1, so a clean worn pass
+releases this archive as it is, apart from the dated headings (item 6).
+Items 1, 5 and 6 are the user's.
 
 ## 1. Worn pass on the deployed build — open, the user's
 
