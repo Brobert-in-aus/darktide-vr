@@ -94,7 +94,8 @@ local function fixture(tag_tap)
         current=function(owner)return owner==f.owner and f.eligible end,
         hud_owner=function(h,owner)return h.owner==owner end,
         dimensions=function()return 1920,1080 end,vector=function(x,y,z)return {x,y,z}end,defer=defer,
-        tag_tap=tag_tap})
+        tag_tap=tag_tap,emote_stick=function()return f.stick end,
+        emote_owner=function(h)return h.owner==f.owner end})
     f.api,f.hud,f.input=api,hud,input
     function f:sample(held,x,y)
         self.frame=self.frame+1;return api.sample(self.frame,self.owner,self.eligible,held,x or 0,y or 0)
@@ -213,9 +214,10 @@ do
     assert(context.input_start_time==nil,'a blocked service must not see the tap')
 end
 
--- The Mourningstar's emote wheel: the gesture's hold is its com_wheel, the
--- held stick aims its cursor as a gamepad's would, and the release keeps the
--- last aimed entry (no presentation pass on the neutral release sample).
+-- The Mourningstar's emote wheel, fed from the controller state (the stick
+-- click and the stick), not the gameplay input, which the open wheel itself
+-- switches off: a fresh click holds it, the stick aims it as a gamepad's
+-- would, the release closes it, and the gameplay gesture going away does not.
 do
     local g=fixture()
     local emote={owner=g.owner,_parent={player_unit=function()return g.owner end}}
@@ -230,14 +232,24 @@ do
         emote_hooks._update_wheel_presentation(function(self,dt,t,r,s,input)presented=true;cursor_seen=input:get('cursor')end,
             emote,0.1,1,{}, {},stock)
     end
-    g:sample(false);g:sample(false)
-    handle();assert(held_seen==false,'the emote wheel opened with nothing held')
-    g:sample(true,0,1);handle();assert(held_seen==true,'the hold did not open the emote wheel')
+    g.stick={click=true,x=0,y=0}
+    handle();assert(held_seen==false,'a click already held when the HUD appeared opened the wheel')
+    g.stick={click=false,x=0,y=0};handle()
+    g.stick={click=true,x=0,y=1};handle();assert(held_seen==true,'the click did not open the emote wheel')
+    -- The gameplay gesture is cancelled once the open wheel blocks gameplay
+    -- input; the wheel must not close with it.
+    g.eligible=false;g:sample(false)
     present();assert(presented and math.abs(cursor_seen[1]-960)<1e-6 and math.abs(cursor_seen[2]-0)<1e-6,
         'the stick did not aim the emote wheel')
-    -- Stock update order: the presentation pass, then the input handler.
-    g:sample(false);present();assert(not presented,'the neutral release replaced the aimed entry')
+    handle();assert(held_seen==true,'the emote wheel closed with the gameplay input')
+    -- Stock order on the release frame: the presentation, then the handler.
+    g.stick={click=false,x=0,y=1}
+    present();assert(presented,'the last aiming pass was skipped')
     handle();assert(held_seen==false,'the release did not close the emote wheel')
-    g.eligible=false;g:sample(true,0,1);handle();assert(held_seen==false,'an ineligible owner drove the emote wheel')
+    present();assert(presented and cursor_seen[1]==1,'a closed wheel kept the VR cursor')
+    -- Another player's HUD is never driven.
+    local other={owner={},_parent={player_unit=function()return {} end}}
+    g.stick={click=true,x=0,y=0}
+    emote_hooks._handle_com_wheel(function(self,t,r,s,input)held_seen=input:get('com_wheel')end,other,1,{}, {},stock)
+    assert(held_seen==false,'another HUD was driven')
 end
-

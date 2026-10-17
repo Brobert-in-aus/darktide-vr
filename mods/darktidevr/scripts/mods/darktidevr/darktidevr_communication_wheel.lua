@@ -160,14 +160,15 @@ function Wheel.install(mod,config)
     end)
 
     -- The Mourningstar's emote wheel reads the same com_wheel hold, through
-    -- its own HUD element, which had no VR route at all. It keeps its state
-    -- in its own fields, so the gesture's sample feeds it directly: the hold
-    -- opens and closes it, the right stick, which the gesture claims, aims it
-    -- as a gamepad's would, and letting go plays the hovered emote.
-    local function emote_sample(hud)
-        local sample=state.sample
-        if sample and current(hud) then return sample end
-    end
+    -- its own HUD element, which had no VR route at all. It is fed from the
+    -- controller state itself, not from the gameplay input: once the wheel
+    -- is open the HUD reports that it is using input, the game hands the
+    -- gameplay input a null service, and a hold carried by gameplay input
+    -- closed the wheel on the frame after it opened (17 October review).
+    -- The right stick click holds it (a fresh press: one already held when
+    -- the HUD appears does not count), the right stick aims it as a
+    -- gamepad's would, and letting go plays the aimed emote.
+    local emote_states=setmetatable({},{__mode='k'})
     local function proxy_for(input,answer)
         return setmetatable({get=function(_,name,...)
             local value=answer(name)
@@ -179,31 +180,43 @@ function Wheel.install(mod,config)
             return value
         end})
     end
-    -- A wheel the hold opened stays the gesture's until stock closes it: the
-    -- release clears the gesture's sample, and the stock pass would otherwise
-    -- aim at the desktop mouse for the frame that picks the emote.
-    local driven=setmetatable({},{__mode='k'})
+    local function emote_stick(hud)
+        if not config.emote_stick or not config.emote_owner then return nil end
+        local ok,owned=pcall(config.emote_owner,hud)
+        if not ok or not owned then return nil end
+        local read,stick=pcall(config.emote_stick)
+        return read and type(stick)=='table' and stick or nil
+    end
     mod:hook('HudElementEmoteWheel','_handle_com_wheel',function(func,self,t,renderer,settings,input,...)
-        local sample=emote_sample(self)
-        local held=sample~=nil and sample.held==true
-        if not held and not driven[self] then return func(self,t,renderer,settings,input,...) end
-        if not usable(input) then driven[self]=nil;return func(self,t,renderer,settings,input,...) end
-        driven[self]=held or nil
+        local state=emote_states[self]
+        if not state then state={armed=false,held=false};emote_states[self]=state end
+        local stick=emote_stick(self)
+        local down=stick~=nil and stick.click==true
+        local was=state.held
+        state.held=down and (was or state.armed)
+        if not down then state.armed=true elseif state.held then state.armed=false end
+        if not state.held and not was then return func(self,t,renderer,settings,input,...) end
+        if not usable(input) then state.held=false;return func(self,t,renderer,settings,input,...) end
+        local held=state.held
         return func(self,t,renderer,settings,proxy_for(input,function(name)
             if name=='com_wheel' then return held end
         end),...)
     end)
     mod:hook('HudElementEmoteWheel','_update_wheel_presentation',function(func,self,dt,t,renderer,settings,input,...)
-        local sample=emote_sample(self)
-        local held=sample~=nil and sample.held==true
-        if not held and not driven[self] then return func(self,dt,t,renderer,settings,input,...) end
-        if not usable(input) then return func(self,dt,t,renderer,settings,input,...) end
-        -- Keep the last aimed entry through the release, which reads neutral.
-        if not held then return end
+        local state=emote_states[self]
+        if not state or not state.held then
+            -- The release frame (stock runs this pass before its input
+            -- handler) keeps the aimed entry rather than the desktop mouse.
+            if state and state.armed==false then return end
+            return func(self,dt,t,renderer,settings,input,...)
+        end
+        local stick=emote_stick(self)
+        if not stick then return end
         local width,height=config.dimensions()
+        local x,y=tonumber(stick.x) or 0,tonumber(stick.y) or 0
         return func(self,dt,t,renderer,settings,proxy_for(input,function(name)
             if name=='cursor' then
-                return config.vector(width*0.5+sample.x*width*0.5,height*0.5-sample.y*height*0.5,0)
+                return config.vector(width*0.5+x*width*0.5,height*0.5-y*height*0.5,0)
             end
         end),...)
     end)

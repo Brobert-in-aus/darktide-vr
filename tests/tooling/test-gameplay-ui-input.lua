@@ -9,10 +9,11 @@ local unit={}
 local retiring=false
 local now=0
 local Input=dofile(arg[1])
+local menu_button=false
 local api=Input.install(mod,function()
     if retiring then error('player manager retired') end
     return unit
-end,function() return now end)
+end,function() return now end,function() return menu_button end)
 local opened,blocked=0,false
 local manager={using_input=function() return blocked end,
     view_active=function(_,name) assert(name=='system_view'); return false end,
@@ -49,7 +50,20 @@ do
     now=now+0.1; api.sample(true,0,0); api.update_menu(manager)
     assert(opened==1,'letting go of a hold opened the menu')
     assert(not overlay_frame(),'the overlay stayed after the hold')
-    assert(hooks['ConstantElementMissionBuffs.update'],'the mission-buff choice does not see the overlay hold')
+    -- The mission-buff choice: gameplay input is off while it is open, so
+    -- the hold is the menu button itself, read from the controller state.
+    local buffs=hooks['ConstantElementMissionBuffs.update']
+    assert(buffs,'the mission-buff choice does not see the overlay hold')
+    local function buff_frame()
+        local seen
+        buffs(function() seen=api.route_ingame_input(ingame,'Ingame'):get('tactical_overlay_hold') end,{})
+        return seen
+    end
+    api.sample(false,0,0)
+    menu_button=true; assert(not buff_frame(),'the buff overlay showed on a tap')
+    now=now+Input.MENU_HOLD_SECONDS+0.05; assert(buff_frame(),'holding the menu button did not show the buff overlay')
+    assert(not api.route_ingame_input(ingame,'Ingame'):get('tactical_overlay_hold'),'the buff overlay leaked outside its element')
+    menu_button=false; assert(not buff_frame(),'the buff overlay stayed after the release')
 end
 local null={get=function() return false end}; null.null_service=function() return null end
 local keyboard=false

@@ -34,6 +34,14 @@ function Input.install(mod,presentation,observation,runtime)
             local ui=presentation.gameplay_ui
             return ui~=nil and ui.tag_tap_frame~=nil and ui.tag_tap_frame(hud,t)==true
         end,
+        -- The emote wheel: the right controller's stick click and stick, read
+        -- from the controller state, and the local player's own HUD.
+        emote_stick=function()return presentation.read_emote_stick and presentation.read_emote_stick() end,
+        emote_owner=function(hud)
+            local player=Managers and Managers.player and Managers.player:local_player(1)
+            return player~=nil and hud._parent~=nil and hud._parent:player_unit()==player.player_unit and
+                player.player_unit~=nil and not presentation.controllers_disabled()
+        end,
     })
     local api={}
     function api.sample(handler,unit,input,enabled,physical,mode,world)

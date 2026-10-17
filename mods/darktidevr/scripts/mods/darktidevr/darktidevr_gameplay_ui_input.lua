@@ -18,7 +18,7 @@ end
 -- (17 October review): its action had no control.
 Input.MENU_HOLD_SECONDS = 0.35
 
-function Input.install(mod, local_player_unit, clock)
+function Input.install(mod, local_player_unit, clock, read_menu_button)
     local state = {sample=0}
     clock = clock or function()
         local time = Managers and Managers.time
@@ -86,13 +86,39 @@ function Input.install(mod, local_player_unit, clock)
     mod:hook('HudElementTacticalOverlay','update',function(func,self,...)
         return tactical_scope(local_tactical_owner,func,self,...)
     end)
-    -- The mission-buff choice reads the same hold to show its overlay. It is
-    -- a constant element, one per client, so the owner is the sampled local
-    -- player rather than a HUD's.
+    -- The mission-buff choice reads the same hold to show the overlay behind
+    -- it. While a choice is open the game hands gameplay a null input and the
+    -- mod a menu mode, so the gameplay sample above is never active there
+    -- (17 October review: the scope was a no-op). The menu button is read
+    -- from the controller state instead and timed here.
+    local buff_scope, buff_since
     mod:hook('ConstantElementMissionBuffs','update',function(func,self,...)
-        return tactical_scope(request_owner_current,func,self,...)
+        local ok,down=false,false
+        if read_menu_button then ok,down=pcall(read_menu_button) end
+        local now=clock()
+        if ok and down==true then buff_since=buff_since or now else buff_since=nil end
+        local hold=buff_since~=nil and now-buff_since>=Input.MENU_HOLD_SECONDS
+        if not hold and not buff_scope then return func(self,...) end
+        local previous=buff_scope
+        buff_scope=hold and {element=self} or nil
+        local function pack(...) return {n=select('#',...),...} end
+        local result=pack(pcall(func,self,...))
+        buff_scope=previous
+        if not result[1] then error(result[2],0) end
+        return unpack(result,2,result.n)
     end)
     function api.route_ingame_input(source,name)
+        if name=='Ingame' and buff_scope and usable(source) then
+            local scope=buff_scope
+            return setmetatable({get=function(_,action,...)
+                if action=='tactical_overlay_hold' and buff_scope==scope then return true end
+                return source:get(action,...)
+            end},{__index=function(_,key)
+                local value=source[key]
+                if type(value)=='function' then return function(_,...)return value(source,...)end end
+                return value
+            end})
+        end
         if name~='Ingame' or not tactical_owner or not state.active or not state.tactical or
             not request_owner_current() or not usable(source) then return source end
         local scope_owner=tactical_owner

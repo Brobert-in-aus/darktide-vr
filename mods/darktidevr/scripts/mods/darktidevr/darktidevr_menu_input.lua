@@ -418,21 +418,25 @@ function MenuInput.install(mod, presentation)
     -- together (neither does anything there); in a mission, where both are
     -- gameplay, to A held with the system menu open. The tracker times the
     -- hold itself (one second).
-    function MenuInput.invite_hold(buttons, hub, system_menu)
+    -- In the Mourningstar only with no menu open: there Y and B are menu
+    -- buttons (Y the special hotkey, B back) and would act first.
+    function MenuInput.invite_hold(buttons, hub, system_menu, any_view)
         if type(buttons) ~= "table" then return false end
-        if hub then return buttons.y == true and buttons.b == true end
+        if hub then return not any_view and buttons.y == true and buttons.b == true end
         return system_menu == true and buttons.a == true
     end
     mod:hook("InputHoldTracker", "update", function(func, self, ...)
         local source = self._input_service
-        if self._input_service_name ~= "View" or not source or not presentation.read_menu_buttons then
+        -- Nothing tracked, which is almost always: no controller read.
+        if self._input_service_name ~= "View" or not source or not presentation.read_menu_buttons or
+                type(self._tracked_actions) ~= "table" or next(self._tracked_actions) == nil then
             return func(self, ...)
         end
         local ok, accept = pcall(function()
             local ui = Managers and Managers.ui
             return MenuInput.invite_hold(presentation.read_menu_buttons(),
                 presentation.current_game_mode_name and presentation.current_game_mode_name() == "hub",
-                ui ~= nil and ui:view_active("system_view"))
+                ui ~= nil and ui:view_active("system_view"), ui ~= nil and ui:has_active_view())
         end)
         if not ok or not accept then return func(self, ...) end
         self._input_service = setmetatable({get = function(_, action, ...)

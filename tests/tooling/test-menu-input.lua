@@ -571,12 +571,13 @@ end
 -- system menu open elsewhere, and the tracker's service is put back after.
 do
     local stock_service={get=function(_,action) return action=='other' and 'stock' or false end}
-    local tracker={_input_service_name='View',_input_service=stock_service}
-    local buttons,mode,system={},'hub',false
+    local tracker={_input_service_name='View',_input_service=stock_service,_tracked_actions={{action_name='accept_invite_notification'}}}
+    local buttons,mode,system,any_view={},'hub',false,false
     presentation.read_menu_buttons=function() return buttons end
     presentation.current_game_mode_name=function() return mode end
     local saved=Managers
-    Managers={ui={view_active=function(_,name) return name=='system_view' and system end}}
+    Managers={ui={view_active=function(_,name) return name=='system_view' and system end,
+        has_active_view=function() return any_view end}}
     local function held()
         local seen,other
         hold_hook(function(self) seen=self._input_service:get('accept_invite_notification'); other=self._input_service:get('other') end,tracker)
@@ -587,6 +588,10 @@ do
     assert(not held(),'an invite accepted with nothing held')
     buttons={y=true,b=false}; assert(not held(),'Y alone accepted an invite')
     buttons={y=true,b=true}; assert(held(),'Y and B did not accept an invite in the hub')
+    any_view=true; assert(not held(),'Y and B accepted an invite with a hub menu open')
+    any_view=false
+    tracker._tracked_actions={}; assert(not held(),'the tracker was answered with nothing tracked')
+    tracker._tracked_actions={{action_name='accept_invite_notification'}}
     mode='expedition'; assert(not held(),'Y and B accepted an invite in a mission')
     buttons={a=true}; assert(not held(),'A accepted an invite with no menu open')
     system=true; assert(held(),'A did not accept an invite with the system menu open')

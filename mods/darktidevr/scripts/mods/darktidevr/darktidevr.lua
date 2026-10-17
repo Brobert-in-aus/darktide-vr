@@ -15748,6 +15748,13 @@ presentation.gameplay_ui = mod:io_dofile(
 ).install(mod, function()
     local player = Managers and Managers.player and Managers.player:local_player(1)
     return player and player.player_unit
+end, nil, function()
+    -- The left controller's menu button (controller_menu, bit 3), from the
+    -- controller state, for the mission-buff choice's overlay hold.
+    local read = presentation.read_controller_triggers
+    if not read or presentation.controllers_disabled() then return false end
+    local ok, _, _, left_buttons = pcall(read)
+    return ok and left_buttons ~= nil and bit.band(left_buttons, 8) ~= 0
 end)
 
 presentation.controller_aim = mod:io_dofile(
@@ -15899,6 +15906,16 @@ do
             tonumber(controller_observation.buttons[1]) or 0
     end
     presentation.read_controller_triggers = read_triggers
+    -- The right controller's stick click (controller_stick_click, bit 2) and
+    -- stick, for the emote wheel, which must keep reading them while the HUD
+    -- holds the gameplay input (darktidevr_communication_wheel.lua).
+    function presentation.read_emote_stick()
+        local ok, _, right, _, right_buttons = pcall(read_triggers)
+        if not ok or not right then return nil end
+        return {click = bit.band(right_buttons, 4) ~= 0,
+            x = tonumber(controller_observation.values[34]) or 0,
+            y = tonumber(controller_observation.values[35]) or 0}
+    end
     -- The controller buttons a menu hotkey can answer to
     -- (darktidevr_menu_input.lua, MenuInput.menu_buttons).
     function presentation.read_menu_buttons()
