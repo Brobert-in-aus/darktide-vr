@@ -35,7 +35,10 @@ $builds = @(
        Offsets = @(0x7a7586, 0x7a7682) },
     @{ Name = '1.13.1'
        Sha256 = '28b843bc2905faaa0f27329d68e5de989df908f2552d80bf2b3c79b86e259775'
-       Offsets = @(0x7c89c6, 0x7c8ac2) }
+       Offsets = @(0x7c89c6, 0x7c8ac2) },
+    @{ Name = '1.13.2'
+       Sha256 = 'a7131fecade52ad4758eb7c7fa26986aa2c32edd545cb50cc61585ebfb4f9deb'
+       Offsets = @(0x7c8ee6, 0x7c8fe2) }
 )
 $originalByte = [byte] 0x75
 $patchedByte = [byte] 0xeb
