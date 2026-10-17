@@ -1,5 +1,6 @@
 # Nexus Mods page text (12 September 2026; the feature list and the notes
-# below updated 19 September for 0.3.0-alpha.1)
+# below updated 19 September for 0.3.0-alpha.1, and 17 October for
+# 0.3.0-alpha.2)
 
 Paste-ready sections for the Nexus page. Keep the claims in step with
 USER-GUIDE.md; anything not listed under "What works" has not been checked
@@ -105,6 +106,30 @@ the Psykhanium and part of a mission.
   it at the native frame rate; other GPUs untested).
 - Optional: Custom HUD (continued), for HUD layout editing (tested with
   2.1.6; the original Custom HUD is untested).
+
+## Changelog post: 0.3.0-alpha.2 (unreleased)
+
+Drafted 17 October from `CHANGELOG.md`'s 0.3.0-alpha.2 section.
+
+**Game update:** Darktide 1.13 (1.13.1 and the 7 October 1.13.2) is
+supported. After updating, run the mod loader's toggle first (every game
+update switches mods off), then `Darktide VR Mode.bat`, and choose VR mode.
+Your calibrated height reaches your character again; the new live-event
+screen can be clicked; the end screen's and inventory's new buttons show a
+controller prompt; zealot throwing knives leave from your hand; tutorial
+hints follow a remapped control.
+
+**Changed:** teammate status above teammates (experimental) keeps the team
+panel on the HUD and hides the game's own name above each teammate instead.
+
+**Fixed:** the batch file no longer stops with an error on a game build it
+does not know, so Flat mode always works; switching modes no longer saves a
+damaged settings file over your stored settings; crouching moves your view
+down again; cancel matchmaking works in VR (both triggers); the first load
+into the Mourningstar after a game update stalls less, a stall that could
+end in a server disconnect (error 2021); the viewer no longer closes when the
+headset is set down still tracked; servo skull faults are forgiven at the
+next level; less work every frame.
 
 ## Changelog post: 0.3.0-alpha.1 (19 September 2026)
 
@@ -226,8 +251,9 @@ For the Nexus changelog and the Posts tab. Matches CHANGELOG.md.
    Darktide through Steam, press Play.
 
 To play flat, run the batch file and choose Flat mode. After a game update,
-run it again and choose VR mode (if the executable is not recognised, wait
-for a mod update). After a mod update, extract the new archive over the old
+run the mod loader's toggle (game updates switch mods off), then the batch
+file, and choose VR mode (if the executable is not recognised, wait for a
+mod update; Flat mode still works). After a mod update, extract the new archive over the old
 one and choose VR mode again.
 
 ## Permissions and licence

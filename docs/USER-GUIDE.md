@@ -68,7 +68,9 @@ To play flat again, run the batch file and choose **2, Flat mode**. It
 restores the original executable, removes the proxy and takes the mod out of
 the load order. The mod folder and your other mods stay where they are.
 
-After Steam updates the game, run the batch file again and choose VR mode.
+After Steam updates the game, run the mod loader's `toggle_darktide_mods.bat`
+first (a game update switches mods off), then the batch file, and choose VR
+mode.
 After a mod update, extract the new archive over the old one and do the
 same; the switch replaces the earlier proxy and keeps your settings.
 If it says the build is not supported yet, the executable changed and the
@@ -242,8 +244,8 @@ also dims the edges of your view and tightens the crosshair while you aim.
   "Wrist display size (%)" resizes it while playing. Not shown in the hub.
 - "Teammate status above teammates": each teammate's name, toughness and
   health float above their head at a readable size at any distance, with
-  DOWNED, NETTED and similar when they need help. Their panels in the team HUD
-  are hidden while it is on; yours stays.
+  DOWNED, NETTED and similar when they need help. The team panel stays on the
+  HUD; the game's own name above each teammate is hidden while it is on.
 
 ### Two-hand support (experimental)
 

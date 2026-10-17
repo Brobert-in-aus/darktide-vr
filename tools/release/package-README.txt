@@ -31,8 +31,10 @@ Play flat again
   order. Your other mods are untouched.
 
 After a game update
-  Steam replaces Darktide.exe. Run the batch file again and choose VR mode.
-  If it reports that the build is not supported yet, wait for a mod update.
+  Steam replaces Darktide.exe and switches the mod loader off. Run the mod
+  loader's toggle_darktide_mods.bat, then this batch file, and choose VR
+  mode. If it reports that the build is not supported yet, wait for a mod
+  update; Flat mode still works.
 
 After a mod update
   Extract the new archive over the old one, then run the batch file and
