@@ -39,6 +39,15 @@ with a few small fixes.
   switching the skull features off until the game restarts, and a skull
   whose throw is interrupted (a menu opening, the option switched off) is
   put back as it was.
+- Crouching moves your view down again. The view sat at your calibrated
+  standing height whatever the character did; it now follows the game's
+  crouch, slide and knocked-down heights in proportion.
+- Cancel matchmaking works in the Mourningstar: pull both triggers, as on a
+  gamepad. It had no controller binding in VR.
+- The first load into the Mourningstar after a game update no longer
+  stalls as long: the mod was writing every new shader the game compiled to
+  disk, a diagnostic left switched on. That stall was long enough for the
+  server to disconnect you (error 2021).
 - Less work every frame: the pass that decides which parts of your character
   are drawn was running every frame instead of once a second.
 

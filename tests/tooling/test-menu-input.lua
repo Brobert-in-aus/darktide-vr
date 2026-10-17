@@ -502,7 +502,20 @@ do
     s=frame(8,nil,'other_view')
     assert(not s.override,'no buttons and no pointer keep the stock service')
     assert(menu.menu_buttons.hotkey_menu_special_1=='y' and menu.menu_buttons.hotkey_menu_special_2=='x')
-    print('menu_hotkey_buttons=pass key_alias_types release_required owner_quarantine pointer_independent')
+    -- Cancelling matchmaking: the game reads it from the View service in the
+    -- Mourningstar with no menu open, on the gamepad's both-triggers chord.
+    local cancel_state={}
+    local cancel_source={_actions={cancel_matchmaking={key_alias='cancel_matchmaking',type='pressed'}},
+        get=function() return false end}
+    local function cancel_frame(n,lt_rt,rt)
+        local b={y=false,x=false,a=false,rt=rt,both_triggers=lt_rt}
+        return menu.proxy(cancel_source,null,menu.sample(cancel_state,off_panel,n,nil,1920,1080,b),vector)
+    end
+    cancel_frame(20,false,false)
+    assert(not cancel_frame(21,false,true):get('cancel_matchmaking'),'the right trigger alone cancelled matchmaking')
+    assert(cancel_frame(22,true,true):get('cancel_matchmaking'),'both triggers did not cancel matchmaking with no menu open')
+    assert(not cancel_frame(23,true,true):get('cancel_matchmaking'),'a held chord cancelled twice')
+    print('menu_hotkey_buttons=pass key_alias_types release_required owner_quarantine pointer_independent cancel_matchmaking')
 end
 
 -- A named character (the unattended runner's "start:<name>"): selected through

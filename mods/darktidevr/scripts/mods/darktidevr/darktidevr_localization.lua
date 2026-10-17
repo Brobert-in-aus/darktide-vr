@@ -118,6 +118,7 @@ return {
     vr_turn_speed_description = {en = "Speed at full right-stick deflection. Partial deflection turns more slowly. Only applies to smooth turning."},
     vr_prompt_right_trigger = {en = "RT"},
     vr_prompt_left_trigger = {en = "LT"},
+    vr_prompt_both_triggers = {en = "LT+RT"},
     vr_prompt_right_grip = {en = "R Grip"},
     vr_prompt_left_grip = {en = "L Grip"},
     vr_prompt_x = {en = "X"},

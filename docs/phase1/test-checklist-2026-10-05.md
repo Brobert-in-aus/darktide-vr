@@ -32,6 +32,19 @@ Launch through Steam as usual. Reply under each heading; a word is enough.
   `a587b7b22a2d4522b09f87481736aa67`), installed Lua matches the source.
   Everything after the calibration module in the mod's start-up has still
   not run on 1.13.2, so this third launch is the first real one.
+- 17 October, third launch: in VR. (a) First load into the Mourningstar:
+  disconnected, error 2021; the second attempt loaded. The log shows main
+  thread stalls of 1.1, 4.8 and 10.2 s (RI::wait_for_fence) while the hub
+  loaded, then remote_aborted: the game was rebuilding pipelines after the
+  update (PSO fail rate 775/4615) and the proxy was writing every new
+  shader to disk (1,269 blended and 651 billboard dumps that day), an
+  ungated diagnostic. Dumps now gated. (b) Crouch no longer moved the
+  camera: the camera height was pinned at the calibrated standing height;
+  it now takes the game's height fraction. (c) Cancel matchmaking unbound:
+  never had a VR answer; now both triggers, the gamepad's chord. (d) Ally
+  status above heads: the experimental "Teammate status above teammates"
+  option is on in this profile (default off); turning it off puts the team
+  panels back.
 
 ## 1. Does it start in VR at all
 

@@ -78,6 +78,7 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
         -- Menu hotkeys on fixed controller buttons (MenuInput.menu_buttons).
         hotkey_menu_special_1="vr_prompt_y", hotkey_menu_special_2="vr_prompt_x",
         continue_end_view="vr_prompt_right_trigger", social_show_list="vr_prompt_a",
+        cancel_matchmaking="vr_prompt_both_triggers",
         confirm_pressed="vr_menu_point_select", left_pressed="vr_menu_point_select",
         left_released="vr_menu_point_select", left_hold="vr_menu_point_select",
         continue="vr_menu_point_select", confirm="vr_menu_point_select",

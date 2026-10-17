@@ -42,8 +42,11 @@ end
 -- trigger, and Space on the social list is A. B stays back and the triggers
 -- stay pointer clicks. Overlap with gameplay bindings does not matter in a
 -- menu. darktidevr_controller_prompts.lua labels the same buttons.
+-- Cancelling matchmaking is both triggers together, the gamepad's own chord:
+-- the game reads it from the View service with no menu open, in the
+-- Mourningstar, where it never had a VR answer.
 MenuInput.menu_buttons = {hotkey_menu_special_1 = "y", hotkey_menu_special_2 = "x",
-    continue_end_view = "rt", social_show_list = "a"}
+    continue_end_view = "rt", social_show_list = "a", cancel_matchmaking = "both_triggers"}
 
 -- Per-button edges for one UI frame. A button held when the owner changes
 -- must be released before it presses.

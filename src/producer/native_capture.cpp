@@ -4516,8 +4516,26 @@ void dump_cluster_graphics_shaders_if_target(
   write_shader(L"ps", kClusterLightRasterPixelShader, pixel_shader);
 }
 
+// The shader dumps (vertex, billboard pixel, blended pixel) are diagnostics,
+// asked for by darktidevr_vertex_shader_dump or DARKTIDEVR_DUMP_VERTEX_SHADERS.
+bool shader_dumps_requested() {
+  if (vertex_shader_dump_requested.load(std::memory_order_relaxed)) return true;
+  wchar_t enabled[2]{};
+  return GetEnvironmentVariableW(L"DARKTIDEVR_DUMP_VERTEX_SHADERS", enabled,
+                                 static_cast<DWORD>(std::size(enabled))) == 1 &&
+         enabled[0] == L'1';
+}
+
 void dump_billboard_pixel_shader(const D3D12_SHADER_BYTECODE& vertex_shader,
                                  const D3D12_SHADER_BYTECODE& pixel_shader) {
+  // Diagnostics only, like the vertex-shader dump. Ungated, every new
+  // pipeline wrote a file under the mutex the substitution's own PSO path
+  // takes: after the 1.13.2 update, about 1,900 files on the first load into
+  // the Mourningstar, inside a 17 s main-thread stall that the server
+  // answered with a disconnect (17 October).
+  if (!shader_dumps_requested()) {
+    return;
+  }
   if (!pixel_shader.pShaderBytecode || pixel_shader.BytecodeLength == 0) {
     return;
   }
@@ -4560,6 +4578,14 @@ void dump_billboard_pixel_shader(const D3D12_SHADER_BYTECODE& vertex_shader,
 }
 
 void dump_blended_pixel_shader(const D3D12_SHADER_BYTECODE& pixel_shader) {
+  // Diagnostics only, like the vertex-shader dump. Ungated, every new
+  // pipeline wrote a file under the mutex the substitution's own PSO path
+  // takes: after the 1.13.2 update, about 1,900 files on the first load into
+  // the Mourningstar, inside a 17 s main-thread stall that the server
+  // answered with a disconnect (17 October).
+  if (!shader_dumps_requested()) {
+    return;
+  }
   if (!pixel_shader.pShaderBytecode || pixel_shader.BytecodeLength == 0) {
     return;
   }

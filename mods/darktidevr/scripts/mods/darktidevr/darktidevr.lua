@@ -5146,9 +5146,24 @@ function presentation.calibrated_eye_height()
     if height and height >= 0.8 and height <= 2.4 then return height end
     return nil
 end
+-- The game's own height changes still apply on top: crouching, sliding,
+-- peeking and being knocked down lower the character's first-person point
+-- (its extrapolated height against its standing one), and the calibrated
+-- height is scaled by the same fraction. Pinned to the standing height alone,
+-- the crouch button stopped moving the camera (worn, 17 October).
+function presentation.game_height_fraction(unit)
+    local first_person = ScriptUnit.has_extension(unit, "first_person_system")
+    local standing = first_person and first_person._heights and
+        tonumber(first_person._heights.default)
+    local current = first_person and first_person.extrapolated_character_height and
+        tonumber(first_person:extrapolated_character_height())
+    if not standing or standing <= 0 or not current or current <= 0 then return 1 end
+    return math.min(1, current / standing)
+end
 function presentation.at_calibrated_eye_height(position, unit)
     local height = presentation.calibrated_eye_height()
     if not height or not position or not unit or not Unit.alive(unit) then return position end
+    height = height * presentation.game_height_fraction(unit)
     return Vector3(Vector3.x(position), Vector3.y(position), Vector3.z(Unit.world_position(unit, 1)) + height)
 end
 function presentation.anchor_head_position(first_person_extension)
@@ -15888,10 +15903,11 @@ do
     -- (darktidevr_menu_input.lua, MenuInput.menu_buttons).
     function presentation.read_menu_buttons()
         if presentation.controllers_disabled() then return nil end
-        local ok, _, right, left_buttons, right_buttons = pcall(read_triggers)
+        local ok, left, right, left_buttons, right_buttons = pcall(read_triggers)
         if not ok or not right then return nil end
         return {x = bit.band(left_buttons, 1) ~= 0, y = bit.band(left_buttons, 2) ~= 0,
-            a = bit.band(right_buttons, 1) ~= 0, rt = right >= 0.55}
+            a = bit.band(right_buttons, 1) ~= 0, rt = right >= 0.55,
+            both_triggers = right >= 0.55 and (tonumber(left) or 0) >= 0.55}
     end
     local function title_triggers_down()
         local left, right = read_triggers()
