@@ -83,6 +83,22 @@ try {
     $restored = [IO.File]::ReadAllBytes($exe)
     if (@(0..($restored.Length - 1) | Where-Object { $restored[$_] -ne $pristine[$_] }).Count -ne 0) { Fail 'Restore did not reproduce the pristine executable' }
 
+    # The same executable as a LISTED build: a copy of the tool whose table
+    # names its hash. Apply, inspect and restore must run the listed path (on
+    # 17 October its restore died under strict mode on the unlisted check).
+    $sha = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+    $listedTool = Join-Path $root 'listed-tool.ps1'
+    $entry = "    @{ Name = 'fixture'; Sha256 = '$sha'; Offsets = @(0x1100, 0x1200) },`r`n"
+    (Get-Content -LiteralPath $ToolPath -Raw) -replace '(\$builds = @\(\r?\n)', ('$1' + $entry) | Set-Content -LiteralPath $listedTool -Encoding utf8
+    $savedTool = $ToolPath; $ToolPath = $listedTool
+    try {
+        if ((Value (Invoke-Tool 'Inspect' $exe $backup) 'build') -ne 'fixture') { Fail 'The listed fixture was not recognised by its hash' }
+        if ((Invoke-Tool 'Apply' $exe $backup).exit -ne 0) { Fail 'Apply failed on a listed build' }
+        $listedRestore = Invoke-Tool 'Restore' $exe (Join-Path $root 'missing.bin')
+        if ($listedRestore.exit -ne 0) { Fail "Restore failed on a listed build: $($listedRestore.lines -join ' | ')" }
+        if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha) { Fail 'A listed restore did not reproduce the pristine executable' }
+    } finally { $ToolPath = $savedTool }
+
     # Near misses: a different assertion at the second site, or a third site.
     foreach ($case in @(@{ name = 'wrong condition'; bytes = (New-Executable -Condition396 'bones_buffer.last_frame_accessed == frame') },
                         @{ name = 'duplicate site'; bytes = (New-Executable -Duplicate) })) {
