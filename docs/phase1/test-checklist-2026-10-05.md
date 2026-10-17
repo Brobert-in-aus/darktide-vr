@@ -15,6 +15,14 @@ Launch through Steam as usual. Reply under each heading; a word is enough.
 
 (recorded here as they come)
 
+- 17 October, first launch: no VR. The game had updated again on 7 October
+  (1.13.2, exe a7131fec), replacing the patched executable and the mod
+  loader's bundle database, so it started unmodded (`is_modded = false` in
+  the console log). Fixed in `6cf77c8` (1.13.2 in the patch tool, the
+  upload-flush hook found by searching); the loader re-patched, the build
+  redeployed (deployment `970d6efe1cbd4c8ba1a16c45e7350925`, binaries match
+  by hash) and the executable patched as 1.13.2. Ready for a second launch.
+
 ## 1. Does it start in VR at all
 
 Title screen and character select in the headset, in stereo, controllers
