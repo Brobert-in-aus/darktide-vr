@@ -242,13 +242,14 @@ For the Nexus changelog and the Posts tab. Matches CHANGELOG.md.
 
 ## Installation
 
-1. Extract the archive into the Darktide game folder (the one with
-   `binaries`, `bundle` and `mods`). Everything lands in
-   `mods\darktidevr`.
-2. With Darktide closed, run `mods\darktidevr\Darktide VR Mode.bat`
-   and choose VR mode. It patches two bytes of `Darktide.exe` (a pristine
-   copy is kept), installs a `d3d12.dll` proxy and adds the mod to the
-   load order.
+1. With Darktide closed, extract the archive anywhere and run
+   `mods\darktidevr\Darktide VR Mode.bat`. It finds Darktide on Steam or
+   the Microsoft Store / Game Pass, copies the mod into the game's `mods`
+   folder and switches to VR mode: it patches two bytes of `Darktide.exe`
+   (a pristine copy is kept), installs a `d3d12.dll` proxy and adds the mod
+   to the load order.
+2. Or extract into the game folder (the one with `binaries`, `bundle` and
+   `mods`) and run the same batch file there, choosing VR mode.
 3. Connect the headset (Virtual Desktop in the tested setup), launch
    Darktide through Steam, press Play.
 

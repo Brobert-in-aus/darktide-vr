@@ -48,6 +48,22 @@ function Resolve-DarktideGameRoot {
         }
         return $resolved
     }
+    # @(): a single installation would otherwise arrive as a bare string.
+    $games = @(if ($PSBoundParameters.ContainsKey('SteamRoots')) {
+        Get-DarktideSteamInstallations -SteamRoots $SteamRoots
+    } else {
+        Get-DarktideSteamInstallations
+    })
+    if ($games.Count -eq 1) { return $games[0] }
+    if ($games.Count -gt 1) { throw ('Multiple Darktide installations found; pass -GameRoot explicitly: ' + ($games -join '; ')) }
+    throw 'Darktide was not found in the registered Steam libraries. Pass -GameRoot with its installed game folder.'
+}
+
+# Every Darktide installation in the registered Steam libraries (game folders
+# holding binaries\Darktide.exe), deduplicated.
+function Get-DarktideSteamInstallations {
+    [CmdletBinding()]
+    param([string[]] $SteamRoots)
     if (-not $PSBoundParameters.ContainsKey('SteamRoots')) {
         $SteamRoots = @(
             foreach ($entry in @(
@@ -99,7 +115,63 @@ function Resolve-DarktideGameRoot {
             [void] $games.Add((Resolve-Path -LiteralPath $candidate).Path)
         }
     }
-    if ($games.Count -eq 1) { return @($games)[0] }
-    if ($games.Count -gt 1) { throw ('Multiple Darktide installations found; pass -GameRoot explicitly: ' + (@($games) -join '; ')) }
-    throw 'Darktide was not found in the registered Steam libraries. Pass -GameRoot with its installed game folder.'
+    return @($games)
+}
+
+# Every Microsoft Store / Game Pass installation: the Xbox app installs into a
+# games folder on each drive ("XboxGames" by default; a drive's .GamingRoot
+# file names the folder chosen in the app), one folder per game whose Content
+# folder is the game folder (binaries, bundle, mods, MicrosoftGame.config).
+# The installed package's own location is asked too, where Windows answers.
+function Get-DarktideStoreInstallations {
+    [CmdletBinding()]
+    param([string[]] $DriveRoots, [switch] $SkipAppx)
+    if (-not $PSBoundParameters.ContainsKey('DriveRoots')) {
+        $DriveRoots = @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
+            Where-Object { $_.Root -match '^[A-Za-z]:\\$' } | ForEach-Object { $_.Root })
+    }
+    $games = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    function Add-StoreCandidate([string] $Folder) {
+        if (-not $Folder) { return }
+        foreach ($candidate in @($Folder, (Join-Path $Folder 'Content'))) {
+            if ((Test-Path -LiteralPath (Join-Path $candidate 'binaries/Darktide.exe') -PathType Leaf) -and
+                    (Test-Path -LiteralPath (Join-Path $candidate 'MicrosoftGame.config') -PathType Leaf)) {
+                [void] $games.Add((Resolve-Path -LiteralPath $candidate).Path)
+            }
+        }
+    }
+    foreach ($root in $DriveRoots) {
+        if (-not $root -or -not (Test-Path -LiteralPath $root -PathType Container)) { continue }
+        $folders = [Collections.Generic.List[string]]::new()
+        $folders.Add('XboxGames')
+        # .GamingRoot: a 4-byte "RGBX" tag, a 4-byte count, then that many
+        # NUL-terminated UTF-16 folder paths relative to the drive.
+        $marker = Join-Path $root '.GamingRoot'
+        try {
+            if (Test-Path -LiteralPath $marker -PathType Leaf) {
+                $bytes = [IO.File]::ReadAllBytes($marker)
+                if ($bytes.Length -gt 8) {
+                    foreach ($entry in ([Text.Encoding]::Unicode.GetString($bytes, 8, $bytes.Length - 8) -split "`0")) {
+                        $entry = $entry.Trim().TrimStart('\', '/')
+                        if ($entry -and $entry.IndexOfAny([IO.Path]::GetInvalidPathChars()) -lt 0) { $folders.Add($entry) }
+                    }
+                }
+            }
+        } catch { }
+        foreach ($folder in $folders) {
+            $games_folder = Join-Path $root $folder
+            if (-not (Test-Path -LiteralPath $games_folder -PathType Container)) { continue }
+            foreach ($game in @(Get-ChildItem -LiteralPath $games_folder -Directory -ErrorAction SilentlyContinue)) {
+                Add-StoreCandidate $game.FullName
+            }
+        }
+    }
+    if (-not $SkipAppx) {
+        try {
+            foreach ($package in @(Get-AppxPackage -Name '*Darktide*' -ErrorAction Stop)) {
+                Add-StoreCandidate $package.InstallLocation
+            }
+        } catch { }
+    }
+    return @($games)
 }

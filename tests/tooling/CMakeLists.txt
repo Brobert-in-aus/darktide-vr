@@ -4,6 +4,10 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-component-provenance.ps1")
   add_test(NAME mode_switch COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/test-mode-switch.ps1")
+  add_test(NAME installer COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-installer.ps1")
+  add_test(NAME zip_recovery_encoding COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${PROJECT_SOURCE_DIR}/tools/release/encode-zip-recovery.ps1" -Check)
   add_test(NAME skinner_patch_discovery COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/test-skinner-patch-discovery.ps1")
   add_test(NAME offline_workload_readiness COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File

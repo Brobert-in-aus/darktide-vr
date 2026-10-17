@@ -55,6 +55,8 @@ $required = @(
     'mods/darktidevr/darktidevr.mod'
     'mods/darktidevr/Darktide VR Mode.bat'
     'mods/darktidevr/darktidevr-mode.ps1'
+    'mods/darktidevr/darktidevr-install.ps1'
+    'mods/darktidevr/tools/resolve-darktide-game-root.ps1'
     'mods/darktidevr/KeyboardMouseOff'
     'mods/darktidevr/tools/set-skinner-assert-patch.ps1'
     'mods/darktidevr/scripts/mods/darktidevr/darktidevr.lua'

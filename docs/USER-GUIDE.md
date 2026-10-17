@@ -48,12 +48,18 @@ have rough edges on yours. Read the "Known limits" section before you judge it.
 
 ## Install
 
-1. Extract the archive into the Darktide game folder, the one that contains
-   `binaries`, `bundle` and `mods`. When you are done,
-   `mods\darktidevr` sits beside `mods\dmf`; the archive adds
-   nothing outside that folder.
-2. Close Darktide. Run `mods\darktidevr\Darktide VR Mode.bat`
-   and choose **1, VR mode**. The switch does three things:
+1. Close Darktide. Extract the archive anywhere and run
+   `mods\darktidevr\Darktide VR Mode.bat`. It finds Darktide on Steam or
+   the Microsoft Store / Game Pass by itself (it lists them if there is more
+   than one, and asks for the folder if it finds none), checks that the mod
+   loader is installed, copies the mod into the game's `mods` folder and
+   switches to VR mode. Run straight from inside the zip, it finds the zip
+   in Downloads, Desktop or Documents and installs from that.
+   You can still extract into the game folder yourself, the one that
+   contains `binaries`, `bundle` and `mods`, so that `mods\darktidevr` sits
+   beside `mods\dmf`; the batch file there shows the mode menu.
+2. In the game folder, `Darktide VR Mode.bat` is the mode switch: choose
+   **1, VR mode** (the install above does this for you). It does three things:
    - patches two bytes of `binaries\Darktide.exe` so the game accepts the
      stereo camera (a pristine copy is kept under `%LOCALAPPDATA%\DarktideVR`);
    - places the mod's `d3d12.dll` proxy in `binaries`, which is how the VR

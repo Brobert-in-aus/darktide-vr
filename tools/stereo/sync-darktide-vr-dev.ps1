@@ -132,6 +132,8 @@ $destinations = @(
 foreach ($switchFile in @(
         @{ Source = Join-Path $repoRoot 'mods\darktidevr\darktidevr-mode.ps1'; Destination = 'darktidevr-mode.ps1' },
         @{ Source = Join-Path $repoRoot 'mods\darktidevr\Darktide VR Mode.bat'; Destination = 'Darktide VR Mode.bat' },
+        @{ Source = Join-Path $repoRoot 'mods\darktidevr\darktidevr-install.ps1'; Destination = 'darktidevr-install.ps1' },
+        @{ Source = Join-Path $PSScriptRoot 'resolve-darktide-game-root.ps1'; Destination = 'tools\resolve-darktide-game-root.ps1' },
         @{ Source = Join-Path $PSScriptRoot 'set-skinner-assert-patch.ps1'; Destination = 'tools\set-skinner-assert-patch.ps1' })) {
     $destinations += [pscustomobject]@{
         Source = $switchFile.Source

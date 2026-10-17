@@ -25,9 +25,14 @@ Since 0.3.0-alpha.2.
 
 ### Fixed
 
-- `Darktide VR Mode.bat` says what to do when it is run from inside the zip
-  (Windows copies only that one file and PowerShell reported a missing
-  script) or from a folder outside the game folder.
+- **The batch file installs the mod itself.** Extract the archive anywhere
+  and run `Darktide VR Mode.bat`: it finds Darktide on Steam or the
+  Microsoft Store / Game Pass (asking which if there are several, or for the
+  folder if there are none), checks that the mod loader is installed, copies
+  the mod into the game and switches to VR mode. Run straight from inside
+  the zip, which used to fail with a PowerShell error about a missing
+  script, it finds the zip in Downloads, Desktop or Documents and installs
+  from it.
 - Cancel matchmaking works in the Mourningstar: both triggers. 0.3.0-alpha.2
   added it but it only answered while a menu was open.
 - The end screen continues on A instead of the right trigger. The trigger is

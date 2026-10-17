@@ -14,6 +14,10 @@
         @{ Source = 'mods/darktidevr/darktidevr.mod'; Destination = 'mods/darktidevr/darktidevr.mod' }
         @{ Source = 'mods/darktidevr/Darktide VR Mode.bat'; Destination = 'mods/darktidevr/Darktide VR Mode.bat' }
         @{ Source = 'mods/darktidevr/darktidevr-mode.ps1'; Destination = 'mods/darktidevr/darktidevr-mode.ps1' }
+        # Run by the batch file when the archive was extracted anywhere but the
+        # game folder: it finds Darktide (Steam or Microsoft Store) and installs.
+        @{ Source = 'mods/darktidevr/darktidevr-install.ps1'; Destination = 'mods/darktidevr/darktidevr-install.ps1' }
+        @{ Source = 'tools/stereo/resolve-darktide-game-root.ps1'; Destination = 'mods/darktidevr/tools/resolve-darktide-game-root.ps1' }
         # Empty switch: renamed to KeyboardMouseOn it starts the game in the
         # experimental keyboard and mouse mode, for headsets without controllers.
         @{ Source = 'mods/darktidevr/KeyboardMouseOff'; Destination = 'mods/darktidevr/KeyboardMouseOff' }

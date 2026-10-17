@@ -17,14 +17,19 @@ Requirements
     before you launch. Other runtimes, headsets and controllers untested.
 
 Install
-  1. Extract this archive into the Darktide game folder (the folder that
-     contains "binaries", "bundle" and "mods"). Afterwards
-     mods\darktidevr must exist beside mods\dmf. Extract it; do not run
-     the batch file from inside the zip, which only copies that one file.
-  2. Run mods\darktidevr\"Darktide VR Mode.bat" and choose
-     "1  VR mode". It patches two bytes of Darktide.exe (a pristine copy is
-     kept under %LOCALAPPDATA%\DarktideVR), installs the d3d12 proxy and adds
-     the mod to mods\mod_load_order.txt. Darktide must be closed.
+  1. Close Darktide. Extract this archive anywhere (Downloads is fine) and
+     run mods\darktidevr\"Darktide VR Mode.bat". It finds Darktide on
+     Steam or the Microsoft Store / Game Pass (it asks if it finds more than
+     one, or asks for the folder if it finds none), copies the mod into the
+     game's mods folder and switches the game to VR mode. Run from inside
+     the zip without extracting, it finds the zip in Downloads, Desktop or
+     Documents and installs from it.
+  2. VR mode patches two bytes of Darktide.exe (a pristine copy is kept
+     under %LOCALAPPDATA%\DarktideVR), installs the d3d12 proxy and adds
+     the mod to mods\mod_load_order.txt.
+     You can also extract the archive straight into the game folder (the
+     folder that contains "binaries", "bundle" and "mods") and run the
+     batch file there: it then shows the mode menu, "1  VR mode".
   3. Launch Darktide as usual (Steam, or the Xbox app for the Microsoft
      Store / Game Pass version) and press Play in the launcher.
      The headset takes over once the game window is up.

@@ -29,6 +29,7 @@ try {
     foreach ($relative in @(
             "$modRelative/darktidevr.mod", "$modRelative/Darktide VR Mode.bat", "$modRelative/darktidevr-mode.ps1",
             "$modRelative/KeyboardMouseOff",
+            "$modRelative/darktidevr-install.ps1", "$modRelative/tools/resolve-darktide-game-root.ps1",
             "$modRelative/tools/set-skinner-assert-patch.ps1", "$luaRelative/darktidevr.lua",
             "$modRelative/bin/d3d12.dll", "$modRelative/bin/darktidevr_native_capture.dll", "$modRelative/bin/darktidevr-xr-harness.exe",
             "$modRelative/bin/openxr_loader.dll", "$modRelative/bin/dxcompiler.dll",

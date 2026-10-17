@@ -65,6 +65,9 @@ if ($global:DeploymentFixtureGateFailure) { throw 'fixture syntax gate failed' }
     Write-Fixture (Join-Path $repo ($modRelative + '\darktidevr-mode.ps1')) 'new-mode-switch'
     Write-Fixture (Join-Path $repo ($modRelative + '\Darktide VR Mode.bat')) 'new-mode-batch'
     Write-Fixture (Join-Path $tools 'set-skinner-assert-patch.ps1') 'new-patch-tool'
+    # The installer deploys with them (the resolver it uses is the real one
+    # copied into the fixture's tools above).
+    Write-Fixture (Join-Path $repo ($modRelative + '\darktidevr-install.ps1')) 'new-installer'
     foreach ($name in @('darktidevr_native_capture.dll', 'd3d12.dll')) {
         Write-Fixture (Join-Path $repo ('build\windows-vs2022\src\producer\Release\' + $name)) ('new-' + $name)
         Write-Fixture (Join-Path $game ('binaries\' + $name)) ('old-' + $name)
