@@ -20,6 +20,19 @@ Since 0.3.0-alpha.2.
   executable is recognised the same way, and its settings are read from
   `Fatshark\MicrosoftStore\Darktide`. Launch it from the Xbox app. Untested.
 
+### Fixed
+
+- Cancel matchmaking works in the Mourningstar: both triggers. 0.3.0-alpha.2
+  added it but it only answered while a menu was open.
+- The end screen continues on A instead of the right trigger. The trigger is
+  also the pointer's click, so rating the match or opening the statistics
+  skipped the screen as well.
+- Holding A previews a group in the group finder, which had no VR control.
+- Prompts that read "[Unbound]" though the pointer can click them now say
+  so: the group finder's refresh, the talent summary, the mission board's
+  debrief. The reward track reads "Stick", the title screen "LT/RT", and
+  loading-screen hints no longer show an "[Unbound]" prompt.
+
 ## 0.3.0-alpha.2 (17 October 2026)
 
 Since 0.3.0-alpha.1. A compatibility release for the game's 1.13 update,

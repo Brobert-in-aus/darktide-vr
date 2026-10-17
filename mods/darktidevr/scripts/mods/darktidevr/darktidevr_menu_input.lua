@@ -38,15 +38,19 @@ end
 -- Menu hotkeys with a keyboard default and no pointer route (special menus
 -- such as the end of mission screen) answer to a fixed controller button,
 -- keyed by the action's key alias: E (hotkey_menu_special_1) is Y, Q
--- (hotkey_menu_special_2) is X, the end screen's continue is the right
--- trigger, and Space on the social list is A. B stays back and the triggers
+-- (hotkey_menu_special_2) is X, the end screen's continue and Space on the
+-- social list are A, and holding A previews a group in the group finder.
+-- The end screen's continue was the right trigger until the 17 October
+-- review: the trigger is also the pointer's click, so clicking the match
+-- rating or the statistics toggle skipped the screen as well. B stays back and the triggers
 -- stay pointer clicks. Overlap with gameplay bindings does not matter in a
 -- menu. darktidevr_controller_prompts.lua labels the same buttons.
 -- Cancelling matchmaking is both triggers together, the gamepad's own chord:
 -- the game reads it from the View service with no menu open, in the
 -- Mourningstar, where it never had a VR answer.
 MenuInput.menu_buttons = {hotkey_menu_special_1 = "y", hotkey_menu_special_2 = "x",
-    continue_end_view = "rt", social_show_list = "a", cancel_matchmaking = "both_triggers"}
+    continue_end_view = "a", social_show_list = "a", cancel_matchmaking = "both_triggers",
+    group_finder_group_inspect = "a"}
 
 -- Per-button edges for one UI frame. A button held when the owner changes
 -- must be released before it presses.
@@ -370,6 +374,35 @@ function MenuInput.install(mod, presentation)
                 (presentation.mode == 5 or presentation.mode == 6) then return inert end
         return presentation.read_menu_pointer()
     end
+    -- With no menu open the stock View service is returned as it is, except
+    -- for the notification actions the game reads from it in play: cancelling
+    -- matchmaking (the matchmaking notification, in the Mourningstar) answers
+    -- to a fresh press of both triggers, the gamepad's own chord. One edge per
+    -- game frame, and a chord already held when it starts does not count.
+    local notification = {}
+    local notification_actions = {cancel_matchmaking = true}
+    local function notification_service(source, null_service)
+        if source == null_service or not presentation.read_menu_buttons then return source end
+        local time = Managers and Managers.time
+        local t = time and time:has_timer("main") and time:time("main")
+        if not t then return source end
+        if notification.t ~= t then
+            local buttons = presentation.read_menu_buttons()
+            local down = buttons ~= nil and buttons.both_triggers == true
+            notification.pressed = down and notification.armed == true
+            notification.armed = not down
+            notification.t = t
+        end
+        if not notification.pressed then return source end
+        return setmetatable({get = function(_, action, ...)
+            if notification_actions[action] then return true end
+            return source:get(action, ...)
+        end}, {__index = function(_, key)
+            local value = source[key]
+            if type(value) == "function" then return function(_, ...) return value(source, ...) end end
+            return value
+        end})
+    end
     -- Both regular views and constant elements (confirmation popups, etc.)
     -- obtain input here. The view handler alone does not cover modal dialogs.
     local function route_service(func, self, ...)
@@ -389,7 +422,8 @@ function MenuInput.install(mod, presentation)
         if not presentation.native_menu_input_enabled or
                 (presentation.mode ~= 5 and presentation.mode ~= 6) or desktop_editor then
             state = {}
-            return source, null_service, gamepad
+            if desktop_editor then return source, null_service, gamepad end
+            return notification_service(source, null_service), null_service, gamepad
         end
         -- Respect ImGui, disabled input, and the view handler's own suppression.
         if source == null_service then

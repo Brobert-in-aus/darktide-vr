@@ -119,6 +119,8 @@ return {
     vr_prompt_right_trigger = {en = "RT"},
     vr_prompt_left_trigger = {en = "LT"},
     vr_prompt_both_triggers = {en = "LT+RT"},
+    vr_prompt_either_trigger = {en = "LT/RT"},
+    vr_prompt_stick = {en = "Stick"},
     vr_prompt_right_grip = {en = "R Grip"},
     vr_prompt_left_grip = {en = "L Grip"},
     vr_prompt_x = {en = "X"},

@@ -206,6 +206,27 @@ local a,b,c=legacy_hook(function() return 1,nil,3 end)
 assert(a==1 and b==nil and c==3,'native bypass changed the stock return contract')
 presentation.mode=1
 assert(hook(function() return source,null,false end,handler)==source)
+-- No menu open: cancelling matchmaking still answers to a fresh press of both
+-- triggers (the matchmaking notification reads View input in the hub), once
+-- per frame, and nothing else on the service changes.
+do
+    local now, triggers = 100, false
+    local saved_managers = Managers
+    Managers = {time = {has_timer = function() return true end, time = function() return now end}, ui = saved_managers.ui}
+    presentation.read_menu_buttons = function() return {both_triggers = triggers} end
+    local stock = {get = function(_, action) return action == 'confirm_pressed' and 'stock' or false end}
+    local function frame(n, down) now, triggers = n, down; return hook(function() return stock,null,false end,handler) end
+    assert(frame(100, true) == stock, 'a chord held when the hub frame starts cancelled matchmaking')
+    frame(101, false)
+    local cancel = frame(102, true)
+    assert(cancel ~= stock and cancel:get('cancel_matchmaking') == true, 'both triggers did not cancel matchmaking with no menu open')
+    assert(cancel:get('confirm_pressed') == 'stock' and cancel:get('left_pressed') == false, 'the chord changed another View action')
+    assert(hook(function() return stock,null,false end,handler):get('cancel_matchmaking') == true, 'the press is for the whole frame')
+    assert(frame(103, true) == stock, 'a held chord cancelled twice')
+    assert(hook(function() return null,null,false end,handler) == null, 'the null service was wrapped')
+    presentation.read_menu_buttons = nil
+    Managers = saved_managers
+end
 -- Desktop editor output shares mode 5, but must retain native mouse buttons
 -- and wheel through both service entry points. Actual menus still use XR.
 presentation.mode=5
@@ -479,7 +500,9 @@ do
     local function frame(n,buttons,owner)
         return menu.sample(button_state,off_panel,n,owner or 'end_view',1920,1080,buttons)
     end
-    local function buttons(y,x,rt) return {y=y,x=x,a=false,rt=rt} end
+    -- The third button is A, the end screen's continue since 17 October; the
+    -- right trigger, the pointer's click, no longer continues it.
+    local function buttons(y,x,a) return {y=y,x=x,a=a,rt=false} end
     local s=frame(1,buttons(true,false,true))
     local hot=menu.proxy(hotkey_source,null,s,vector)
     assert(not hot:get('hotkey_menu_special_1') and not hot:get('continue_end_view'),
@@ -487,7 +510,7 @@ do
     frame(2,buttons(false,false,false))
     s=frame(3,buttons(true,true,true)); hot=menu.proxy(hotkey_source,null,s,vector)
     assert(s.override and hot:get('hotkey_menu_special_1') and hot:get('hotkey_menu_special_1_hold') and
-        hot:get('continue_end_view'),'Y presses E and RT the end screen continue')
+        hot:get('continue_end_view'),'Y presses E and A the end screen continue')
     assert(not hot:get('hotkey_item_sort'),'an unmapped hotkey answered to a button')
     s=frame(4,buttons(true,false,true)); hot=menu.proxy(hotkey_source,null,s,vector)
     assert(not hot:get('hotkey_menu_special_1') and hot:get('hotkey_menu_special_1_hold') and
@@ -502,6 +525,13 @@ do
     s=frame(8,nil,'other_view')
     assert(not s.override,'no buttons and no pointer keep the stock service')
     assert(menu.menu_buttons.hotkey_menu_special_1=='y' and menu.menu_buttons.hotkey_menu_special_2=='x')
+    -- The pointer's click (RT) never continues the end screen.
+    local rt_state={}
+    local rt_source={_actions={continue_end_view={key_alias='continue_end_view',type='pressed'}},get=function() return false end}
+    menu.sample(rt_state,off_panel,40,'end_view',1920,1080,{rt=false,a=false})
+    local rt_only=menu.proxy(rt_source,null,menu.sample(rt_state,off_panel,41,'end_view',1920,1080,{rt=true,a=false}),vector)
+    assert(not rt_only:get('continue_end_view'),'the right trigger still continues the end screen')
+    assert(menu.menu_buttons.group_finder_group_inspect=='a','the group finder preview has no button')
     -- Cancelling matchmaking: the game reads it from the View service in the
     -- Mourningstar with no menu open, on the gamepad's both-triggers chord.
     local cancel_state={}

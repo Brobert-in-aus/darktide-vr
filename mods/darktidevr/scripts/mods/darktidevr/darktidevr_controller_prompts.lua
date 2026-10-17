@@ -77,7 +77,11 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
         back="vr_menu_back", close="vr_menu_back", cancel="vr_menu_back",
         -- Menu hotkeys on fixed controller buttons (MenuInput.menu_buttons).
         hotkey_menu_special_1="vr_prompt_y", hotkey_menu_special_2="vr_prompt_x",
-        continue_end_view="vr_prompt_right_trigger", social_show_list="vr_prompt_a",
+        -- The end screen's continue left the right trigger, which is also the
+        -- pointer's click: rating the match or toggling the statistics also
+        -- skipped the screen (17 October review).
+        continue_end_view="vr_prompt_a", social_show_list="vr_prompt_a",
+        group_finder_group_inspect="vr_prompt_a",
         cancel_matchmaking="vr_prompt_both_triggers",
         confirm_pressed="vr_menu_point_select", left_pressed="vr_menu_point_select",
         left_released="vr_menu_point_select", left_hold="vr_menu_point_select",
@@ -96,7 +100,18 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
         toggle_player_stats_inventory="vr_menu_point_select",
         toggle_player_navigation_inventory="vr_menu_point_select",
         cycle_list_primary="vr_menu_point_select",
-        next_hint=false, notification_option_a=false, notification_option_b=false,
+        -- Clickable buttons whose prompts read Unbound (17 October review).
+        group_finder_refresh_groups="vr_menu_point_select",
+        talents_summery_overview="vr_menu_point_select",
+        mission_board_play_debrief="vr_menu_point_select",
+        -- Penance and mastery reward tracks: the stick scrolls them.
+        scroll_axis="vr_prompt_stick",
+        -- The title screen continues on either trigger (darktidevr.lua).
+        title_screen_start="vr_prompt_either_trigger",
+        -- Loading-screen hints: no VR control, and none is needed; show no
+        -- prompt rather than an Unbound one.
+        next_hint="",
+        notification_option_a=false, notification_option_b=false,
         skip_cinematic="vr_menu_hold_skip", skip_cinematic_hold="vr_menu_hold_skip",
     }
     local secondary_aliases = {right=true, right_pressed=true, right_released=true, right_hold=true}
@@ -108,6 +123,7 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
                 menu_prompts.secondary_available() and "vr_menu_point_secondary" or false
         end
         local text
+        if label == "" then return "" end
         if label then
             text = "["..mod:localize(label).."]"
         else

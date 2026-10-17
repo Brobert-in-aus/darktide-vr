@@ -76,8 +76,18 @@ assert(text('skip_cinematic_hold','View')=='[Hold\194\160RT]','cutscene skip leg
 assert(text('some_new_alias','View')=='[Unbound]','unrouted menu alias must read Unbound')
 assert(text('hotkey_inventory','View')=='[Unbound]','a menu hotkey outside the hub must not show a keyboard key')
 assert(text('hotkey_menu_special_1','View')=='[Y]','menu hotkey E reads its controller button Y')
-assert(text('hotkey_menu_special_2','View')=='[X]' and text('continue_end_view','View')=='[RT]' and
+assert(text('hotkey_menu_special_2','View')=='[X]' and text('continue_end_view','View')=='[A]' and
     text('social_show_list','View')=='[A]','menu hotkeys read their controller buttons')
+-- The 17 October unbound-input review: clickable buttons read Point + RT, the
+-- reward track reads the stick, the title screen either trigger, the group
+-- finder preview A, and loading hints show no prompt at all.
+for _,alias in ipairs({'group_finder_refresh_groups','talents_summery_overview','mission_board_play_debrief'}) do
+    assert(text(alias,'View')==point,alias..' still reads Unbound')
+end
+assert(text('scroll_axis','View')=='[Stick]','the reward track scroll reads Unbound')
+assert(text('title_screen_start','View')=='[LT/RT]','the title screen prompt reads Unbound')
+assert(text('group_finder_group_inspect','View')=='[A]','the group preview reads Unbound')
+assert(text('next_hint','View')=='','the loading hint shows an Unbound prompt')
 scope('HudElementWieldInfo','_create_entry',function()
     assert(text('action_one')=='[RT]')
     assert(text('weapon_extra')=='[R\194\160Grip]')
