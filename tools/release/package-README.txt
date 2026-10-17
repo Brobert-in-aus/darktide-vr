@@ -6,7 +6,9 @@ on a Quest 3 through Virtual Desktop (VDXR). Read USER-GUIDE.md before
 playing; this file is the short version.
 
 Requirements
-  - Darktide on Steam (Windows). Frame generation needs DLSS Frame
+  - Darktide on Steam (Windows). The Microsoft Store / Game Pass version is
+    expected to work the same way but has not been tested; launch it from
+    the Xbox app instead of Steam. Frame generation needs DLSS Frame
     Generation (NVIDIA RTX 40-series or newer); the mod works without it
     at a lower frame rate. Only NVIDIA GPUs have been tested.
   - Darktide Mod Loader and Darktide Mod Framework installed and working.
@@ -22,7 +24,8 @@ Install
      "1  VR mode". It patches two bytes of Darktide.exe (a pristine copy is
      kept under %LOCALAPPDATA%\DarktideVR), installs the d3d12 proxy and adds
      the mod to mods\mod_load_order.txt. Darktide must be closed.
-  3. Launch Darktide through Steam as usual and press Play in the launcher.
+  3. Launch Darktide as usual (Steam, or the Xbox app for the Microsoft
+     Store / Game Pass version) and press Play in the launcher.
      The headset takes over once the game window is up.
 
 Play flat again
@@ -31,10 +34,11 @@ Play flat again
   order. Your other mods are untouched.
 
 After a game update
-  Steam replaces Darktide.exe and switches the mod loader off. Run the mod
-  loader's toggle_darktide_mods.bat, then this batch file, and choose VR
-  mode. If it reports that the build is not supported yet, wait for a mod
-  update; Flat mode still works.
+  The update replaces Darktide.exe and switches the mod loader off. Run the
+  mod loader's toggle_darktide_mods.bat, then this batch file, and choose VR
+  mode. The batch file finds the two places it patches in a new executable,
+  so a game update normally needs no mod update; if it reports that the
+  build is not supported, wait for one. Flat mode always works.
 
 After a mod update
   Extract the new archive over the old one, then run the batch file and

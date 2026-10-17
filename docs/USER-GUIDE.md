@@ -8,7 +8,10 @@ have rough edges on yours. Read the "Known limits" section before you judge it.
 
 ## What you need
 
-- Windows 10 or 11, x64. Darktide installed through Steam.
+- Windows 10 or 11, x64. Darktide installed through Steam. The Microsoft
+  Store / Game Pass version is expected to work the same way (launch it from
+  the Xbox app; its settings live under `Fatshark\MicrosoftStore\Darktide`)
+  but has not been tested.
 - A GPU that runs Darktide comfortably flat. Frame generation uses the
   game's own DLSS Frame Generation, so it needs an NVIDIA RTX 40-series or
   newer; without it the mod runs at whatever rate the GPU renders two eyes.
@@ -60,7 +63,7 @@ have rough edges on yours. Read the "Known limits" section before you judge it.
    installed, listed and present.
 3. Put the headset on, connect it to the PC (Virtual Desktop in the tested
    setup), then launch
-   Darktide through Steam and press Play in the Fatshark launcher. Nothing
+   Darktide through Steam (or the Xbox app) and press Play in the Fatshark launcher. Nothing
    else is needed. The desktop window comes up as usual; a few seconds later
    the headset shows the game.
 
@@ -68,13 +71,15 @@ To play flat again, run the batch file and choose **2, Flat mode**. It
 restores the original executable, removes the proxy and takes the mod out of
 the load order. The mod folder and your other mods stay where they are.
 
-After Steam updates the game, run the mod loader's `toggle_darktide_mods.bat`
+After the game updates, run the mod loader's `toggle_darktide_mods.bat`
 first (a game update switches mods off), then the batch file, and choose VR
 mode.
 After a mod update, extract the new archive over the old one and do the
 same; the switch replaces the earlier proxy and keeps your settings.
-If it says the build is not supported yet, the executable changed and the
-patch needs an update from us.
+The batch file finds the two bytes it patches in a new executable by their
+code, so a game update normally needs no mod update. If it still says the
+build is not supported, the patched code itself changed and the mod needs an
+update from us.
 
 ## First run
 

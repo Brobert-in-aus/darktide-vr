@@ -98,7 +98,9 @@ the Psykhanium and part of a mission.
 
 ## Requirements
 
-- Warhammer 40,000: Darktide on Steam, Windows 10/11 x64.
+- Warhammer 40,000: Darktide on Steam, Windows 10/11 x64. The Microsoft
+  Store / Game Pass version should work the same way, launched from the Xbox
+  app, but is untested.
 - Darktide Mod Loader and Darktide Mod Framework (hard requirement).
 - An OpenXR runtime with Direct3D 12 support. Tested: Virtual Desktop
   Streamer with VDXR as the runtime, Quest 3.

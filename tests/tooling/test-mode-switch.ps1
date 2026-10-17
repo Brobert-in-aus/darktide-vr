@@ -135,6 +135,21 @@ try {
     $inspectExit = $LASTEXITCODE
     $ErrorActionPreference = 'Stop'
     if ($inspectExit -ne 0 -or -not ($inspect -contains 'state=unsupported')) { Fail "Patch tool on an unknown executable: exit=$inspectExit $($inspect -join ' | ')" }
+
+    # A Microsoft Store / Game Pass install (a GDK package: MicrosoftGame.config
+    # beside binaries) keeps its settings under Fatshark\MicrosoftStore\Darktide.
+    # The swap uses that file and leaves the Steam path alone.
+    Set-Content -LiteralPath (Join-Path $game 'MicrosoftGame.config') -Value '<Game/>' -Encoding ascii
+    $storeSettings = Join-Path $env:APPDATA 'Fatshark\MicrosoftStore\Darktide\user_settings.config'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $storeSettings) -Force | Out-Null
+    Set-Content -LiteralPath $storeSettings -Value ($sound + ' store vr') -Encoding ascii
+    Set-Content -LiteralPath $settings -Value 'steam file' -Encoding ascii
+    Set-Content -LiteralPath (Join-Path $profileDirectory 'settings-profile.txt') -Value 'vr' -Encoding ascii
+    $flat = Invoke-Switch 'flat'
+    if ($flat.exit -ne 0 -or -not ($flat.lines -match '^store=microsoft$')) { Fail "Store install not recognised: $($flat.lines -join ' | ')" }
+    if ((Get-Content -LiteralPath $storeSettings -Raw).Trim() -ne ($sound + ' flat')) { Fail 'The Store settings file was not swapped to the flat profile' }
+    if ((Get-Content -LiteralPath (Join-Path $profileDirectory 'user_settings.vr.config') -Raw).Trim() -ne ($sound + ' store vr')) { Fail 'The Store VR settings were not saved' }
+    if ((Get-Content -LiteralPath $settings -Raw).Trim() -ne 'steam file') { Fail 'A Store install touched the Steam settings path' }
 } finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
