@@ -255,7 +255,7 @@ $backupMatches = (Test-Path -LiteralPath $backupPath -PathType Leaf) -and
 # An unlisted build has no known hash to prove the reversal against; the copy
 # Apply kept is that proof. Without it the restore is refused, and the store's
 # own file check (Steam: Verify integrity; Xbox app: Repair) puts it back.
-if ($build.Unlisted -and -not $backupMatches) {
+if ($build.ContainsKey('Unlisted') -and -not $backupMatches) {
     throw 'This executable was patched as a build the tool does not list, and the pristine copy that would prove the restore is missing or belongs to another build. Use Verify integrity of game files (Steam) or Repair (Xbox app) to restore Darktide.exe.'
 }
 if ($backupMatches) {
