@@ -38,6 +38,9 @@ if(BUILD_TESTING)
   add_test(NAME runtime_package_integrity COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/test-runtime-package.ps1")
   set(LUAJIT_VALIDATOR "${PROJECT_SOURCE_DIR}/build/dependencies/luajit/src/luajit.exe")
+  file(GLOB DARKTIDEVR_MOD_LUA "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/*.lua")
+  add_test(NAME lua_use_before_local COMMAND "${LUAJIT_VALIDATOR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-lua-use-before-local.lua" ${DARKTIDEVR_MOD_LUA})
   add_test(NAME solo_mission_benchmark COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-solo-mission-benchmark.lua"
     "${PROJECT_SOURCE_DIR}/tools/stereo/solo-mission-benchmark.lua")

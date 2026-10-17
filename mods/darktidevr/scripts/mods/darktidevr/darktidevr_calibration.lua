@@ -19,9 +19,8 @@ local function set_profile_height(profile, height)
     profile.character_height = height
     if profile.personal then profile.personal.character_height = height end
 end
-calibration.profile_height = profile_height
-
 local calibration = {}
+calibration.profile_height = profile_height
 
 function calibration.install(mod, controller_state, get_head_pose,
         refresh_controller_state)
