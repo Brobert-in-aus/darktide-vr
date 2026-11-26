@@ -79,3 +79,13 @@ becomes this release.
   `toggle_darktide_mods.bat` before the batch file.
 - Microsoft Store / Game Pass support came with the patch-tool commit and has
   never run on a Store install.
+
+## Progress
+
+**26 November: published on GitHub** on the user's word, ahead of Nexus (as
+0.3.0-alpha.1 was). The candidate archive above, its SHA-256 rechecked
+before the upload, is attached to release `v0.3.0-alpha.3`, marked latest;
+the tag is on `3adf81a`, the build commit. The archive's own changelog reads
+"unreleased"; the dated headings are in the publication commit. The Nexus
+upload and the fresh-install pass (item 4) are the user's and not yet
+reported.
