@@ -4,9 +4,18 @@ All notable user-facing changes to Darktide VR. Versions follow
 `major.minor.patch` with a pre-release suffix while the mod is in alpha; the
 runtime package records the exact source revision alongside the version.
 
-## Unreleased
+## 0.3.0-alpha.3 (unreleased)
 
-Since 0.3.0-alpha.2.
+Since 0.3.0-alpha.2. A hotfix for the game's 23 October update, which
+0.3.0-alpha.2 refused; nothing else in the mod has changed.
+
+### Game update
+
+- **The 23 October Darktide update is supported.** 0.3.0-alpha.2's
+  `Darktide VR Mode.bat` stopped with an unknown-build error on it, so VR
+  mode could not be switched on. After updating the game, run the mod
+  loader's `toggle_darktide_mods.bat` first, then the batch file, and
+  choose VR mode.
 
 ### Changed
 

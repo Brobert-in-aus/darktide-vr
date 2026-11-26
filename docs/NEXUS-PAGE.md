@@ -1,6 +1,6 @@
 # Nexus Mods page text (12 September 2026; the feature list and the notes
-# below updated 19 September for 0.3.0-alpha.1, and 17 October for
-# 0.3.0-alpha.2)
+# below updated 19 September for 0.3.0-alpha.1, 17 October for
+# 0.3.0-alpha.2, and 26 November for 0.3.0-alpha.3)
 
 Paste-ready sections for the Nexus page. Keep the claims in step with
 USER-GUIDE.md; anything not listed under "What works" has not been checked
@@ -108,6 +108,20 @@ the Psykhanium and part of a mission.
   it at the native frame rate; other GPUs untested).
 - Optional: Custom HUD (continued), for HUD layout editing (tested with
   2.1.6; the original Custom HUD is untested).
+
+## Changelog post: 0.3.0-alpha.3 (unreleased)
+
+Drafted 26 November from `CHANGELOG.md`'s 0.3.0-alpha.3 section.
+
+**Game update:** the 23 October Darktide update is supported;
+0.3.0-alpha.2's batch file refused it. After updating, run the mod loader's
+toggle first, then `Darktide VR Mode.bat`, and choose VR mode.
+
+**Changed:** the batch file now recognises a Darktide executable it has
+never seen by the two places it patches, so future game updates should not
+need a mod update before VR mode works (the mod loader's toggle is still
+needed every time). The Microsoft Store / Game Pass version should now work
+too; it is untested.
 
 ## Changelog post: 0.3.0-alpha.2 (17 October 2026)
 
